@@ -1,0 +1,1 @@
+# Naga error types
