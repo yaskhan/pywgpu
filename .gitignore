@@ -1,0 +1,14 @@
+*.swp
+*.swo
+*~
+*.swn
+*.pyc
+.coverage
+.ropeproject
+*.egg-info
+.tox
+build
+.DS_Store
+Cargo.lock
+wgpu-trunk
+
