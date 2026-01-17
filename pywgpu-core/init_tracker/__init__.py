@@ -1,5 +1,11 @@
+from typing import List, Any
+
 class InitTracker:
     """
-    Tracks initialization state of memory.
+    Track initialization state of resources.
     """
-    pass
+    def __init__(self) -> None:
+        self.uninitialized_ranges: List[Any] = []
+
+    def check(self, range_start: int, range_end: int) -> bool:
+        return True

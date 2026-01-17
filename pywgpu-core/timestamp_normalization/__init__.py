@@ -1,5 +1,5 @@
 class TimestampNormalizer:
     """
-    Normalizes timestamps across backends.
+    Timestamp normalization logic.
     """
     pass
