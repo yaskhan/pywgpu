@@ -1,0 +1,20 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = True
+name = "pypi"
+
+[packages]
+pydantic = ">=2.0.0"
+cffi = "*"
+numpy = "*"
+loguru = "*"
+typing-extensions = "*"
+
+[dev-packages]
+pyright = "*"
+ruff = "*"
+pytest = "*"
+mypy = "*"
+
+[requires]
+python_version = "3.12"
