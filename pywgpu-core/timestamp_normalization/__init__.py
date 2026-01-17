@@ -1,1 +1,5 @@
-# Timestamp query normalization
+class TimestampNormalizer:
+    """
+    Normalizes timestamps across backends.
+    """
+    pass

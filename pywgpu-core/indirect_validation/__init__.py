@@ -1,1 +1,5 @@
-# Indirect drawing/dispatch validation
+class IndirectValidator:
+    """
+    Validates indirect draw calls.
+    """
+    pass

@@ -1,0 +1,32 @@
+from enum import Enum
+from typing import Any
+
+class Expression(Enum):
+    """
+    IR Expression enum.
+    """
+    LITERAL = "literal"
+    CONSTANT = "constant"
+    ZERO_VALUE = "zero-value"
+    COMPOSE = "compose"
+    ACCESS = "access"
+    ACCESS_INDEX = "access-index"
+    SPLAT = "splat"
+    SWIZZLE = "swizzle"
+    FUNCTION_ARGUMENT = "function-argument"
+    GLOBAL_VARIABLE = "global-variable"
+    LOCAL_VARIABLE = "local-variable"
+    LOAD = "load"
+    IMAGE_SAMPLE = "image-sample"
+    IMAGE_LOAD = "image-load"
+    IMAGE_QUERY = "image-query"
+    UNARY = "unary"
+    BINARY = "binary"
+    SELECT = "select"
+    DERIVATIVE = "derivative"
+    RELATIONAL = "relational"
+    MATH = "math"
+    AS = "as"
+    ATOMIC_RESULT = "atomic-result"
+    ARRAY_LENGTH = "array-length"
+    RAY_QUERY_PROCEED_RESULT = "ray-query-proceed-result"

@@ -1,1 +1,5 @@
-# Resource initialization tracking
+class InitTracker:
+    """
+    Tracks initialization state of memory.
+    """
+    pass
