@@ -22,4 +22,9 @@ class RenderPipeline:
         Args:
             index: The index of the bind group layout.
         """
-        pass
+        from .bind_group_layout import BindGroupLayout
+        if hasattr(self._inner, 'get_bind_group_layout'):
+            layout_inner = self._inner.get_bind_group_layout(index)
+            return BindGroupLayout(layout_inner)
+        else:
+            raise NotImplementedError("Backend does not support get_bind_group_layout")

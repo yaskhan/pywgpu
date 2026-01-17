@@ -22,11 +22,21 @@ class CommandEncoder:
 
     def begin_render_pass(self, descriptor: Any) -> 'RenderPass':
         """Begins recording a render pass."""
-        pass
+        from .render_pass import RenderPass
+        if hasattr(self._inner, 'begin_render_pass'):
+            render_pass_inner = self._inner.begin_render_pass(descriptor)
+            return RenderPass(render_pass_inner)
+        else:
+            raise NotImplementedError("Backend does not support begin_render_pass")
 
     def begin_compute_pass(self, descriptor: Optional[Any] = None) -> 'ComputePass':
         """Begins recording a compute pass."""
-        pass
+        from .compute_pass import ComputePass
+        if hasattr(self._inner, 'begin_compute_pass'):
+            compute_pass_inner = self._inner.begin_compute_pass(descriptor)
+            return ComputePass(compute_pass_inner)
+        else:
+            raise NotImplementedError("Backend does not support begin_compute_pass")
 
     def copy_buffer_to_buffer(
         self, 
@@ -88,4 +98,9 @@ class CommandEncoder:
 
     def finish(self, descriptor: Optional[Any] = None) -> 'CommandBuffer':
         """Finishes recording and returns a CommandBuffer."""
-        pass
+        from .command_buffer import CommandBuffer
+        if hasattr(self._inner, 'finish'):
+            command_buffer_inner = self._inner.finish(descriptor)
+            return CommandBuffer(command_buffer_inner)
+        else:
+            raise NotImplementedError("Backend does not support finish")

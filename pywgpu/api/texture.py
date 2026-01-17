@@ -62,11 +62,18 @@ class Texture:
         Args:
             descriptor: View descriptor. If None, default view is created.
         """
-        pass
+        from .texture_view import TextureView
+        if hasattr(self._inner, 'create_view'):
+            view_inner = self._inner.create_view(descriptor)
+            return TextureView(view_inner)
+        else:
+            raise NotImplementedError("Backend does not support create_view")
 
     def destroy(self) -> None:
         """Destroys the texture."""
-        pass
+        if hasattr(self._inner, 'destroy'):
+            self._inner.destroy()
+        # If no inner destroy method, do nothing (resources managed by backend)
 
     def as_image_copy(self) -> Any:
         """Returns an ImageCopyTexture referring to this entire texture."""

@@ -35,7 +35,9 @@ class Buffer:
     @property
     def map_state(self) -> BufferMapState:
         """The current mapping state of the buffer."""
-        pass
+        if hasattr(self._inner, 'map_state'):
+            return self._inner.map_state()
+        return BufferMapState.UNMAPPED
 
     def slice(self, start: int = 0, end: Optional[int] = None) -> 'BufferSlice':
         """
@@ -76,7 +78,9 @@ class Buffer:
 
     def destroy(self) -> None:
         """Destroys the buffer."""
-        pass
+        if hasattr(self._inner, 'destroy'):
+            self._inner.destroy()
+        # If no inner destroy method, do nothing (resources managed by backend)
 
 class BufferSlice:
     """

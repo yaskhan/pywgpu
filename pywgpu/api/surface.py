@@ -32,14 +32,19 @@ class Surface:
     def get_current_texture(self) -> 'SurfaceTexture':
         """
         Returns the next texture to be presented to the surface.
-        
+
         Returns:
             A SurfaceTexture object.
-            
+
         Raises:
             SurfaceError: If a texture could not be acquired (e.g. timeout, outdated).
         """
-        pass
+        from .surface_texture import SurfaceTexture
+        if hasattr(self._inner, 'get_current_texture'):
+            texture_inner = self._inner.get_current_texture()
+            return SurfaceTexture(texture_inner)
+        else:
+            raise NotImplementedError("Backend does not support get_current_texture")
 
     def configure(self, device: 'Device', config: SurfaceConfiguration) -> None:
         """
@@ -49,8 +54,14 @@ class Surface:
             device: The device to present with.
             config: Configuration (format, usage, size, etc.).
         """
-        pass
+        if hasattr(self._inner, 'configure'):
+            self._inner.configure(device._inner, config)
+        else:
+            raise NotImplementedError("Backend does not support configure")
 
     def unconfigure(self) -> None:
         """Removes the configuration from the surface."""
-        pass
+        if hasattr(self._inner, 'unconfigure'):
+            self._inner.unconfigure()
+        else:
+            raise NotImplementedError("Backend does not support unconfigure")
