@@ -14,4 +14,6 @@ class ExternalTexture:
 
     def destroy(self) -> None:
         """Destroys the external texture."""
-        pass
+        if hasattr(self._inner, 'destroy'):
+            self._inner.destroy()
+        # If no inner destroy method, do nothing (resources managed by backend)

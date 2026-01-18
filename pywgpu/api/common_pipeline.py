@@ -14,4 +14,7 @@ class PipelineCache:
     
     def get_data(self) -> Optional[bytes]:
         """Returns the cache data."""
-        pass
+        if hasattr(self._inner, 'get_data'):
+            return self._inner.get_data()
+        else:
+            raise NotImplementedError("Backend does not support get_data")

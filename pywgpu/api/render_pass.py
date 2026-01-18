@@ -20,7 +20,10 @@ class RenderPass:
 
     def set_pipeline(self, pipeline: 'RenderPipeline') -> None:
         """Sets the active render pipeline via a handle."""
-        pass
+        if hasattr(self._inner, 'set_pipeline'):
+            self._inner.set_pipeline(pipeline._inner)
+        else:
+            raise NotImplementedError("Backend does not support set_pipeline")
 
     def set_bind_group(
         self, 
@@ -29,7 +32,10 @@ class RenderPass:
         offsets: List[int] = []
     ) -> None:
         """Sets the active bind group for a given bind group index."""
-        pass
+        if hasattr(self._inner, 'set_bind_group'):
+            self._inner.set_bind_group(index, bind_group._inner, offsets)
+        else:
+            raise NotImplementedError("Backend does not support set_bind_group")
 
     def set_vertex_buffer(
         self, 
@@ -39,7 +45,10 @@ class RenderPass:
         size: Optional[int] = None
     ) -> None:
         """Sets the active vertex buffer for a given slot."""
-        pass
+        if hasattr(self._inner, 'set_vertex_buffer'):
+            self._inner.set_vertex_buffer(slot, buffer._inner, offset, size)
+        else:
+            raise NotImplementedError("Backend does not support set_vertex_buffer")
 
     def set_index_buffer(
         self, 
@@ -49,7 +58,10 @@ class RenderPass:
         size: Optional[int] = None
     ) -> None:
         """Sets the active index buffer."""
-        pass
+        if hasattr(self._inner, 'set_index_buffer'):
+            self._inner.set_index_buffer(buffer._inner, index_format, offset, size)
+        else:
+            raise NotImplementedError("Backend does not support set_index_buffer")
 
     def draw(
         self, 
@@ -59,7 +71,10 @@ class RenderPass:
         first_instance: int = 0
     ) -> None:
         """Draws primitives."""
-        pass
+        if hasattr(self._inner, 'draw'):
+            self._inner.draw(vertices, instances, first_vertex, first_instance)
+        else:
+            raise NotImplementedError("Backend does not support draw")
 
     def draw_indexed(
         self, 
@@ -70,15 +85,24 @@ class RenderPass:
         first_instance: int = 0
     ) -> None:
         """Draws indexed primitives."""
-        pass
+        if hasattr(self._inner, 'draw_indexed'):
+            self._inner.draw_indexed(indices, instances, first_index, base_vertex, first_instance)
+        else:
+            raise NotImplementedError("Backend does not support draw_indexed")
 
     def draw_indirect(self, indirect_buffer: 'Buffer', indirect_offset: int) -> None:
         """Draws primitives using parameters from a buffer."""
-        pass
+        if hasattr(self._inner, 'draw_indirect'):
+            self._inner.draw_indirect(indirect_buffer._inner, indirect_offset)
+        else:
+            raise NotImplementedError("Backend does not support draw_indirect")
 
     def draw_indexed_indirect(self, indirect_buffer: 'Buffer', indirect_offset: int) -> None:
         """Draws indexed primitives using parameters from a buffer."""
-        pass
+        if hasattr(self._inner, 'draw_indexed_indirect'):
+            self._inner.draw_indexed_indirect(indirect_buffer._inner, indirect_offset)
+        else:
+            raise NotImplementedError("Backend does not support draw_indexed_indirect")
 
     def set_viewport(
         self, 
@@ -90,30 +114,54 @@ class RenderPass:
         max_depth: float
     ) -> None:
         """Sets the viewport."""
-        pass
+        if hasattr(self._inner, 'set_viewport'):
+            self._inner.set_viewport(x, y, width, height, min_depth, max_depth)
+        else:
+            raise NotImplementedError("Backend does not support set_viewport")
 
     def set_scissor_rect(self, x: int, y: int, width: int, height: int) -> None:
         """Sets the scissor rectangle."""
-        pass
+        if hasattr(self._inner, 'set_scissor_rect'):
+            self._inner.set_scissor_rect(x, y, width, height)
+        else:
+            raise NotImplementedError("Backend does not support set_scissor_rect")
 
     def set_blend_constant(self, color: Union[List[float], Any]) -> None:
         """Sets the blend constant color."""
-        pass
+        if hasattr(self._inner, 'set_blend_constant'):
+            self._inner.set_blend_constant(color)
+        else:
+            raise NotImplementedError("Backend does not support set_blend_constant")
 
     def set_stencil_reference(self, reference: int) -> None:
         """Sets the stencil reference value."""
-        pass
+        if hasattr(self._inner, 'set_stencil_reference'):
+            self._inner.set_stencil_reference(reference)
+        else:
+            raise NotImplementedError("Backend does not support set_stencil_reference")
 
     def begin_occlusion_query(self, query_index: int) -> None:
-        pass
+        if hasattr(self._inner, 'begin_occlusion_query'):
+            self._inner.begin_occlusion_query(query_index)
+        else:
+            raise NotImplementedError("Backend does not support begin_occlusion_query")
 
     def end_occlusion_query(self) -> None:
-        pass
+        if hasattr(self._inner, 'end_occlusion_query'):
+            self._inner.end_occlusion_query()
+        else:
+            raise NotImplementedError("Backend does not support end_occlusion_query")
 
     def execute_bundles(self, bundles: List[Any]) -> None:
         """Executes the given render bundles."""
-        pass
+        if hasattr(self._inner, 'execute_bundles'):
+            self._inner.execute_bundles(bundles)
+        else:
+            raise NotImplementedError("Backend does not support execute_bundles")
 
     def end(self) -> None:
         """Ends the render pass."""
-        pass
+        if hasattr(self._inner, 'end'):
+            self._inner.end()
+        else:
+            raise NotImplementedError("Backend does not support end")

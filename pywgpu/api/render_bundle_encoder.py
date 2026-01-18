@@ -19,7 +19,10 @@ class RenderBundleEncoder:
         self._descriptor = descriptor
 
     def set_pipeline(self, pipeline: 'RenderPipeline') -> None:
-        pass
+        if hasattr(self._inner, 'set_pipeline'):
+            self._inner.set_pipeline(pipeline._inner)
+        else:
+            raise NotImplementedError("Backend does not support set_pipeline")
 
     def set_bind_group(
         self, 
@@ -27,7 +30,10 @@ class RenderBundleEncoder:
         bind_group: 'BindGroup', 
         offsets: List[int] = []
     ) -> None:
-        pass
+        if hasattr(self._inner, 'set_bind_group'):
+            self._inner.set_bind_group(index, bind_group._inner, offsets)
+        else:
+            raise NotImplementedError("Backend does not support set_bind_group")
 
     def set_vertex_buffer(
         self, 
@@ -74,4 +80,9 @@ class RenderBundleEncoder:
 
     def finish(self, descriptor: Optional[Any] = None) -> 'RenderBundle':
         """Finishes recording and returns a RenderBundle."""
-        pass
+        from .render_bundle import RenderBundle
+        if hasattr(self._inner, 'finish'):
+            bundle_inner = self._inner.finish(descriptor)
+            return RenderBundle(bundle_inner)
+        else:
+            raise NotImplementedError("Backend does not support finish")
