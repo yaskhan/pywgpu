@@ -42,14 +42,102 @@ class Device:
         self.valid = True
 
     def create_buffer(self, desc: BufferDescriptor) -> Any:
-        """Create a buffer on the device."""
-        # Placeholder implementation
-        return None
+        """Create a buffer on the device.
+        
+        Args:
+            desc: Buffer descriptor.
+            
+        Returns:
+            The created buffer object.
+            
+        Raises:
+            RuntimeError: If buffer creation fails.
+        """
+        # Import HAL
+        try:
+            import sys
+            import os
+            _hal_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'pywgpu-hal')
+            if _hal_path not in sys.path:
+                sys.path.insert(0, _hal_path)
+            import lib as hal
+        except ImportError:
+            raise RuntimeError("pywgpu_hal module not available for buffer creation")
+        
+        # Check device is valid
+        self.check_is_valid()
+        
+        # Get HAL device
+        hal_device = getattr(self, 'hal_device', None) or getattr(self, '_hal_device', None)
+        if hal_device is None:
+            raise RuntimeError("Device does not have HAL device")
+        
+        # Create HAL buffer descriptor
+        hal_desc = hal.BufferDescriptor(
+            label=desc.label,
+            size=desc.size,
+            usage=desc.usage,
+            memory_flags=hal.MemoryFlags.NONE
+        )
+        
+        try:
+            # Create buffer using HAL
+            buffer = hal_device.create_buffer(hal_desc)
+            return buffer
+        except Exception as e:
+            raise RuntimeError(f"Failed to create buffer: {e}") from e
 
     def create_texture(self, desc: TextureDescriptor) -> Any:
-        """Create a texture on the device."""
-        # Placeholder implementation
-        return None
+        """Create a texture on the device.
+        
+        Args:
+            desc: Texture descriptor.
+            
+        Returns:
+            The created texture object.
+            
+        Raises:
+            RuntimeError: If texture creation fails.
+        """
+        # Import HAL
+        try:
+            import sys
+            import os
+            _hal_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'pywgpu-hal')
+            if _hal_path not in sys.path:
+                sys.path.insert(0, _hal_path)
+            import lib as hal
+        except ImportError:
+            raise RuntimeError("pywgpu_hal module not available for texture creation")
+        
+        # Check device is valid
+        self.check_is_valid()
+        
+        # Get HAL device
+        hal_device = getattr(self, 'hal_device', None) or getattr(self, '_hal_device', None)
+        if hal_device is None:
+            raise RuntimeError("Device does not have HAL device")
+        
+        # Create HAL texture descriptor
+        # This would need proper conversion from TextureDescriptor to hal.TextureDescriptor
+        hal_desc = hal.TextureDescriptor(
+            label=desc.label,
+            size=desc.size,
+            mip_level_count=desc.mip_level_count,
+            sample_count=desc.sample_count,
+            dimension=desc.dimension,
+            format=desc.format,
+            usage=desc.usage,
+            memory_flags=hal.MemoryFlags.NONE,
+            view_formats=[]
+        )
+        
+        try:
+            # Create texture using HAL
+            texture = hal_device.create_texture(hal_desc)
+            return texture
+        except Exception as e:
+            raise RuntimeError(f"Failed to create texture: {e}") from e
 
     def check_is_valid(self) -> None:
         """Check if the device is valid."""

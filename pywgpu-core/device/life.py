@@ -40,14 +40,56 @@ class LifetimeTracker:
                 break
 
     def wait_for_submission(self, index: int) -> bool:
-        """Wait for a submission to complete."""
-        # Placeholder implementation
-        return True
+        """Wait for a submission to complete.
+        
+        Args:
+            index: The submission index to wait for.
+            
+        Returns:
+            True if submission completed, False if not found.
+        """
+        # Check if submission already completed
+        if index <= self.last_completed_submission:
+            return True
+        
+        # Find the submission
+        for submission in self.active:
+            if submission.index == index:
+                # In a real implementation, this would block until complete
+                # For now, just check if it's marked complete
+                return submission.completed
+        
+        # Submission not found
+        return False
 
     def triage_submissions(self, index: int) -> List[Any]:
-        """Triage submissions up to the given index."""
-        # Placeholder implementation
-        return []
+        """Triage submissions up to the given index.
+        
+        This method identifies submissions that have completed up to the
+        given index and returns resources that can be freed.
+        
+        Args:
+            index: The submission index to triage up to.
+            
+        Returns:
+            List of resources that can be freed.
+        """
+        freed_resources = []
+        
+        # Find all completed submissions up to index
+        for submission in self.active[:]:
+            if submission.index <= index and submission.completed:
+                # Collect any resources from this submission
+                if hasattr(submission, 'resources'):
+                    freed_resources.extend(submission.resources)
+        
+        # Update last completed
+        self.last_completed_submission = max(self.last_completed_submission, index)
+        
+        # Cleanup completed submissions
+        self.cleanup()
+        
+        return freed_resources
 
     def add_pending_resource(self, resource: Any) -> None:
         """Add a resource pending cleanup."""

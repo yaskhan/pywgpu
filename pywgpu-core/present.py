@@ -268,9 +268,17 @@ class Global:
     """
     Global state for wgpu-core.
     
-    This is a placeholder for the Global struct that provides methods
-    for surface operations.
+    This class provides methods for surface operations and maintains
+    a registry of surfaces. It acts as the central hub for managing
+    surfaces across the application.
+    
+    Attributes:
+        surfaces: Registry of surfaces by ID.
     """
+    
+    def __init__(self):
+        """Initialize the Global state."""
+        self.surfaces: dict[SurfaceId, Surface] = {}
 
     def surface_get_current_texture(
         self,
@@ -280,23 +288,39 @@ class Global:
         """
         Get the current texture from a surface.
         
+        This method retrieves the surface from the registry and calls
+        its get_current_texture method to acquire a texture for rendering.
+        
         Args:
             surface_id: The surface ID.
-            texture_id_in: Optional texture ID to use.
+            texture_id_in: Optional texture ID to use (currently unused).
         
         Returns:
-            The surface output.
+            The surface output containing texture and status.
         
         Raises:
-            SurfaceError: If the surface is not configured or invalid.
+            SurfaceError: If the surface is not found or not configured.
         """
-        # Implementation depends on Global
-        # For now, return a placeholder output
-        return SurfaceOutput(status=None, texture=None)
+        # Look up the surface in the registry
+        if surface_id not in self.surfaces:
+            raise SurfaceError(f"Surface {surface_id} not found in registry")
+        
+        surface = self.surfaces[surface_id]
+        
+        # Delegate to the surface's method
+        try:
+            return surface.get_current_texture()
+        except SurfaceError:
+            raise
+        except Exception as e:
+            raise SurfaceError(f"Failed to get current texture: {e}") from e
 
     def surface_present(self, surface_id: SurfaceId) -> Any:
         """
         Present the current texture from a surface.
+        
+        This method retrieves the surface from the registry and calls
+        its present method to display the acquired texture.
         
         Args:
             surface_id: The surface ID.
@@ -305,22 +329,67 @@ class Global:
             The presentation status.
         
         Raises:
-            SurfaceError: If presentation fails.
+            SurfaceError: If the surface is not found or presentation fails.
         """
-        # Implementation depends on Global
-        # For now, return None as a placeholder
-        return None
+        # Look up the surface in the registry
+        if surface_id not in self.surfaces:
+            raise SurfaceError(f"Surface {surface_id} not found in registry")
+        
+        surface = self.surfaces[surface_id]
+        
+        # Delegate to the surface's method
+        try:
+            return surface.present()
+        except SurfaceError:
+            raise
+        except Exception as e:
+            raise SurfaceError(f"Failed to present surface: {e}") from e
 
     def surface_texture_discard(self, surface_id: SurfaceId) -> None:
         """
         Discard the current texture from a surface.
         
+        This method retrieves the surface from the registry and calls
+        its discard method to release the acquired texture without
+        presenting it.
+        
         Args:
             surface_id: The surface ID.
         
         Raises:
-            SurfaceError: If the texture cannot be discarded.
+            SurfaceError: If the surface is not found or discard fails.
         """
-        # Implementation depends on Global
-        # For now, do nothing as a placeholder
-        pass
+        # Look up the surface in the registry
+        if surface_id not in self.surfaces:
+            raise SurfaceError(f"Surface {surface_id} not found in registry")
+        
+        surface = self.surfaces[surface_id]
+        
+        # Delegate to the surface's method
+        try:
+            surface.discard()
+        except SurfaceError:
+            raise
+        except Exception as e:
+            raise SurfaceError(f"Failed to discard texture: {e}") from e
+    
+    def register_surface(self, surface_id: SurfaceId, surface: Surface) -> None:
+        """
+        Register a surface in the global registry.
+        
+        Args:
+            surface_id: The ID to register the surface under.
+            surface: The surface to register.
+        """
+        self.surfaces[surface_id] = surface
+    
+    def unregister_surface(self, surface_id: SurfaceId) -> None:
+        """
+        Unregister a surface from the global registry.
+        
+        Args:
+            surface_id: The ID of the surface to unregister.
+        """
+        if surface_id in self.surfaces:
+            del self.surfaces[surface_id]
+

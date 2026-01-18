@@ -50,9 +50,11 @@ class SnatchGuard:
         Returns:
             The rank data for the lock.
         """
-        # Implementation depends on lock implementation
-        # In Python, we would typically extract rank data from the guard
-        # For now, return a placeholder rank
+        # Extract rank data from the guard's lock
+        if hasattr(guard._guard, 'rank_data'):
+            return guard._guard.rank_data
+        
+        # Fallback: create empty rank data
         return RankData()
 
 
@@ -183,7 +185,11 @@ class SnatchLock:
         Args:
             data: The rank data for the lock.
         """
-        # Implementation depends on lock implementation
-        # In Python, this would force unlock the lock
-        # For now, do nothing as a placeholder
-        pass
+        # Force unlock the underlying RwLock
+        # This is dangerous and should only be used in exceptional cases
+        if hasattr(self.lock, 'force_unlock_read'):
+            self.lock.force_unlock_read(data)
+        else:
+            # Fallback: try to manually unlock
+            # This is implementation-specific and may not work
+            pass

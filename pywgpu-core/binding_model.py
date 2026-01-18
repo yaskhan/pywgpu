@@ -118,11 +118,35 @@ class PerStageBindingTypeCounter:
             stage: The shader stage(s) to add bindings for.
             count: The number of bindings to add.
         """
-        # Implementation depends on wgpu_types.ShaderStages
-        # For now, add to all stages as a placeholder
-        self.vertex += count
-        self.fragment += count
-        self.compute += count
+        # Check which stages are included
+        # Assuming stage is a bitfield with VERTEX=1, FRAGMENT=2, COMPUTE=4
+        try:
+            # Try to import wgpu_types for proper stage handling
+            import pywgpu_types as wgt
+            if hasattr(wgt, 'ShaderStages'):
+                if hasattr(stage, '__and__'):
+                    # Bitfield stage
+                    if stage & getattr(wgt.ShaderStages, 'VERTEX', 1):
+                        self.vertex += count
+                    if stage & getattr(wgt.ShaderStages, 'FRAGMENT', 2):
+                        self.fragment += count
+                    if stage & getattr(wgt.ShaderStages, 'COMPUTE', 4):
+                        self.compute += count
+                else:
+                    # Single stage or unknown format
+                    self.vertex += count
+                    self.fragment += count
+                    self.compute += count
+            else:
+                # No wgt available, add to all
+                self.vertex += count
+                self.fragment += count
+                self.compute += count
+        except ImportError:
+            # Fallback: add to all stages
+            self.vertex += count
+            self.fragment += count
+            self.compute += count
 
     def max(self) -> tuple[Any, int]:
         """
@@ -190,11 +214,48 @@ class BindingTypeMaxCountValidator:
         Add a binding to the validator.
 
         Args:
-            binding: The binding to add.
+            binding: The binding to add (BindGroupLayoutEntry).
         """
-        # Implementation depends on wgpu_types.BindGroupLayoutEntry
-        # For now, do nothing as a placeholder
-        pass
+        # Extract binding information
+        visibility = getattr(binding, 'visibility', None)
+        binding_type = getattr(binding, 'binding_type', None) or getattr(binding, 'ty', None)
+        count = getattr(binding, 'count', 1) or 1
+        
+        if binding_type is None:
+            return
+        
+        # Determine binding type and update counters
+        # This is a simplified implementation
+        binding_type_str = str(binding_type).lower() if not isinstance(binding_type, str) else binding_type.lower()
+        
+        if 'uniform' in binding_type_str:
+            if 'dynamic' in binding_type_str:
+                self.dynamic_uniform_buffers += count
+            else:
+                self.uniform_buffers.add(visibility, count)
+        elif 'storage' in binding_type_str:
+            if 'dynamic' in binding_type_str:
+                self.dynamic_storage_buffers += count
+            else:
+                self.storage_buffers.add(visibility, count)
+        elif 'texture' in binding_type_str:
+            if 'storage' in binding_type_str:
+                self.storage_textures.add(visibility, count)
+            else:
+                self.sampled_textures.add(visibility, count)
+        elif 'sampler' in binding_type_str:
+            self.samplers.add(visibility, count)
+        elif 'acceleration' in binding_type_str:
+            self.acceleration_structures.add(visibility, count)
+        
+        # Check for binding arrays
+        if count > 1:
+            self.binding_array_elements.add(visibility, count)
+            if 'sampler' in binding_type_str:
+                self.binding_array_sampler_elements.add(visibility, count)
+            # Check for bindless arrays (very large counts)
+            if count > 1000:  # Arbitrary threshold for "bindless"
+                self.has_bindless_array = True
 
     def merge(self, other: BindingTypeMaxCountValidator) -> None:
         """
@@ -224,9 +285,32 @@ class BindingTypeMaxCountValidator:
         Raises:
             BindingTypeMaxCountError: If any limit is exceeded.
         """
-        # Implementation depends on wgpu_types.Limits
-        # For now, do nothing as a placeholder
-        pass
+        # Get limits or use defaults
+        max_dynamic_uniform = getattr(limits, 'max_dynamic_uniform_buffers_per_pipeline_layout', 8)
+        max_dynamic_storage = getattr(limits, 'max_dynamic_storage_buffers_per_pipeline_layout', 4)
+        max_sampled_textures = getattr(limits, 'max_sampled_textures_per_shader_stage', 16)
+        max_samplers = getattr(limits, 'max_samplers_per_shader_stage', 16)
+        max_storage_buffers = getattr(limits, 'max_storage_buffers_per_shader_stage', 8)
+        max_storage_textures = getattr(limits, 'max_storage_textures_per_shader_stage', 4)
+        max_uniform_buffers = getattr(limits, 'max_uniform_buffers_per_shader_stage', 12)
+        
+        # Validate dynamic buffers (these are per-pipeline, not per-stage)
+        if self.dynamic_uniform_buffers > max_dynamic_uniform:
+            raise BindingTypeMaxCountError(
+                f"Too many dynamic uniform buffers: {self.dynamic_uniform_buffers} > {max_dynamic_uniform}"
+            )
+        
+        if self.dynamic_storage_buffers > max_dynamic_storage:
+            raise BindingTypeMaxCountError(
+                f"Too many dynamic storage buffers: {self.dynamic_storage_buffers} > {max_dynamic_storage}"
+            )
+        
+        # Validate per-stage limits
+        self.sampled_textures.validate(max_sampled_textures, "sampled_textures")
+        self.samplers.validate(max_samplers, "samplers")
+        self.storage_buffers.validate(max_storage_buffers, "storage_buffers")
+        self.storage_textures.validate(max_storage_textures, "storage_textures")
+        self.uniform_buffers.validate(max_uniform_buffers, "uniform_buffers")
 
     def validate_binding_arrays(self) -> None:
         """
