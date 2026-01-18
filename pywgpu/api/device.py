@@ -72,15 +72,30 @@ class Device:
 
     def create_bind_group(self, descriptor: Any) -> 'BindGroup':
         """Creates a bind group given its descriptor."""
-        pass
+        from .bind_group import BindGroup
+        if hasattr(self._inner, 'create_bind_group'):
+            bind_group_inner = self._inner.create_bind_group(descriptor)
+            return BindGroup(bind_group_inner)
+        else:
+            raise NotImplementedError("Backend does not support create_bind_group")
 
     def create_bind_group_layout(self, descriptor: Any) -> 'BindGroupLayout':
         """Creates a bind group layout given its descriptor."""
-        pass
+        from .bind_group_layout import BindGroupLayout
+        if hasattr(self._inner, 'create_bind_group_layout'):
+            layout_inner = self._inner.create_bind_group_layout(descriptor)
+            return BindGroupLayout(layout_inner)
+        else:
+            raise NotImplementedError("Backend does not support create_bind_group_layout")
 
     def create_pipeline_layout(self, descriptor: Any) -> 'PipelineLayout':
         """Creates a pipeline layout."""
-        pass
+        from .pipeline_layout import PipelineLayout
+        if hasattr(self._inner, 'create_pipeline_layout'):
+            layout_inner = self._inner.create_pipeline_layout(descriptor)
+            return PipelineLayout(layout_inner, descriptor)
+        else:
+            raise NotImplementedError("Backend does not support create_pipeline_layout")
 
     def create_shader_module(self, descriptor: ShaderModuleDescriptor) -> 'ShaderModule':
         """Creates a shader module from source code (WGSL/SPIR-V/GLSL)."""
@@ -102,32 +117,66 @@ class Device:
 
     def create_render_bundle_encoder(self, descriptor: Any) -> 'RenderBundleEncoder':
         """Creates a render bundle encoder."""
-        pass
+        from .render_bundle_encoder import RenderBundleEncoder
+        if hasattr(self._inner, 'create_render_bundle_encoder'):
+            encoder_inner = self._inner.create_render_bundle_encoder(descriptor)
+            return RenderBundleEncoder(encoder_inner)
+        else:
+            raise NotImplementedError("Backend does not support create_render_bundle_encoder")
 
     def create_query_set(self, descriptor: Any) -> 'QuerySet':
         """Creates a query set."""
-        pass
+        from .query_set import QuerySet
+        if hasattr(self._inner, 'create_query_set'):
+            query_set_inner = self._inner.create_query_set(descriptor)
+            return QuerySet(query_set_inner)
+        else:
+            raise NotImplementedError("Backend does not support create_query_set")
 
     def create_compute_pipeline(self, descriptor: Any) -> 'ComputePipeline':
         """Creates a compute pipeline."""
-        pass
+        from .compute_pipeline import ComputePipeline
+        if hasattr(self._inner, 'create_compute_pipeline'):
+            pipeline_inner = self._inner.create_compute_pipeline(descriptor)
+            return ComputePipeline(pipeline_inner, descriptor)
+        else:
+            raise NotImplementedError("Backend does not support create_compute_pipeline")
 
     def create_render_pipeline(self, descriptor: Any) -> 'RenderPipeline':
         """Creates a render pipeline."""
-        pass
+        from .render_pipeline import RenderPipeline
+        if hasattr(self._inner, 'create_render_pipeline'):
+            pipeline_inner = self._inner.create_render_pipeline(descriptor)
+            return RenderPipeline(pipeline_inner, descriptor)
+        else:
+            raise NotImplementedError("Backend does not support create_render_pipeline")
 
     def create_pipeline_cache(self, descriptor: Any = None) -> 'PipelineCache':
         """Creates a pipeline cache."""
-        pass
+        from .pipeline_cache import PipelineCache
+        if hasattr(self._inner, 'create_pipeline_cache'):
+            cache_inner = self._inner.create_pipeline_cache(descriptor)
+            return PipelineCache(cache_inner, descriptor)
+        else:
+            raise NotImplementedError("Backend does not support create_pipeline_cache")
 
     def destroy(self) -> None:
         """Destroys the device."""
-        pass
+        if hasattr(self._inner, 'destroy'):
+            self._inner.destroy()
+        # Clean up our references
+        self._inner = None
 
     def set_device_lost_callback(self, callback: Any) -> None:
         """Sets a callback to be invoked when the device is lost."""
-        pass
+        if hasattr(self._inner, 'set_device_lost_callback'):
+            self._inner.set_device_lost_callback(callback)
+        # Store callback for future reference
+        self._device_lost_callback = callback
 
     def on_uncaptured_error(self, callback: Any) -> None:
         """Sets a callback for uncaptured errors."""
-        pass
+        if hasattr(self._inner, 'on_uncaptured_error'):
+            self._inner.on_uncaptured_error(callback)
+        # Store callback for future reference
+        self._uncaptured_error_callback = callback

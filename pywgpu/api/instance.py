@@ -68,7 +68,16 @@ class Instance:
         Raises:
             ValueError: If the target is invalid or not supported.
         """
-        pass
+        from .surface import Surface
+        
+        # Check if we have an inner implementation with create_surface method
+        if hasattr(self, '_inner') and hasattr(self._inner, 'create_surface'):
+            surface_inner = self._inner.create_surface(target)
+            return Surface(surface_inner)
+        else:
+            # For now, return a basic surface
+            # In a real implementation, this would handle platform-specific surface creation
+            raise NotImplementedError("Surface creation requires backend implementation")
 
     def poll_all_devices(self, force_wait: bool = False) -> bool:
         """
@@ -84,7 +93,13 @@ class Instance:
         Returns:
             True if all devices are idle after polling.
         """
-        pass
+        # Check if we have an inner implementation
+        if hasattr(self, '_inner') and hasattr(self._inner, 'poll_all_devices'):
+            return self._inner.poll_all_devices(force_wait)
+        else:
+            # For now, return True (no devices to poll)
+            # In a real implementation, this would poll all devices
+            return True
 
     def generate_report(self) -> dict:
         """
@@ -95,4 +110,23 @@ class Instance:
             A dictionary containing structural information about the instance's 
             internal state.
         """
-        pass
+        # Check if we have an inner implementation
+        if hasattr(self, '_inner') and hasattr(self._inner, 'generate_report'):
+            return self._inner.generate_report()
+        else:
+            # Generate a basic report for the Python wrapper
+            return {
+                "instance_descriptor": {
+                    "backends": getattr(self._descriptor, 'backends', []),
+                    "flags": getattr(self._descriptor, 'flags', []),
+                },
+                "backend_support": {
+                    "vulkan": False,
+                    "direct3d12": False,
+                    "metal": False,
+                    "opengl": False,
+                    "webgpu": False,
+                },
+                "active_devices": [],
+                "created_surfaces": [],
+            }
