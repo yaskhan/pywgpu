@@ -1,51 +1,470 @@
 """
 Render pass encoding.
 
-This module implements render pass encoding for wgpu-core. It provides:
-- RenderPass: A pass for recording render commands
-- RenderPassDescriptor: Descriptor for creating a render pass
-- RenderPassDepthStencilAttachment: Depth/stencil attachment for render pass
-- Render pass command encoding
+This module implements render pass encoding for wgpu-core. It provides comprehensive
+render pass functionality including attachment validation, draw call validation,
+indirect drawing, render bundles, and state management.
 
-Render passes are used to record render commands that will be executed on
-the GPU for rendering graphics.
+Based on wgpu-core/src/command/render.rs (3836 lines)
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any, List, Optional
+from dataclasses import dataclass, field
+from typing import Any, List, Optional, Dict, Tuple
+from enum import Enum
 
-from . import errors
 
+# ============================================================================
+# Enums and Constants
+# ============================================================================
+
+class DrawCommandFamily(Enum):
+    """Family of draw commands."""
+    DRAW = "draw"
+    DRAW_INDEXED = "draw_indexed"
+    DRAW_MESH_TASKS = "draw_mesh_tasks"
+
+
+class DrawKind(Enum):
+    """Kind of draw command."""
+    DRAW = "draw"
+    DRAW_INDIRECT = "draw_indirect"
+    MULTI_DRAW_INDIRECT = "multi_draw_indirect"
+    MULTI_DRAW_INDIRECT_COUNT = "multi_draw_indirect_count"
+
+
+class OptionalState(Enum):
+    """State of an optional value."""
+    UNUSED = "unused"
+    REQUIRED = "required"
+    SET = "set"
+
+
+@dataclass
+class Rect:
+    """
+    Rectangle with generic coordinates.
+    
+    Attributes:
+        x: X coordinate.
+        y: Y coordinate.
+        w: Width.
+        h: Height.
+    """
+    x: float
+    y: float
+    w: float
+    h: float
+
+
+# ============================================================================
+# Error Types
+# ============================================================================
+
+class AttachmentErrorLocation(Enum):
+    """Describes an attachment location in words."""
+    COLOR = "color"
+    COLOR_RESOLVE = "color_resolve"
+    DEPTH = "depth"
+
+
+class ColorAttachmentError(Exception):
+    """Errors related to color attachments."""
+    pass
+
+
+class AttachmentError(Exception):
+    """Errors related to attachments."""
+    pass
+
+
+class RenderPassErrorInner(Exception):
+    """Inner error type for render pass errors."""
+    pass
+
+
+class RenderPassError(Exception):
+    """Error encountered when performing a render pass."""
+    
+    def __init__(self, scope: str, inner: RenderPassErrorInner):
+        self.scope = scope
+        self.inner = inner
+        super().__init__(f"{scope}: {inner}")
+
+
+class DrawError(Exception):
+    """Errors related to draw calls."""
+    pass
+
+
+class RenderCommandError(Exception):
+    """Errors related to render commands."""
+    pass
+
+
+class PassStateError(Exception):
+    """Errors related to pass state."""
+    pass
+
+
+# ============================================================================
+# Load/Store Operations
+# ============================================================================
+
+class LoadOp(Enum):
+    """Load operation for attachments."""
+    LOAD = "load"
+    CLEAR = "clear"
+    DONT_CARE = "dont_care"
+
+
+class StoreOp(Enum):
+    """Store operation for attachments."""
+    STORE = "store"
+    DISCARD = "discard"
+
+
+@dataclass
+class PassChannel:
+    """
+    Describes an individual channel within a render pass.
+    
+    Attributes:
+        load_op: Operation to perform at the start of a renderpass.
+        store_op: Operation to perform at the end of a renderpass.
+        read_only: If true, the channel is not changed by a renderpass.
+        clear_value: Clear value (only used if load_op is CLEAR).
+    """
+    load_op: Optional[LoadOp] = None
+    store_op: Optional[StoreOp] = None
+    read_only: bool = False
+    clear_value: Any = None
+    
+    def resolve(self, handle_clear=None) -> 'ResolvedPassChannel':
+        """Resolve and validate the channel configuration."""
+        if self.read_only:
+            if self.load_op is not None:
+                raise AttachmentError("ReadOnlyWithLoad")
+            if self.store_op is not None:
+                raise AttachmentError("ReadOnlyWithStore")
+            return ResolvedPassChannel(read_only=True)
+        else:
+            if self.load_op is None:
+                raise AttachmentError("NoLoad")
+            if self.store_op is None:
+                raise AttachmentError("NoStore")
+            
+            # Handle clear value
+            clear_val = self.clear_value
+            if self.load_op == LoadOp.CLEAR:
+                if handle_clear:
+                    clear_val = handle_clear(self.clear_value)
+                elif clear_val is None:
+                    raise AttachmentError("NoClearValue")
+            
+            return ResolvedPassChannel(
+                read_only=False,
+                load_op=self.load_op,
+                store_op=self.store_op,
+                clear_value=clear_val
+            )
+
+
+@dataclass
+class ResolvedPassChannel:
+    """Validated pass channel."""
+    read_only: bool
+    load_op: Optional[LoadOp] = None
+    store_op: Optional[StoreOp] = None
+    clear_value: Any = None
+    
+    def is_readonly(self) -> bool:
+        return self.read_only
+    
+    def get_load_op(self) -> LoadOp:
+        """Get the load operation."""
+        if self.read_only:
+            return LoadOp.LOAD
+        return self.load_op or LoadOp.LOAD
+    
+    def get_store_op(self) -> StoreOp:
+        """Get the store operation."""
+        if self.read_only:
+            return StoreOp.STORE
+        return self.store_op or StoreOp.STORE
+    
+    def get_clear_value(self) -> Any:
+        """Get the clear value."""
+        if self.load_op == LoadOp.CLEAR:
+            return self.clear_value
+        return None
+    
+    def hal_ops(self) -> int:
+        """Convert to HAL attachment ops."""
+        ops = 0
+        if not self.read_only:
+            if self.load_op == LoadOp.LOAD:
+                ops |= 0x01  # LOAD
+            elif self.load_op == LoadOp.CLEAR:
+                ops |= 0x02  # LOAD_CLEAR
+            else:
+                ops |= 0x04  # LOAD_DONT_CARE
+            
+            if self.store_op == StoreOp.STORE:
+                ops |= 0x08  # STORE
+            else:
+                ops |= 0x10  # STORE_DISCARD
+        return ops
+
+
+# ============================================================================
+# Attachment Descriptors
+# ============================================================================
+
+@dataclass
+class RenderPassColorAttachment:
+    """
+    Describes a color attachment to a render pass.
+    
+    Attributes:
+        view: The view to use as an attachment.
+        depth_slice: The depth slice index of a 3D view.
+        resolve_target: The view that will receive the resolved output.
+        load_op: Operation to perform at the start.
+        store_op: Operation to perform at the end.
+    """
+    view: Any
+    load_op: LoadOp
+    store_op: StoreOp
+    depth_slice: Optional[int] = None
+    resolve_target: Optional[Any] = None
+    
+    def hal_ops(self) -> int:
+        """Get HAL attachment ops."""
+        ops = 0
+        if self.load_op == LoadOp.LOAD:
+            ops |= 0x01
+        elif self.load_op == LoadOp.CLEAR:
+            ops |= 0x02
+        else:
+            ops |= 0x04
+        
+        if self.store_op == StoreOp.STORE:
+            ops |= 0x08
+        else:
+            ops |= 0x10
+        return ops
+    
+    def clear_value(self) -> Tuple[float, float, float, float]:
+        """Get clear color value."""
+        if self.load_op == LoadOp.CLEAR:
+            return (0.0, 0.0, 0.0, 0.0)  # Default clear color
+        return (0.0, 0.0, 0.0, 0.0)
+
+
+@dataclass
+class RenderPassDepthStencilAttachment:
+    """
+    Describes a depth/stencil attachment to a render pass.
+    
+    Attributes:
+        view: The view to use as an attachment.
+        depth: What operations will be performed on the depth part.
+        stencil: What operations will be performed on the stencil part.
+    """
+    view: Any
+    depth: PassChannel
+    stencil: PassChannel
+
+
+@dataclass
+class ResolvedRenderPassDepthStencilAttachment:
+    """Validated depth/stencil attachment."""
+    view: Any
+    depth: ResolvedPassChannel
+    stencil: ResolvedPassChannel
+
+
+# ============================================================================
+# Render Pass Descriptor
+# ============================================================================
 
 @dataclass
 class RenderPassDescriptor:
     """
-    Descriptor for creating a render pass.
+    Describes the attachments of a render pass.
     
     Attributes:
         label: Debug label for the render pass.
-        color_attachments: Color attachments for the render pass.
-        depth_stencil_attachment: Depth/stencil attachment for the render pass.
-        timestamp_writes: Timestamp writes for the pass.
-        occlusion_query_set: Occlusion query set.
-        multiview_mask: Multiview mask for rendering to multiple array layers.
+        color_attachments: The color attachments of the render pass.
+        depth_stencil_attachment: The depth and stencil attachment.
+        timestamp_writes: Defines where and when timestamp values will be written.
+        occlusion_query_set: Defines where the occlusion query results will be stored.
+        multiview_mask: The multiview array layers that will be used.
     """
-
     label: Optional[str] = None
-    color_attachments: List[Any] = None
-    depth_stencil_attachment: Optional[Any] = None
+    color_attachments: List[Optional[RenderPassColorAttachment]] = field(default_factory=list)
+    depth_stencil_attachment: Optional[RenderPassDepthStencilAttachment] = None
     timestamp_writes: Optional[Any] = None
     occlusion_query_set: Optional[Any] = None
     multiview_mask: Optional[int] = None
 
-    def __post_init__(self):
-        if self.color_attachments is None:
-            self.color_attachments = []
+
+# ============================================================================
+# State Tracking
+# ============================================================================
+
+@dataclass
+class StateChange:
+    """Tracks state changes."""
+    current: Optional[Any] = None
 
 
 @dataclass
+class BindGroupStateChange:
+    """Tracks bind group state changes."""
+    current: List[Optional[int]] = field(default_factory=lambda: [None] * 8)  # MAX_BIND_GROUPS
+
+
+@dataclass
+class VertexBufferStateChange:
+    """Tracks vertex buffer state changes."""
+    current: List[Optional[Tuple]] = field(default_factory=lambda: [None] * 16)  # MAX_VERTEX_BUFFERS
+
+
+@dataclass
+class IndexBufferStateChange:
+    """Tracks index buffer state changes."""
+    current: Optional[Tuple] = None
+
+
+@dataclass
+class BlendConstantStateChange:
+    """Tracks blend constant state changes."""
+    current: Optional[Any] = None
+
+
+@dataclass
+class StencilReferenceStateChange:
+    """Tracks stencil reference state changes."""
+    current: Optional[int] = None
+
+
+@dataclass
+class ViewportStateChange:
+    """Tracks viewport state changes."""
+    current: Optional[Tuple] = None
+
+
+@dataclass
+class ScissorStateChange:
+    """Tracks scissor state changes."""
+    current: Optional[Tuple] = None
+
+
+# ============================================================================
+# Index and Vertex State
+# ============================================================================
+
+@dataclass
+class IndexState:
+    """Tracks index buffer state."""
+    buffer_format: Optional[str] = None
+    limit: int = 0
+    
+    def update_buffer(self, range_start: int, range_end: int, format: str):
+        """Update index buffer state."""
+        self.buffer_format = format
+        shift = 1 if format == "uint16" else 2
+        self.limit = (range_end - range_start) >> shift
+    
+    def reset(self):
+        """Reset index buffer state."""
+        self.buffer_format = None
+        self.limit = 0
+
+
+@dataclass
+class VertexLimits:
+    """
+    Vertex and instance limits for draw validation.
+    
+    Attributes:
+        vertex_limit: Length of the shortest vertex rate vertex buffer.
+        vertex_limit_slot: Buffer slot which the shortest vertex rate vertex buffer is bound to.
+        instance_limit: Length of the shortest instance rate vertex buffer.
+        instance_limit_slot: Buffer slot which the shortest instance rate vertex buffer is bound to.
+    """
+    vertex_limit: int = 2**64 - 1
+    vertex_limit_slot: int = 0
+    instance_limit: int = 2**64 - 1
+    instance_limit_slot: int = 0
+    
+    def validate_vertex_limit(self, first_vertex: int, vertex_count: int):
+        """Validate vertex count against limits."""
+        last_vertex = first_vertex + vertex_count
+        if last_vertex > self.vertex_limit:
+            raise DrawError(
+                f"Vertex {last_vertex} beyond limit {self.vertex_limit} "
+                f"for slot {self.vertex_limit_slot}"
+            )
+    
+    def validate_instance_limit(self, first_instance: int, instance_count: int):
+        """Validate instance count against limits."""
+        last_instance = first_instance + instance_count
+        if last_instance > self.instance_limit:
+            raise DrawError(
+                f"Instance {last_instance} beyond limit {self.instance_limit} "
+                f"for slot {self.instance_limit_slot}"
+            )
+
+
+@dataclass
+class VertexState:
+    """Tracks vertex buffer state."""
+    buffer_sizes: List[Optional[int]] = field(default_factory=lambda: [None] * 16)
+    limits: VertexLimits = field(default_factory=VertexLimits)
+    
+    def update_limits(self, pipeline_steps: List):
+        """Update vertex limits based on pipeline configuration."""
+        # Simplified - full implementation would calculate limits from buffer sizes and pipeline
+        pass
+
+
+# ============================================================================
+# Base Pass
+# ============================================================================
+
+@dataclass
+class BasePass:
+    """
+    Base pass data.
+    
+    Attributes:
+        label: Debug label.
+        error: Error if any.
+        commands: List of commands.
+        dynamic_offsets: Dynamic offsets.
+        string_data: String data for debug markers.
+        immediates_data: Immediates data.
+    """
+    label: Optional[str] = None
+    error: Optional[Any] = None
+    commands: List[Any] = field(default_factory=list)
+    dynamic_offsets: List[int] = field(default_factory=list)
+    string_data: bytes = b""
+    immediates_data: List[int] = field(default_factory=list)
+    
+    def take(self) -> 'BasePass':
+        """Take the pass data."""
+        return self
+
+
+# ============================================================================
+# Render Pass
+# ============================================================================
+
 class RenderPass:
     """
     A render pass for recording render commands.
@@ -57,6 +476,8 @@ class RenderPass:
     Attributes:
         base: Base pass data.
         parent: Parent command encoder.
+        color_attachments: Color attachments.
+        depth_stencil_attachment: Depth/stencil attachment.
         timestamp_writes: Timestamp writes for the pass.
         occlusion_query_set: Occlusion query set.
         multiview_mask: Multiview mask.
@@ -69,7 +490,7 @@ class RenderPass:
         current_viewport: Viewport state change tracking.
         current_scissor: Scissor state change tracking.
     """
-
+    
     def __init__(
         self,
         parent: Any,
@@ -82,11 +503,15 @@ class RenderPass:
             parent: The parent command encoder.
             desc: The descriptor for the render pass.
         """
-        self.base = BasePass()
+        self.base = BasePass(label=desc.label)
         self.parent = parent
+        self.color_attachments = desc.color_attachments
+        self.depth_stencil_attachment = desc.depth_stencil_attachment
         self.timestamp_writes = desc.timestamp_writes
         self.occlusion_query_set = desc.occlusion_query_set
         self.multiview_mask = desc.multiview_mask
+        
+        # State tracking
         self.current_bind_groups = BindGroupStateChange()
         self.current_pipeline = StateChange()
         self.current_vertex_buffers = VertexBufferStateChange()
@@ -95,11 +520,16 @@ class RenderPass:
         self.current_stencil_reference = StencilReferenceStateChange()
         self.current_viewport = ViewportStateChange()
         self.current_scissor = ScissorStateChange()
-
+        
+        # Draw validation state
+        self.index_state = IndexState()
+        self.vertex_state = VertexState()
+        self.blend_constant_required = False
+    
     def label(self) -> Optional[str]:
         """Get the label of the render pass."""
         return self.base.label
-
+    
     def end(self) -> None:
         """
         End the render pass.
@@ -111,9 +541,14 @@ class RenderPass:
             raise RuntimeError("Pass already ended")
         
         # Unlock encoder and process recorded commands
-        self.parent._unlock_encoder()
+        if hasattr(self.parent, '_unlock_encoder'):
+            self.parent._unlock_encoder()
         self.parent = None
-
+    
+    # ========================================================================
+    # Pipeline and Bind Group Commands
+    # ========================================================================
+    
     def set_pipeline(self, pipeline: Any) -> None:
         """
         Set the render pipeline.
@@ -123,9 +558,18 @@ class RenderPass:
         """
         if self.current_pipeline.current == pipeline:
             return
+        
         self.current_pipeline.current = pipeline
         self.base.commands.append(("SetPipeline", pipeline))
-
+        
+        # Update state based on pipeline
+        if hasattr(pipeline, 'requires_blend_constant'):
+            self.blend_constant_required = pipeline.requires_blend_constant
+        
+        # Update vertex limits
+        if hasattr(pipeline, 'vertex_steps'):
+            self.vertex_state.update_limits(pipeline.vertex_steps)
+    
     def set_bind_group(
         self,
         index: int,
@@ -140,13 +584,20 @@ class RenderPass:
             bind_group: The bind group to set.
             dynamic_offsets: The dynamic offsets.
         """
+        if index >= 8:  # MAX_BIND_GROUPS
+            raise RenderPassErrorInner("Bind group index out of range")
+        
         self.current_bind_groups.current[index] = bind_group
-        self.base.commands.append(("SetBindGroup", index, bind_group, dynamic_offsets))
-
+        self.base.commands.append(("SetBindGroup", index, bind_group, dynamic_offsets or []))
+    
+    # ========================================================================
+    # Buffer Commands
+    # ========================================================================
+    
     def set_index_buffer(
         self,
         buffer: Any,
-        index_format: Any,
+        index_format: str,
         offset: int,
         size: Optional[int],
     ) -> None:
@@ -155,13 +606,16 @@ class RenderPass:
         
         Args:
             buffer: The buffer to set.
-            index_format: The index format.
+            index_format: The index format ("uint16" or "uint32").
             offset: The offset into the buffer.
             size: The size of the data to use.
         """
+        buffer_size = size if size is not None else (getattr(buffer, 'size', 0) - offset)
+        self.index_state.update_buffer(offset, offset + buffer_size, index_format)
+        
         self.current_index_buffer.current = (buffer, index_format, offset, size)
         self.base.commands.append(("SetIndexBuffer", buffer, index_format, offset, size))
-
+    
     def set_vertex_buffer(
         self,
         slot: int,
@@ -178,9 +632,30 @@ class RenderPass:
             offset: The offset into the buffer.
             size: The size of the data to use.
         """
+        if slot >= 16:  # MAX_VERTEX_BUFFERS
+            raise RenderPassErrorInner("Vertex buffer slot out of range")
+        
+        buffer_size = size if size is not None else (getattr(buffer, 'size', 0) - offset)
+        self.vertex_state.buffer_sizes[slot] = buffer_size
+        
         self.current_vertex_buffers.current[slot] = (buffer, offset, size)
         self.base.commands.append(("SetVertexBuffer", slot, buffer, offset, size))
-
+    
+    # ========================================================================
+    # Draw Commands
+    # ========================================================================
+    
+    def _validate_draw_state(self, indexed: bool = False):
+        """Validate state before draw call."""
+        if self.current_pipeline.current is None:
+            raise DrawError("Missing pipeline")
+        
+        if self.blend_constant_required and self.current_blend_constant.current is None:
+            raise DrawError("Missing blend constant")
+        
+        if indexed and self.index_state.buffer_format is None:
+            raise DrawError("Missing index buffer")
+    
     def draw(
         self,
         vertex_count: int,
@@ -197,8 +672,12 @@ class RenderPass:
             first_vertex: The first vertex index.
             first_instance: The first instance index.
         """
+        self._validate_draw_state(indexed=False)
+        self.vertex_state.limits.validate_vertex_limit(first_vertex, vertex_count)
+        self.vertex_state.limits.validate_instance_limit(first_instance, instance_count)
+        
         self.base.commands.append(("Draw", vertex_count, instance_count, first_vertex, first_instance))
-
+    
     def draw_indexed(
         self,
         index_count: int,
@@ -217,8 +696,64 @@ class RenderPass:
             base_vertex: The base vertex index.
             first_instance: The first instance index.
         """
-        self.base.commands.append(("DrawIndexed", index_count, instance_count, first_index, base_vertex, first_instance))
-
+        self._validate_draw_state(indexed=True)
+        
+        # Validate index buffer bounds
+        last_index = first_index + index_count
+        if last_index > self.index_state.limit:
+            raise DrawError(f"Index {last_index} beyond limit {self.index_state.limit}")
+        
+        self.vertex_state.limits.validate_instance_limit(first_instance, instance_count)
+        
+        self.base.commands.append((
+            "DrawIndexed",
+            index_count,
+            instance_count,
+            first_index,
+            base_vertex,
+            first_instance
+        ))
+    
+    def draw_indirect(
+        self,
+        indirect_buffer: Any,
+        indirect_offset: int,
+    ) -> None:
+        """
+        Draw primitives using parameters from a buffer.
+        
+        Args:
+            indirect_buffer: Buffer containing draw parameters.
+            indirect_offset: Offset into the buffer.
+        """
+        if indirect_offset % 4 != 0:
+            raise RenderPassErrorInner(f"Indirect buffer offset {indirect_offset} is not aligned to 4 bytes")
+        
+        self._validate_draw_state(indexed=False)
+        self.base.commands.append(("DrawIndirect", indirect_buffer, indirect_offset))
+    
+    def draw_indexed_indirect(
+        self,
+        indirect_buffer: Any,
+        indirect_offset: int,
+    ) -> None:
+        """
+        Draw indexed primitives using parameters from a buffer.
+        
+        Args:
+            indirect_buffer: Buffer containing draw parameters.
+            indirect_offset: Offset into the buffer.
+        """
+        if indirect_offset % 4 != 0:
+            raise RenderPassErrorInner(f"Indirect buffer offset {indirect_offset} is not aligned to 4 bytes")
+        
+        self._validate_draw_state(indexed=True)
+        self.base.commands.append(("DrawIndexedIndirect", indirect_buffer, indirect_offset))
+    
+    # ========================================================================
+    # State Commands
+    # ========================================================================
+    
     def set_viewport(
         self,
         x: float,
@@ -239,9 +774,11 @@ class RenderPass:
             min_depth: Minimum depth.
             max_depth: Maximum depth.
         """
-        self.current_viewport.current = (x, y, width, height, min_depth, max_depth)
-        self.base.commands.append(("SetViewport", x, y, width, height, min_depth, max_depth))
-
+        viewport = (x, y, width, height, min_depth, max_depth)
+        if self.current_viewport.current != viewport:
+            self.current_viewport.current = viewport
+            self.base.commands.append(("SetViewport", x, y, width, height, min_depth, max_depth))
+    
     def set_scissor_rect(
         self,
         x: int,
@@ -258,19 +795,22 @@ class RenderPass:
             width: Scissor width.
             height: Scissor height.
         """
-        self.current_scissor.current = (x, y, width, height)
-        self.base.commands.append(("SetScissor", x, y, width, height))
-
-    def set_blend_constant(self, color: Any) -> None:
+        scissor = (x, y, width, height)
+        if self.current_scissor.current != scissor:
+            self.current_scissor.current = scissor
+            self.base.commands.append(("SetScissor", x, y, width, height))
+    
+    def set_blend_constant(self, color: Tuple[float, float, float, float]) -> None:
         """
         Set the blend constant color.
         
         Args:
-            color: The blend constant color.
+            color: The blend constant color (r, g, b, a).
         """
-        self.current_blend_constant.current = color
-        self.base.commands.append(("SetBlendConstant", color))
-
+        if self.current_blend_constant.current != color:
+            self.current_blend_constant.current = color
+            self.base.commands.append(("SetBlendConstant", color))
+    
     def set_stencil_reference(self, reference: int) -> None:
         """
         Set the stencil reference value.
@@ -278,171 +818,358 @@ class RenderPass:
         Args:
             reference: The stencil reference value.
         """
-        self.current_stencil_reference.current = reference
-        self.base.commands.append(("SetStencilReference", reference))
-
-
-@dataclass
-class RenderPassDepthStencilAttachment:
-    """
-    Depth/stencil attachment for render pass.
+        if self.current_stencil_reference.current != reference:
+            self.current_stencil_reference.current = reference
+            self.base.commands.append(("SetStencilReference", reference))
     
-    Attributes:
-        view: Texture view for depth/stencil.
-        depth_load_op: Depth load operation.
-        depth_store_op: Depth store operation.
-        depth_clear_value: Depth clear value.
-        depth_read_only: Whether depth is read-only.
-        stencil_load_op: Stencil load operation.
-        stencil_store_op: Stencil store operation.
-        stencil_clear_value: Stencil clear value.
-        stencil_read_only: Whether stencil is read-only.
-    """
-
-    view: Any
-    depth_load_op: Optional[Any] = None
-    depth_store_op: Optional[Any] = None
-    depth_clear_value: float = 0.0
-    depth_read_only: bool = False
-    stencil_load_op: Optional[Any] = None
-    stencil_store_op: Optional[Any] = None
-    stencil_clear_value: int = 0
-    stencil_read_only: bool = False
-
-
-@dataclass
-class BasePass:
-    """
-    Base pass data.
+    # ========================================================================
+    # Debug Commands
+    # ========================================================================
     
-    Attributes:
-        label: Debug label.
-        error: Error if any.
-        commands: List of commands.
-        dynamic_offsets: Dynamic offsets.
-        string_data: String data for debug markers.
-        immediates_data: Immediates data.
-    """
-
-    label: Optional[str] = None
-    error: Optional[Any] = None
-    commands: List[Any] = None
-    dynamic_offsets: List[int] = None
-    string_data: bytes = b""
-    immediates_data: List[int] = None
-
-    def __post_init__(self):
-        if self.commands is None:
-            self.commands = []
-        if self.dynamic_offsets is None:
-            self.dynamic_offsets = []
-        if self.immediates_data is None:
-            self.immediates_data = []
-
-    def take(self) -> Any:
-        """Take the pass data."""
-        return self
-
-
-@dataclass
-class BindGroupStateChange:
-    """
-    Tracks bind group state changes.
+    def push_debug_group(self, label: str) -> None:
+        """
+        Push a debug group.
+        
+        Args:
+            label: The debug group label.
+        """
+        self.base.commands.append(("PushDebugGroup", label))
     
-    Attributes:
-        current: Current bind group indices.
-    """
-
-    current: List[Optional[int]] = None
-
-    def __post_init__(self):
-        if self.current is None:
-            self.current = [None] * 8  # MAX_BIND_GROUPS
-
-
-@dataclass
-class StateChange:
-    """
-    Tracks state changes.
+    def pop_debug_group(self) -> None:
+        """Pop a debug group."""
+        self.base.commands.append(("PopDebugGroup",))
     
-    Attributes:
-        current: Current state.
-    """
-
-    current: Optional[Any] = None
-
-
-@dataclass
-class VertexBufferStateChange:
-    """
-    Tracks vertex buffer state changes.
+    def insert_debug_marker(self, label: str) -> None:
+        """
+        Insert a debug marker.
+        
+        Args:
+            label: The debug marker label.
+        """
+        self.base.commands.append(("InsertDebugMarker", label))
     
-    Attributes:
-        current: Current vertex buffer indices.
-    """
-
-    current: List[Optional[int]] = None
-
-    def __post_init__(self):
-        if self.current is None:
-            self.current = [None] * 16  # MAX_VERTEX_BUFFERS
-
-
-@dataclass
-class IndexBufferStateChange:
-    """
-    Tracks index buffer state changes.
+    # ========================================================================
+    # Query Commands
+    # ========================================================================
     
-    Attributes:
-        current: Current index buffer.
-    """
-
-    current: Optional[Any] = None
-
-
-@dataclass
-class BlendConstantStateChange:
-    """
-    Tracks blend constant state changes.
+    def begin_occlusion_query(self, query_index: int) -> None:
+        """
+        Begin an occlusion query.
+        
+        Args:
+            query_index: The query index.
+        """
+        if self.occlusion_query_set is None:
+            raise RenderPassErrorInner("Missing occlusion query set")
+        
+        self.base.commands.append(("BeginOcclusionQuery", query_index))
     
-    Attributes:
-        current: Current blend constant.
-    """
-
-    current: Optional[Any] = None
-
-
-@dataclass
-class StencilReferenceStateChange:
-    """
-    Tracks stencil reference state changes.
+    def end_occlusion_query(self) -> None:
+        """End the current occlusion query."""
+        self.base.commands.append(("EndOcclusionQuery",))
     
-    Attributes:
-        current: Current stencil reference.
-    """
-
-    current: Optional[int] = None
-
-
-@dataclass
-class ViewportStateChange:
-    """
-    Tracks viewport state changes.
+    # ========================================================================
+    # Render Bundle Commands
+    # ========================================================================
     
-    Attributes:
-        current: Current viewport.
-    """
-
-    current: Optional[Any] = None
-
-
-@dataclass
-class ScissorStateChange:
-    """
-    Tracks scissor state changes.
+    def execute_bundles(self, bundles: List[Any]) -> None:
+        """
+        Execute render bundles.
+        
+        Args:
+            bundles: List of render bundles to execute.
+        """
+        for bundle in bundles:
+            self.base.commands.append(("ExecuteBundle", bundle))
+        
+        # Reset state after bundle execution
+        self.current_pipeline = StateChange()
+        self.current_bind_groups = BindGroupStateChange()
     
-    Attributes:
-        current: Current scissor.
-    """
+    # ========================================================================
+    # Multi-Draw Indirect Count Commands
+    # ========================================================================
+    
+    def multi_draw_indirect_count(
+        self,
+        indirect_buffer: Any,
+        indirect_offset: int,
+        count_buffer: Any,
+        count_buffer_offset: int,
+        max_count: int,
+    ) -> None:
+        """
+        Draw primitives using parameters from buffers with a count buffer.
+        
+        Args:
+            indirect_buffer: Buffer containing draw parameters.
+            indirect_offset: Offset into the indirect buffer.
+            count_buffer: Buffer containing the draw count.
+            count_buffer_offset: Offset into the count buffer.
+            max_count: Maximum number of draws.
+        """
+        if indirect_offset % 4 != 0:
+            raise RenderPassErrorInner(f"Indirect buffer offset {indirect_offset} is not aligned to 4 bytes")
+        
+        self._validate_draw_state(indexed=False)
+        self.base.commands.append((
+            "MultiDrawIndirectCount",
+            indirect_buffer,
+            indirect_offset,
+            count_buffer,
+            count_buffer_offset,
+            max_count,
+            "draw"
+        ))
+    
+    def multi_draw_indexed_indirect_count(
+        self,
+        indirect_buffer: Any,
+        indirect_offset: int,
+        count_buffer: Any,
+        count_buffer_offset: int,
+        max_count: int,
+    ) -> None:
+        """
+        Draw indexed primitives using parameters from buffers with a count buffer.
+        
+        Args:
+            indirect_buffer: Buffer containing draw parameters.
+            indirect_offset: Offset into the indirect buffer.
+            count_buffer: Buffer containing the draw count.
+            count_buffer_offset: Offset into the count buffer.
+            max_count: Maximum number of draws.
+        """
+        if indirect_offset % 4 != 0:
+            raise RenderPassErrorInner(f"Indirect buffer offset {indirect_offset} is not aligned to 4 bytes")
+        
+        self._validate_draw_state(indexed=True)
+        self.base.commands.append((
+            "MultiDrawIndexedIndirectCount",
+            indirect_buffer,
+            indirect_offset,
+            count_buffer,
+            count_buffer_offset,
+            max_count,
+            "draw_indexed"
+        ))
+    
+    # ========================================================================
+    # Mesh Shader Commands
+    # ========================================================================
+    
+    def draw_mesh_tasks(
+        self,
+        group_count_x: int,
+        group_count_y: int,
+        group_count_z: int,
+    ) -> None:
+        """
+        Draw mesh tasks (mesh shader dispatch).
+        
+        Args:
+            group_count_x: Number of workgroups in X dimension.
+            group_count_y: Number of workgroups in Y dimension.
+            group_count_z: Number of workgroups in Z dimension.
+        """
+        self._validate_draw_state(indexed=False)
+        
+        # Validate workgroup counts
+        # These would come from device limits in real implementation
+        max_dimension = 65535  # Typical limit
+        max_total = 65535  # Typical limit
+        
+        if (group_count_x > max_dimension or 
+            group_count_y > max_dimension or 
+            group_count_z > max_dimension):
+            raise DrawError(
+                f"Mesh task group count exceeds dimension limit: "
+                f"({group_count_x}, {group_count_y}, {group_count_z}) > {max_dimension}"
+            )
+        
+        total = group_count_x * group_count_y * group_count_z
+        if total > max_total:
+            raise DrawError(
+                f"Mesh task total group count {total} exceeds limit {max_total}"
+            )
+        
+        self.base.commands.append((
+            "DrawMeshTasks",
+            group_count_x,
+            group_count_y,
+            group_count_z
+        ))
+    
+    def draw_mesh_tasks_indirect(
+        self,
+        indirect_buffer: Any,
+        indirect_offset: int,
+    ) -> None:
+        """
+        Draw mesh tasks using parameters from a buffer.
+        
+        Args:
+            indirect_buffer: Buffer containing dispatch parameters.
+            indirect_offset: Offset into the buffer.
+        """
+        if indirect_offset % 4 != 0:
+            raise RenderPassErrorInner(f"Indirect buffer offset {indirect_offset} is not aligned to 4 bytes")
+        
+        self._validate_draw_state(indexed=False)
+        self.base.commands.append(("DrawMeshTasksIndirect", indirect_buffer, indirect_offset))
+    
+    def multi_draw_mesh_tasks_indirect(
+        self,
+        indirect_buffer: Any,
+        indirect_offset: int,
+        count: int,
+    ) -> None:
+        """
+        Draw multiple mesh tasks using parameters from a buffer.
+        
+        Args:
+            indirect_buffer: Buffer containing dispatch parameters.
+            indirect_offset: Offset into the buffer.
+            count: Number of draws.
+        """
+        if indirect_offset % 4 != 0:
+            raise RenderPassErrorInner(f"Indirect buffer offset {indirect_offset} is not aligned to 4 bytes")
+        
+        self._validate_draw_state(indexed=False)
+        self.base.commands.append((
+            "MultiDrawMeshTasksIndirect",
+            indirect_buffer,
+            indirect_offset,
+            count
+        ))
+    
+    def multi_draw_mesh_tasks_indirect_count(
+        self,
+        indirect_buffer: Any,
+        indirect_offset: int,
+        count_buffer: Any,
+        count_buffer_offset: int,
+        max_count: int,
+    ) -> None:
+        """
+        Draw mesh tasks using parameters from buffers with a count buffer.
+        
+        Args:
+            indirect_buffer: Buffer containing dispatch parameters.
+            indirect_offset: Offset into the indirect buffer.
+            count_buffer: Buffer containing the draw count.
+            count_buffer_offset: Offset into the count buffer.
+            max_count: Maximum number of draws.
+        """
+        if indirect_offset % 4 != 0:
+            raise RenderPassErrorInner(f"Indirect buffer offset {indirect_offset} is not aligned to 4 bytes")
+        
+        self._validate_draw_state(indexed=False)
+        self.base.commands.append((
+            "MultiDrawMeshTasksIndirectCount",
+            indirect_buffer,
+            indirect_offset,
+            count_buffer,
+            count_buffer_offset,
+            max_count
+        ))
+    
+    # ========================================================================
+    # Pipeline Statistics Query Commands
+    # ========================================================================
+    
+    def begin_pipeline_statistics_query(
+        self,
+        query_set: Any,
+        query_index: int,
+    ) -> None:
+        """
+        Begin a pipeline statistics query.
+        
+        Args:
+            query_set: The query set.
+            query_index: The query index.
+        """
+        self.base.commands.append(("BeginPipelineStatisticsQuery", query_set, query_index))
+    
+    def end_pipeline_statistics_query(self) -> None:
+        """End the current pipeline statistics query."""
+        self.base.commands.append(("EndPipelineStatisticsQuery",))
+    
+    # ========================================================================
+    # Timestamp Commands
+    # ========================================================================
+    
+    def write_timestamp(
+        self,
+        query_set: Any,
+        query_index: int,
+    ) -> None:
+        """
+        Write a timestamp value.
+        
+        Args:
+            query_set: The query set.
+            query_index: The query index.
+        """
+        self.base.commands.append(("WriteTimestamp", query_set, query_index))
+    
+    # ========================================================================
+    # Immediate Data Commands (Push Constants)
+    # ========================================================================
+    
+    def set_immediates(
+        self,
+        offset: int,
+        data: bytes,
+    ) -> None:
+        """
+        Set immediate data (push constants).
+        
+        Args:
+            offset: Offset in bytes (must be aligned to 4).
+            data: Data to set (length must be aligned to 4).
+        """
+        IMMEDIATE_ALIGNMENT = 4
+        
+        if offset % IMMEDIATE_ALIGNMENT != 0:
+            raise RenderPassErrorInner("Immediate offset must be aligned to 4 bytes")
+        
+        if len(data) % IMMEDIATE_ALIGNMENT != 0:
+            raise RenderPassErrorInner("Immediate data size must be aligned to 4 bytes")
+        
+        # Store data in immediates buffer
+        values_offset = len(self.base.immediates_data)
+        
+        # Convert bytes to u32 values
+        for i in range(0, len(data), 4):
+            chunk = data[i:i+4]
+            if len(chunk) == 4:
+                value = int.from_bytes(chunk, byteorder='little')
+                self.base.immediates_data.append(value)
+        
+        self.base.commands.append(("SetImmediate", offset, len(data), values_offset))
 
-    current: Optional[Any] = None
+
+# ============================================================================
+# Helper Functions
+# ============================================================================
+
+def get_stride_of_indirect_args(family: str) -> int:
+    """
+    Get the stride of indirect arguments for a draw family.
+    
+    Args:
+        family: Draw family ("draw", "draw_indexed", or "draw_mesh_tasks").
+        
+    Returns:
+        Stride in bytes.
+    """
+    if family == "draw":
+        return 16  # DrawIndirectArgs: 4 u32s
+    elif family == "draw_indexed":
+        return 20  # DrawIndexedIndirectArgs: 5 u32s
+    elif family == "draw_mesh_tasks":
+        return 12  # DispatchIndirectArgs: 3 u32s
+    else:
+        raise ValueError(f"Unknown draw family: {family}")
