@@ -1,5 +1,5 @@
 from enum import Enum, IntFlag
-from typing import Optional, List, Any
+from typing import Optional, List
 from pydantic import BaseModel
 from .features import Features
 
@@ -34,6 +34,8 @@ class TextureFormat(Enum):
     R16FLOAT = "r16float"
     RG8UNORM = "rg8unorm"
     RG8SNORM = "rg8snorm"
+    RG8UINT = "rg8uint"
+    RG8SINT = "rg8sint"
     # 32-bit formats
     R32UINT = "r32uint"
     R32SINT = "r32sint"
@@ -49,6 +51,7 @@ class TextureFormat(Enum):
     BGRA8UNORM = "bgra8unorm"
     BGRA8UNORM_SRGB = "bgra8unorm-srgb"
     # Packed 32-bit formats
+    RGB9E5UFLOAT = "rgb9e5ufloat"
     RGB10A2UNORM = "rgb10a2unorm"
     RG11B10UFLOAT = "rg11b10ufloat"
     # 64-bit formats
@@ -72,37 +75,44 @@ class TextureFormat(Enum):
     # BC compressed formats
     BC1_RGBA_UNORM = "bc1-rgba-unorm"
     BC1_RGBA_UNORM_SRGB = "bc1-rgba-unorm-srgb"
-    # ... many others
+    BC2_RGBA_UNORM = "bc2-rgba-unorm"
+    BC2_RGBA_UNORM_SRGB = "bc2-rgba-unorm-srgb"
+    BC3_RGBA_UNORM = "bc3-rgba-unorm"
+    BC3_RGBA_UNORM_SRGB = "bc3-rgba-unorm-srgb"
+    BC4_R_UNORM = "bc4-r-unorm"
+    BC4_R_SNORM = "bc4-r-snorm"
+    BC5_RG_UNORM = "bc5-rg-unorm"
+    BC5_RG_SNORM = "bc5-rg-snorm"
+    BC6H_RGB_UFLOAT = "bc6h-rgb-ufloat"
+    BC6H_RGB_SFLOAT = "bc6h-rgb-sfloat"
+    BC7_RGBA_UNORM = "bc7-rgba-unorm"
+    BC7_RGBA_UNORM_SRGB = "bc7-rgba-unorm-srgb"
+    # ETC2 compressed formats
+    ETC2_RGB8UNORM = "etc2-rgb8unorm"
+    ETC2_RGB8UNORM_SRGB = "etc2-rgb8unorm-srgb"
+    ETC2_RGB8A1UNORM = "etc2-rgb8a1unorm"
+    ETC2_RGB8A1UNORM_SRGB = "etc2-rgb8a1unorm-srgb"
+    ETC2_RGBA8UNORM = "etc2-rgba8unorm"
+    ETC2_RGBA8UNORM_SRGB = "etc2-rgba8unorm-srgb"
+    # EAC compressed formats
+    EAC_R11UNORM = "eac-r11unorm"
+    EAC_R11SNORM = "eac-r11snorm"
+    EAC_RG11UNORM = "eac-rg11unorm"
+    EAC_RG11SNORM = "eac-rg11snorm"
+    # ASTC compressed formats
+    ASTC_4X4_UNORM = "astc-4x4-unorm"
+    ASTC_4X4_UNORM_SRGB = "astc-4x4-unorm-srgb"
+    ASTC_5X4_UNORM = "astc-5x4-unorm"
+    ASTC_5X4_UNORM_SRGB = "astc-5x4-unorm-srgb"
+    ASTC_5X5_UNORM = "astc-5x5-unorm"
+    ASTC_5X5_UNORM_SRGB = "astc-5x5-unorm-srgb"
+    ASTC_6X5_UNORM = "astc-6x5-unorm"
+    ASTC_6X5_UNORM_SRGB = "astc-6x5-unorm-srgb"
+    ASTC_6X6_UNORM = "astc-6x6-unorm"
+    ASTC_6X6_UNORM_SRGB = "astc-6x6-unorm-srgb"
+    ASTC_8X5_UNORM = "astc-8x5-unorm"
+    ASTC_8X5_UNORM_SRGB = "astc-8x5-unorm-srgb"
+    ASTC_8X6_UNORM =.
+.
+.
 
-class Extent3d(BaseModel):
-    width: int
-    height: int = 1
-    depth_or_array_layers: int = 1
-
-class TextureDescriptor(BaseModel):
-    label: Optional[str] = None
-    size: Extent3d
-    mip_level_count: int = 1
-    sample_count: int = 1
-    dimension: TextureDimension = TextureDimension.D2
-    format: TextureFormat
-    usage: int
-    view_formats: List[TextureFormat] = []
-
-class TextureViewDimension(Enum):
-    D1 = "1d"
-    D2 = "2d"
-    D2_ARRAY = "2d-array"
-    CUBE = "cube"
-    CUBE_ARRAY = "cube-array"
-    D3 = "3d"
-
-class TextureViewDescriptor(BaseModel):
-    label: Optional[str] = None
-    format: Optional[TextureFormat] = None
-    dimension: Optional[TextureViewDimension] = None
-    aspect: TextureAspect = TextureAspect.ALL
-    base_mip_level: int = 0
-    mip_level_count: Optional[int] = None
-    base_array_layer: int = 0
-    array_layer_count: Optional[int] = None

@@ -12,4 +12,4 @@ class DeviceDescriptor(BaseModel):
     required_features: List[str] = Field(default_factory=list) # Should be Features flag or list of strings
     required_limits: dict = Field(default_factory=dict) # Should be Limits object or dict
     # memory_hints: MemoryHints (todo)
-    # trace_path: Optional[str] (todo)
+    trace_path: Optional[str] = None

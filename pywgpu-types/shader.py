@@ -9,14 +9,22 @@ class ShaderStages(IntFlag):
     COMPUTE = 1 << 2
     VERTEX_FRAGMENT = VERTEX | FRAGMENT
 
+class ShaderLanguage(Enum):
+    WGSL = "wgsl"
+    GLSL = "glsl"
+    SPIRV = "spirv"
+
 class ShaderSource(BaseModel):
     """Source code for a shader module."""
-    code: Union[str, bytes] 
-    language: str = "wgsl" # wgsl, glsl, spirv
+    code: Union[str, bytes]
+    language: ShaderLanguage = ShaderLanguage.WGSL
 
 class ShaderModuleDescriptor(BaseModel):
     label: Optional[str] = None
     source: ShaderSource
+
+class ShaderModule(BaseModel):
+    pass
 
 class CompilationMessage(BaseModel):
     message: str

@@ -1,29 +1,58 @@
-from typing import List, Optional, Union, Any
-from pydantic import BaseModel
+from typing import List, Optional, Union
+from pydantic import BaseModel, Field
 from .buffer import BufferBindingType
+from .texture import TextureViewDimension, TextureFormat, StorageTextureAccess
 
-class BindingType(BaseModel):
-    """Type of a binding (Buffer, Texture, Sampler, etc.)."""
-    type: str # 'buffer', 'texture', 'sampler', 'storage_texture'
-    # Additional fields would depend on the type (e.g. view_dimension for texture)
+class SamplerBindingType(BaseModel):
+    type: str = "sampler"
+    filtering: bool = True
+    comparison: bool = False
+
+class TextureBindingType(BaseModel):
+    type: str = "texture"
+    sample_type: str = "float"
+    view_dimension: TextureViewDimension = TextureViewDimension.D2
+    multisampled: bool = False
+
+class StorageTextureBindingType(BaseModel):
+    type: str = "storage"
+    access: StorageTextureAccess = StorageTextureAccess.WRITE_ONLY
+    format: TextureFormat
+    view_dimension: TextureViewDimension = TextureViewDimension.D2
+
+class BufferBinding(BaseModel):
+    buffer: "Buffer"
+    offset: int = 0
+    size: Optional[int] = None
 
 class BindGroupLayoutEntry(BaseModel):
     """Entry in a BindGroupLayout."""
     binding: int
     visibility: int # ShaderStage flags
-    ty: BindingType
+    ty: Union[
+        BufferBindingType,
+        SamplerBindingType,
+        TextureBindingType,
+        StorageTextureBindingType,
+    ] = Field(..., discriminator="type")
     count: Optional[int] = None
 
 class BindGroupLayoutDescriptor(BaseModel):
     label: Optional[str] = None
     entries: List[BindGroupLayoutEntry]
 
+class BindGroupLayout(BaseModel):
+    pass
+
 class BindGroupEntry(BaseModel):
     """Entry in a BindGroup."""
     binding: int
-    resource: Any # BufferBinding, TextureView, Sampler
+    resource: Union["BufferBinding", "TextureView", "Sampler"]
 
 class BindGroupDescriptor(BaseModel):
     label: Optional[str] = None
-    layout: Any # BindGroupLayout
+    layout: BindGroupLayout
     entries: List[BindGroupEntry]
+
+class BindGroup(BaseModel):
+    pass

@@ -3,25 +3,30 @@ from pydantic import BaseModel
 from enum import Enum
 
 class AddressMode(Enum):
-    CLAMP_TO_EDGE = 0
-    REPEAT = 1
-    MIRROR_REPEAT = 2
-    CLAMP_TO_BORDER = 3
+    CLAMP_TO_EDGE = "clamp-to-edge"
+    REPEAT = "repeat"
+    MIRROR_REPEAT = "mirror-repeat"
+    CLAMP_TO_BORDER = "clamp-to-border"
 
 class FilterMode(Enum):
-    NEAREST = 0
-    LINEAR = 1
+    NEAREST = "nearest"
+    LINEAR = "linear"
 
 class CompareFunction(Enum):
-    UNDEFINED = 0
-    NEVER = 1
-    LESS = 2
-    EQUAL = 3
-    LESS_EQUAL = 4
-    GREATER = 5
-    NOT_EQUAL = 6
-    GREATER_EQUAL = 7
-    ALWAYS = 8
+    NEVER = "never"
+    LESS = "less"
+    EQUAL = "equal"
+    LESS_EQUAL = "less-equal"
+    GREATER = "greater"
+    NOT_EQUAL = "not-equal"
+    GREATER_EQUAL = "greater-equal"
+    ALWAYS = "always"
+
+class SamplerBorderColor(Enum):
+    TRANSPARENT_BLACK = "transparent-black"
+    OPAQUE_BLACK = "opaque-black"
+    OPAQUE_WHITE = "opaque-white"
+    ZERO = "zero"
 
 class SamplerDescriptor(BaseModel):
     label: Optional[str] = None
@@ -35,4 +40,7 @@ class SamplerDescriptor(BaseModel):
     lod_max_clamp: float = 32.0
     compare: Optional[CompareFunction] = None
     anisotropy_clamp: int = 1
-    border_color: Optional[str] = None # Or Enum
+    border_color: Optional[SamplerBorderColor] = None
+
+class Sampler(BaseModel):
+    pass

@@ -1,12 +1,18 @@
-from typing import List, Optional, Any, Union, Dict
+from typing import List, Optional, Union, Dict
 from pydantic import BaseModel, Field
+
+from .binding import BindGroupLayout
+from .shader import ShaderModule
 
 # --- Common Types ---
 
 class PipelineLayoutDescriptor(BaseModel):
     label: Optional[str] = None
-    bind_group_layouts: List[Any] # BindGroupLayout
+    bind_group_layouts: List[BindGroupLayout]
     immediate_size: int = 0
+
+class PipelineLayout(BaseModel):
+    pass
 
 class PipelineCompilationOptions(BaseModel):
     """Options for pipeline compilation."""
@@ -17,8 +23,8 @@ class PipelineCompilationOptions(BaseModel):
 
 class ComputePipelineDescriptor(BaseModel):
     label: Optional[str] = None
-    layout: Optional[Any] = None # PipelineLayout
-    module: Any # ShaderModule
+    layout: Optional[PipelineLayout] = None
+    module: ShaderModule
     entry_point: Optional[str] = None
     compilation_options: PipelineCompilationOptions = Field(default_factory=PipelineCompilationOptions)
 
@@ -50,12 +56,18 @@ class ColorTargetState(BaseModel):
     blend: Optional[BlendState] = None
     write_mask: int = 0xF
 
+class StencilFaceState(BaseModel):
+    compare: str = 'always'
+    fail_op: str = 'keep'
+    depth_fail_op: str = 'keep'
+    pass_op: str = 'keep'
+
 class DepthStencilState(BaseModel):
     format: str
     depth_write_enabled: bool = False
     depth_compare: str = 'always'
-    stencil_front: Any = None # StencilFaceState
-    stencil_back: Any = None # StencilFaceState
+    stencil_front: StencilFaceState = Field(default_factory=StencilFaceState)
+    stencil_back: StencilFaceState = Field(default_factory=StencilFaceState)
     stencil_read_mask: int = 0xFF
     stencil_write_mask: int = 0xFF
     depth_bias: int = 0
@@ -73,23 +85,23 @@ class VertexBufferLayout(BaseModel):
     attributes: List[VertexAttribute]
 
 class VertexState(BaseModel):
-    module: Any # ShaderModule
+    module: ShaderModule
     entry_point: Optional[str] = None
     compilation_options: PipelineCompilationOptions = Field(default_factory=PipelineCompilationOptions)
     buffers: List[VertexBufferLayout] = Field(default_factory=list)
 
 class FragmentState(BaseModel):
-    module: Any # ShaderModule
+    module: ShaderModule
     entry_point: Optional[str] = None
     compilation_options: PipelineCompilationOptions = Field(default_factory=PipelineCompilationOptions)
     targets: List[Optional[ColorTargetState]]
 
 class RenderPipelineDescriptor(BaseModel):
     label: Optional[str] = None
-    layout: Optional[Any] = None # PipelineLayout
+    layout: Optional[PipelineLayout] = None
     vertex: VertexState
     fragment: Optional[FragmentState] = None
     primitive: PrimitiveState = Field(default_factory=PrimitiveState)
     depth_stencil: Optional[DepthStencilState] = None
     multisample: MultisampleState = Field(default_factory=MultisampleState)
-    multiview: Optional[Any] = None
+    multiview: Optional[int] = None
