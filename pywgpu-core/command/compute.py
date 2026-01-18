@@ -72,18 +72,77 @@ class ComputePass:
         return self.base.label
 
     def end(self) -> None:
-        """End the compute pass."""
-        # Implementation depends on command processing
-        if self.base.error is not None:
-            raise RuntimeError(f"Compute pass has error: {self.base.error}")
+        """
+        End the compute pass.
+        
+        Raises:
+            RuntimeError: If the pass has already ended.
+        """
+        if self.parent is None:
+            raise RuntimeError("Pass already ended")
+        
+        # Unlock encoder and process recorded commands
+        self.parent._unlock_encoder()
+        self.parent = None
 
-        # Take the base pass data
-        base_data = self.base.take()
+    def set_pipeline(self, pipeline: Any) -> None:
+        """
+        Set the compute pipeline.
+        
+        Args:
+            pipeline: The compute pipeline to set.
+        """
+        if self.current_pipeline.current == pipeline:
+            return
+        self.current_pipeline.current = pipeline
+        self.base.commands.append(("SetPipeline", pipeline))
 
-        # Record the compute pass to the parent encoder
-        # This would typically encode all commands recorded during the pass
-        # For now, we just mark the pass as ended
-        self.base.error = "Pass ended"
+    def set_bind_group(
+        self,
+        index: int,
+        bind_group: Any,
+        dynamic_offsets: Optional[List[int]] = None,
+    ) -> None:
+        """
+        Set the bind group.
+        
+        Args:
+            index: The bind group index.
+            bind_group: The bind group to set.
+            dynamic_offsets: The dynamic offsets.
+        """
+        self.current_bind_groups.current[index] = bind_group
+        self.base.commands.append(("SetBindGroup", index, bind_group, dynamic_offsets))
+
+    def dispatch_workgroups(
+        self,
+        groups_x: int,
+        groups_y: int,
+        groups_z: int,
+    ) -> None:
+        """
+        Dispatch a compute workgroup.
+        
+        Args:
+            groups_x: Number of workgroups in X dimension.
+            groups_y: Number of workgroups in Y dimension.
+            groups_z: Number of workgroups in Z dimension.
+        """
+        self.base.commands.append(("Dispatch", groups_x, groups_y, groups_z))
+
+    def dispatch_workgroups_indirect(
+        self,
+        indirect_buffer: Any,
+        indirect_offset: int,
+    ) -> None:
+        """
+        Dispatch a compute workgroup indirectly.
+        
+        Args:
+            indirect_buffer: The buffer containing dispatch parameters.
+            indirect_offset: The offset into the buffer.
+        """
+        self.base.commands.append(("DispatchIndirect", indirect_buffer, indirect_offset))
 
 
 @dataclass

@@ -107,24 +107,46 @@ def copy_buffer_to_buffer(
     src_offset: int,
     dst: Any,
     dst_offset: int,
-    size: Optional[int],
+    size: int,
 ) -> None:
     """
     Copy data between buffers.
     
     Args:
         state: The encoding state.
-        src: Source buffer.
-        src_offset: Offset in source buffer.
-        dst: Destination buffer.
-        dst_offset: Offset in destination buffer.
-        size: Size of data to copy.
+        src: The source buffer.
+        src_offset: The offset in the source buffer.
+        dst: The destination buffer.
+        dst_offset: The offset in the destination buffer.
+        size: The size of the data to copy.
     
     Raises:
-        TransferError: If copying fails.
+        TransferError: If the copy is invalid.
     """
-    # Implementation depends on HAL
-    pass
+    if size == 0:
+        return
+
+    src.same_device(state.device)
+    dst.same_device(state.device)
+
+    src.check_usage("COPY_SRC")
+    dst.check_usage("COPY_DST")
+
+    if src_offset + size > src.size:
+        raise TransferError(f"Source buffer overrun: {src_offset} + {size} > {src.size}")
+    if dst_offset + size > dst.size:
+        raise TransferError(f"Destination buffer overrun: {dst_offset} + {size} > {dst.size}")
+
+    state.tracker.buffers.set_single(src, "COPY_SRC")
+    state.tracker.buffers.set_single(dst, "COPY_DST")
+
+    state.raw_encoder.copy_buffer_to_buffer(
+        src.raw(),
+        src_offset,
+        dst.raw(),
+        dst_offset,
+        size,
+    )
 
 
 def copy_buffer_to_texture(
@@ -138,15 +160,15 @@ def copy_buffer_to_texture(
     
     Args:
         state: The encoding state.
-        src: Source buffer info.
-        dst: Destination texture info.
-        size: Size of data to copy.
-    
-    Raises:
-        TransferError: If copying fails.
+        src: The source texel copy buffer info.
+        dst: The destination texel copy texture info.
+        size: The size of the data to copy.
     """
-    # Implementation depends on HAL
-    pass
+    # Simplified validation
+    # src_buffer.check_usage("COPY_SRC")
+    # dst_texture.check_usage("COPY_DST")
+    
+    state.raw_encoder.copy_buffer_to_texture(src, dst, size)
 
 
 def copy_texture_to_buffer(
@@ -160,15 +182,11 @@ def copy_texture_to_buffer(
     
     Args:
         state: The encoding state.
-        src: Source texture info.
-        dst: Destination buffer info.
-        size: Size of data to copy.
-    
-    Raises:
-        TransferError: If copying fails.
+        src: The source texel copy texture info.
+        dst: The destination texel copy buffer info.
+        size: The size of the data to copy.
     """
-    # Implementation depends on HAL
-    pass
+    state.raw_encoder.copy_texture_to_buffer(src, dst, size)
 
 
 def copy_texture_to_texture(
@@ -182,12 +200,8 @@ def copy_texture_to_texture(
     
     Args:
         state: The encoding state.
-        src: Source texture info.
-        dst: Destination texture info.
-        size: Size of data to copy.
-    
-    Raises:
-        TransferError: If copying fails.
+        src: The source texel copy texture info.
+        dst: The destination texel copy texture info.
+        size: The size of the data to copy.
     """
-    # Implementation depends on HAL
-    pass
+    state.raw_encoder.copy_texture_to_texture(src, dst, size)

@@ -103,22 +103,183 @@ class RenderPass:
     def end(self) -> None:
         """
         End the render pass.
-
-        Finalizes the render pass and records all commands to the parent encoder.
-
+        
         Raises:
-            RuntimeError: If the pass has already been ended.
+            RuntimeError: If the pass has already ended.
         """
-        if self.base.error is not None:
-            raise RuntimeError(f"Render pass has error: {self.base.error}")
+        if self.parent is None:
+            raise RuntimeError("Pass already ended")
+        
+        # Unlock encoder and process recorded commands
+        self.parent._unlock_encoder()
+        self.parent = None
 
-        # Take the base pass data
-        base_data = self.base.take()
+    def set_pipeline(self, pipeline: Any) -> None:
+        """
+        Set the render pipeline.
+        
+        Args:
+            pipeline: The pipeline to set.
+        """
+        if self.current_pipeline.current == pipeline:
+            return
+        self.current_pipeline.current = pipeline
+        self.base.commands.append(("SetPipeline", pipeline))
 
-        # Record the render pass to the parent encoder
-        # This would typically encode all commands recorded during the pass
-        # For now, we just mark the pass as ended
-        self.base.error = "Pass ended"
+    def set_bind_group(
+        self,
+        index: int,
+        bind_group: Any,
+        dynamic_offsets: Optional[List[int]] = None,
+    ) -> None:
+        """
+        Set the bind group.
+        
+        Args:
+            index: The bind group index.
+            bind_group: The bind group to set.
+            dynamic_offsets: The dynamic offsets.
+        """
+        self.current_bind_groups.current[index] = bind_group
+        self.base.commands.append(("SetBindGroup", index, bind_group, dynamic_offsets))
+
+    def set_index_buffer(
+        self,
+        buffer: Any,
+        index_format: Any,
+        offset: int,
+        size: Optional[int],
+    ) -> None:
+        """
+        Set the index buffer.
+        
+        Args:
+            buffer: The buffer to set.
+            index_format: The index format.
+            offset: The offset into the buffer.
+            size: The size of the data to use.
+        """
+        self.current_index_buffer.current = (buffer, index_format, offset, size)
+        self.base.commands.append(("SetIndexBuffer", buffer, index_format, offset, size))
+
+    def set_vertex_buffer(
+        self,
+        slot: int,
+        buffer: Any,
+        offset: int,
+        size: Optional[int],
+    ) -> None:
+        """
+        Set the vertex buffer.
+        
+        Args:
+            slot: The buffer slot to set.
+            buffer: The buffer to set.
+            offset: The offset into the buffer.
+            size: The size of the data to use.
+        """
+        self.current_vertex_buffers.current[slot] = (buffer, offset, size)
+        self.base.commands.append(("SetVertexBuffer", slot, buffer, offset, size))
+
+    def draw(
+        self,
+        vertex_count: int,
+        instance_count: int,
+        first_vertex: int,
+        first_instance: int,
+    ) -> None:
+        """
+        Draw primitives.
+        
+        Args:
+            vertex_count: The number of vertices to draw.
+            instance_count: The number of instances to draw.
+            first_vertex: The first vertex index.
+            first_instance: The first instance index.
+        """
+        self.base.commands.append(("Draw", vertex_count, instance_count, first_vertex, first_instance))
+
+    def draw_indexed(
+        self,
+        index_count: int,
+        instance_count: int,
+        first_index: int,
+        base_vertex: int,
+        first_instance: int,
+    ) -> None:
+        """
+        Draw indexed primitives.
+        
+        Args:
+            index_count: The number of indices to draw.
+            instance_count: The number of instances to draw.
+            first_index: The first index index.
+            base_vertex: The base vertex index.
+            first_instance: The first instance index.
+        """
+        self.base.commands.append(("DrawIndexed", index_count, instance_count, first_index, base_vertex, first_instance))
+
+    def set_viewport(
+        self,
+        x: float,
+        y: float,
+        width: float,
+        height: float,
+        min_depth: float,
+        max_depth: float,
+    ) -> None:
+        """
+        Set the viewport.
+        
+        Args:
+            x: X coordinate.
+            y: Y coordinate.
+            width: Viewport width.
+            height: Viewport height.
+            min_depth: Minimum depth.
+            max_depth: Maximum depth.
+        """
+        self.current_viewport.current = (x, y, width, height, min_depth, max_depth)
+        self.base.commands.append(("SetViewport", x, y, width, height, min_depth, max_depth))
+
+    def set_scissor_rect(
+        self,
+        x: int,
+        y: int,
+        width: int,
+        height: int,
+    ) -> None:
+        """
+        Set the scissor rectangle.
+        
+        Args:
+            x: X coordinate.
+            y: Y coordinate.
+            width: Scissor width.
+            height: Scissor height.
+        """
+        self.current_scissor.current = (x, y, width, height)
+        self.base.commands.append(("SetScissor", x, y, width, height))
+
+    def set_blend_constant(self, color: Any) -> None:
+        """
+        Set the blend constant color.
+        
+        Args:
+            color: The blend constant color.
+        """
+        self.current_blend_constant.current = color
+        self.base.commands.append(("SetBlendConstant", color))
+
+    def set_stencil_reference(self, reference: int) -> None:
+        """
+        Set the stencil reference value.
+        
+        Args:
+            reference: The stencil reference value.
+        """
+        self.current_stencil_reference.current = reference
+        self.base.commands.append(("SetStencilReference", reference))
 
 
 @dataclass
