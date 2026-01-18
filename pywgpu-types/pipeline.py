@@ -105,3 +105,26 @@ class RenderPipelineDescriptor(BaseModel):
     depth_stencil: Optional[DepthStencilState] = None
     multisample: MultisampleState = Field(default_factory=MultisampleState)
     multiview: Optional[int] = None
+
+# --- Mesh Pipeline Types ---
+
+class TaskState(BaseModel):
+    module: ShaderModule
+    entry_point: Optional[str] = None
+    compilation_options: PipelineCompilationOptions = Field(default_factory=PipelineCompilationOptions)
+
+class MeshState(BaseModel):
+    module: ShaderModule
+    entry_point: Optional[str] = None
+    compilation_options: PipelineCompilationOptions = Field(default_factory=PipelineCompilationOptions)
+
+class MeshPipelineDescriptor(BaseModel):
+    label: Optional[str] = None
+    layout: Optional[PipelineLayout] = None
+    task: Optional[TaskState] = None
+    mesh: MeshState
+    fragment: Optional[FragmentState] = None
+    primitive: PrimitiveState = Field(default_factory=PrimitiveState)
+    depth_stencil: Optional[DepthStencilState] = None
+    multisample: MultisampleState = Field(default_factory=MultisampleState)
+    multiview: Optional[int] = None

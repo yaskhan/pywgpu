@@ -162,14 +162,23 @@ class Device(DeviceExt):
         else:
             raise NotImplementedError("Backend does not support create_compute_pipeline")
 
-    def create_render_pipeline(self, descriptor: Any) -> 'RenderPipeline':
+    def create_render_pipeline(self, descriptor: RenderPipelineDescriptor) -> 'RenderPipeline':
         """Creates a render pipeline."""
-        from .render_pipeline import RenderPipeline
+        # from .render_pipeline import RenderPipeline # Removed runtime import
         if hasattr(self._inner, 'create_render_pipeline'):
-            pipeline_inner = self._inner.create_render_pipeline(descriptor)
-            return RenderPipeline(pipeline_inner, descriptor)
+            inner = self._inner.create_render_pipeline(descriptor.model_dump(exclude_none=True))
+            return RenderPipeline(inner, descriptor)
         else:
             raise NotImplementedError("Backend does not support create_render_pipeline")
+
+    def create_mesh_pipeline(self, descriptor: MeshPipelineDescriptor) -> 'RenderPipeline':
+        """Creates a mesh pipeline."""
+        from .render_pipeline import RenderPipeline # Added runtime import for RenderPipeline
+        if hasattr(self._inner, 'create_mesh_pipeline'):
+            inner = self._inner.create_mesh_pipeline(descriptor.model_dump(exclude_none=True))
+            return RenderPipeline(inner, descriptor)
+        else:
+            raise NotImplementedError("Backend does not support create_mesh_pipeline")
 
     def create_pipeline_cache(self, descriptor: Any = None) -> 'PipelineCache':
         """Creates a pipeline cache."""

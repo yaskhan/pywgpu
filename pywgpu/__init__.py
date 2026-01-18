@@ -74,6 +74,9 @@ from pywgpu_types.pipeline import (
     MultisampleState,
     VertexBufferLayout,
     VertexAttribute,
+    TaskState,
+    MeshState,
+    MeshPipelineDescriptor,
 )
 from pywgpu_types.common import Color, Extent3d, Origin3d
 from pywgpu_types.presentation import ExperimentalFeatures, MemoryHints, Trace
@@ -146,6 +149,9 @@ __all__ = [
     "MultisampleState",
     "VertexBufferLayout",
     "VertexAttribute",
+    "TaskState",
+    "MeshState",
+    "MeshPipelineDescriptor",
     "Color",
     "Extent3d",
     "Origin3d",

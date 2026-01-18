@@ -104,6 +104,13 @@ class RenderPass:
         else:
             raise NotImplementedError("Backend does not support draw_indexed_indirect")
 
+    def draw_mesh_tasks(self, group_count_x: int, group_count_y: int, group_count_z: int) -> None:
+        """Draws primitives using mesh shaders."""
+        if hasattr(self._inner, 'draw_mesh_tasks'):
+            self._inner.draw_mesh_tasks(group_count_x, group_count_y, group_count_z)
+        else:
+            raise NotImplementedError("Backend does not support draw_mesh_tasks")
+
     def set_viewport(
         self, 
         x: float, 
