@@ -28,7 +28,8 @@ def is_valid_external_image_copy_dst_texture_format(format: Any) -> bool:
         True if the format is valid, False otherwise.
     """
     # Implementation depends on wgpu_types.TextureFormat
-    pass
+    # For now, return False as a safe default
+    return False
 
 
 def map_buffer_usage(usage: Any) -> Any:
@@ -42,7 +43,8 @@ def map_buffer_usage(usage: Any) -> Any:
         The buffer uses.
     """
     # Implementation depends on wgpu_types.BufferUsages and BufferUses
-    pass
+    # For now, return 0 as a safe default
+    return 0
 
 
 def map_texture_usage(

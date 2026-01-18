@@ -74,7 +74,16 @@ class ComputePass:
     def end(self) -> None:
         """End the compute pass."""
         # Implementation depends on command processing
-        pass
+        if self.base.error is not None:
+            raise RuntimeError(f"Compute pass has error: {self.base.error}")
+
+        # Take the base pass data
+        base_data = self.base.take()
+
+        # Record the compute pass to the parent encoder
+        # This would typically encode all commands recorded during the pass
+        # For now, we just mark the pass as ended
+        self.base.error = "Pass ended"
 
 
 @dataclass

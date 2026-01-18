@@ -109,6 +109,7 @@ class RenderBundleEncoder:
             size: The size of the data to use.
         """
         # Implementation depends on command recording
+        # For now, do nothing as a placeholder
         pass
 
     def finish(
@@ -132,7 +133,9 @@ class RenderBundleEncoder:
             RenderBundleError: If finishing fails.
         """
         # Implementation depends on command processing
-        pass
+        # For now, return a placeholder render bundle
+        from ..resource import RenderBundle
+        return RenderBundle(device=device, label=desc.label or "")
 
 
 @dataclass

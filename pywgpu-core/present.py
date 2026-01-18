@@ -104,48 +104,61 @@ class Surface:
     def get_current_texture(self) -> SurfaceOutput:
         """
         Get the current texture for presentation.
-        
+
         This method acquires a texture from the surface that can be used
         for rendering. The texture must be presented or discarded before
         acquiring another texture.
-        
+
         Returns:
             The surface output containing the texture and status.
-        
+
         Raises:
             SurfaceError: If the surface is not configured or invalid.
         """
         # Implementation depends on HAL
-        pass
+        # For now, return a placeholder output
+        if self.presentation is None:
+            raise SurfaceError("Surface is not configured")
+
+        return SurfaceOutput(status=None, texture=None)
 
     def present(self) -> Any:
         """
         Present the current texture to the surface.
-        
+
         This method presents the acquired texture to the display. The
         texture must have been acquired via get_current_texture.
-        
+
         Returns:
             The presentation status.
-        
+
         Raises:
             SurfaceError: If presentation fails.
         """
         # Implementation depends on HAL
-        pass
+        # For now, return None as a placeholder
+        if self.presentation is None:
+            raise SurfaceError("Surface is not configured")
+
+        # In a real implementation, this would present the acquired texture
+        return None
 
     def discard(self) -> None:
         """
         Discard the current texture.
-        
+
         This method discards the acquired texture without presenting it.
         This is useful when the texture is not needed for presentation.
-        
+
         Raises:
             SurfaceError: If the texture cannot be discarded.
         """
         # Implementation depends on HAL
-        pass
+        # For now, do nothing as a placeholder
+        if self.presentation is None:
+            raise SurfaceError("Surface is not configured")
+
+        # In a real implementation, this would discard the acquired texture
 
 
 class Global:
@@ -175,7 +188,8 @@ class Global:
             SurfaceError: If the surface is not configured or invalid.
         """
         # Implementation depends on Global
-        pass
+        # For now, return a placeholder output
+        return SurfaceOutput(status=None, texture=None)
 
     def surface_present(self, surface_id: SurfaceId) -> Any:
         """
@@ -191,7 +205,8 @@ class Global:
             SurfaceError: If presentation fails.
         """
         # Implementation depends on Global
-        pass
+        # For now, return None as a placeholder
+        return None
 
     def surface_texture_discard(self, surface_id: SurfaceId) -> None:
         """
@@ -204,4 +219,5 @@ class Global:
             SurfaceError: If the texture cannot be discarded.
         """
         # Implementation depends on Global
+        # For now, do nothing as a placeholder
         pass
