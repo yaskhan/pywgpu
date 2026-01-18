@@ -15,6 +15,7 @@ class Global:
         self.instance = Instance(name, descriptor)
         self.hub = Hub()
         self.surfaces = Registry()
+        self.ops = DeviceOps()
 
     def generate_report(self) -> Dict[str, Any]:
         """
