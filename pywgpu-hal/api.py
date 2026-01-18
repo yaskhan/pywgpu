@@ -1,35 +1,57 @@
-from typing import Any, Protocol, TypeVar, Optional, List
+"""
+Backend API protocol definitions.
+
+This module provides Protocol definitions for HAL backends. These are
+re-exported from lib.py for backward compatibility.
+"""
+
+from typing import Protocol, TypeVar, Optional, List, Any, Sequence
+
+# Import core protocols from lib
+from .lib import (
+    Api as ApiProtocol,
+    Instance as InstanceProtocol,
+    Surface as SurfaceProtocol,
+    Adapter as AdapterProtocol,
+    Device as DeviceProtocol,
+    Queue as QueueProtocol,
+    CommandEncoder as CommandEncoderProtocol,
+    # Descriptors
+    BufferDescriptor,
+    TextureDescriptor,
+    TextureViewDescriptor,
+    SamplerDescriptor,
+    BindGroupLayoutDescriptor,
+    InstanceDescriptor,
+    SurfaceConfiguration,
+    SurfaceCapabilities,
+)
 
 T = TypeVar('T')
 
-class Instance(Protocol):
-    """HAL Instance trait."""
-    def enumerate_adapters(self) -> List[Any]: ...
-    def create_surface(self, display_handle: Any, window_handle: Any) -> Any: ...
+# Re-export protocols with original names for compatibility
+Instance = InstanceProtocol
+Adapter = AdapterProtocol
+Device = DeviceProtocol
+Surface = SurfaceProtocol
+Api = ApiProtocol
+Queue = QueueProtocol
+CommandEncoder = CommandEncoderProtocol
 
-class Adapter(Protocol):
-    """HAL Adapter trait."""
-    def open(self, features: Any, limits: Any) -> Any: ...
-    def adapter_info(self) -> Any: ...
-
-class Device(Protocol):
-    """HAL Device trait."""
-    def create_buffer(self, desc: Any) -> Any: ...
-    def create_texture(self, desc: Any) -> Any: ...
-    def create_shader_module(self, desc: Any, source: Any) -> Any: ...
-
-class Surface(Protocol):
-    """HAL Surface trait."""
-    def configure(self, device: Any, config: Any) -> None: ...
-    def unconfigure(self, device: Any) -> None: ...
-    def acquire_texture(self, timeout: Optional[float]) -> Any: ...
-    def discard_texture(self, texture: Any) -> None: ...
-
-class Api(Protocol):
-    """HAL Api trait."""
-    Instance: Any
-    Adapter: Any
-    Device: Any
-    Surface: Any
-    
-    def init(self) -> None: ...
+__all__ = [
+    'Instance',
+    'Adapter',
+    'Device',
+    'Surface',
+    'Api',
+    'Queue',
+    'CommandEncoder',
+    'BufferDescriptor',
+    'TextureDescriptor',
+    'TextureViewDescriptor',
+    'SamplerDescriptor',
+    'BindGroupLayoutDescriptor',
+    'InstanceDescriptor',
+    'SurfaceConfiguration',
+    'SurfaceCapabilities',
+]
