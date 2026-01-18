@@ -1,3 +1,4 @@
+from typing import Any
 from .handle_set_map import HandleMap
 from .functions import FunctionCompactor
 from .expressions import ExpressionCompactor
