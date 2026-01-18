@@ -1,13 +1,28 @@
-from typing import Any
-from .rank import Rank
+"""
+Instrumented lock types for wgpu-core.
 
-class Mutex:
-    """
-    Ranked Mutex.
-    """
-    def __init__(self, rank: Rank, data: Any) -> None:
-        self.rank = rank
-        self.data = data
+This module defines instrumented wrappers for lock types used in wgpu-core
+(Mutex, RwLock) that help us understand and validate synchronization.
 
-    def lock(self) -> Any:
-        return self.data
+- The `ranked` module defines lock types that perform run-time checks to ensure
+  each thread acquires locks only in a specific order, to prevent deadlocks.
+
+- The `vanilla` module defines lock types that are uninstrumented, no-overhead
+  wrappers around standard lock types.
+
+By default, we use the vanilla module's locks for simplicity.
+"""
+
+from .rank import Rank, LockRank
+from .vanilla import Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard, RankData
+
+__all__ = [
+    'Rank',
+    'LockRank',
+    'Mutex',
+    'MutexGuard',
+    'RwLock',
+    'RwLockReadGuard',
+    'RwLockWriteGuard',
+    'RankData',
+]

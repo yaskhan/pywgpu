@@ -1,103 +1,156 @@
-from typing import Any, Optional
+"""
+Indirect validation for draw and dispatch commands.
+
+This module provides GPU-based validation of indirect commands to ensure
+they don't exceed device limits before execution.
+"""
+
+from typing import Optional
+from dataclasses import dataclass
 
 
-class DispatchValidator:
-    """Validator for indirect dispatch commands."""
+class CreateIndirectValidationPipelineError(Exception):
+    """Error creating indirect validation pipeline."""
+    pass
+
+
+@dataclass
+class BindGroups:
+    """
+    Bind groups for indirect validation.
     
-    def __init__(self, device: Any):
-        self.device = device
+    Attributes:
+        dispatch: Bind group for dispatch validation.
+        draw: Bind group for draw validation.
+    """
+    dispatch: any  # Box<dyn hal::DynBindGroup>
+    draw: any  # Box<dyn hal::DynBindGroup>
     
-    def validate(self, buffer: Any, offset: int) -> bool:
-        """Validate an indirect dispatch command.
+    @staticmethod
+    def new(
+        indirect_validation: 'IndirectValidation',
+        device: any,
+        buffer_size: int,
+        buffer: any
+    ) -> Optional['BindGroups']:
+        """
+        Create bind groups for indirect validation.
+        
+        Returns None if buffer_size is 0.
         
         Args:
-            buffer: The indirect buffer.
-            offset: Offset into the buffer.
+            indirect_validation: The indirect validation instance.
+            device: The device.
+            buffer_size: Size of the buffer.
+            buffer: The buffer to validate.
             
         Returns:
-            True if valid, False otherwise.
+            BindGroups or None.
         """
-        # Validate buffer size and alignment
-        if not hasattr(buffer, 'size'):
-            return False
-        
-        # Dispatch indirect requires 12 bytes (3 u32s: x, y, z)
-        if offset + 12 > buffer.size:
-            return False
-        
-        # Offset must be 4-byte aligned
-        if offset % 4 != 0:
-            return False
-        
-        return True
-
-
-class DrawValidator:
-    """Validator for indirect draw commands."""
+        try:
+            dispatch_bg = indirect_validation.dispatch.create_src_bind_group(
+                device.raw() if hasattr(device, 'raw') else device,
+                device.limits if hasattr(device, 'limits') else {},
+                buffer_size,
+                buffer
+            )
+            
+            draw_bg = indirect_validation.draw.create_src_bind_group(
+                device.raw() if hasattr(device, 'raw') else device,
+                device.limits if hasattr(device, 'limits') else {},
+                buffer_size,
+                buffer
+            )
+            
+            if dispatch_bg is None and draw_bg is None:
+                return None
+            
+            if dispatch_bg is not None and draw_bg is not None:
+                return BindGroups(dispatch=dispatch_bg, draw=draw_bg)
+            
+            # Should not happen - both should be None or both should have values
+            return None
+            
+        except Exception:
+            return None
     
-    def __init__(self, device: Any):
-        self.device = device
-    
-    def validate(self, buffer: Any, offset: int, indexed: bool = False) -> bool:
-        """Validate an indirect draw command.
+    def dispose(self, device: any) -> None:
+        """
+        Dispose of bind groups.
         
         Args:
-            buffer: The indirect buffer.
-            offset: Offset into the buffer.
-            indexed: Whether this is an indexed draw.
-            
-        Returns:
-            True if valid, False otherwise.
+            device: The HAL device.
         """
-        # Validate buffer size and alignment
-        if not hasattr(buffer, 'size'):
-            return False
-        
-        # Draw indirect requires 16 bytes (4 u32s)
-        # DrawIndexed indirect requires 20 bytes (5 u32s)
-        required_size = 20 if indexed else 16
-        
-        if offset + required_size > buffer.size:
-            return False
-        
-        # Offset must be 4-byte aligned
-        if offset % 4 != 0:
-            return False
-        
-        return True
+        try:
+            hal_device = device.raw() if hasattr(device, 'raw') else device
+            if hasattr(hal_device, 'destroy_bind_group'):
+                hal_device.destroy_bind_group(self.dispatch)
+                hal_device.destroy_bind_group(self.draw)
+        except Exception:
+            pass
 
 
 class IndirectValidation:
     """
-    Indirect validation logic for draw and dispatch commands.
+    Main indirect validation coordinator.
     
-    This class provides validation for indirect draw and dispatch commands,
-    ensuring that indirect buffers are properly sized and aligned.
+    Manages both dispatch and draw validation.
     
     Attributes:
-        device: The device this validator belongs to.
         dispatch: Dispatch command validator.
         draw: Draw command validator.
     """
-    def __init__(self, device: Any) -> None:
-        self.device = device
-        self.dispatch = DispatchValidator(device)
-        self.draw = DrawValidator(device)
-
-    def create_bind_groups(self, buffer: Any) -> Any:
-        """Create bind groups for indirect validation.
+    
+    def __init__(self, device: any, limits: dict, features: dict, backend: str):
+        """
+        Create a new indirect validation instance.
         
         Args:
-            buffer: The indirect buffer.
-            
-        Returns:
-            Bind groups for validation.
+            device: The HAL device.
+            limits: Device limits.
+            features: Device features.
+            backend: Backend name.
         """
-        # In a real implementation, this would create bind groups
-        # that allow the GPU to validate indirect commands
-        # For now, return a placeholder
-        return {
-            "buffer": buffer,
-            "validation_enabled": True
-        }
+        from .dispatch import Dispatch
+        from .draw import Draw
+        
+        try:
+            self.dispatch = Dispatch(device, limits)
+        except Exception as e:
+            print(f"indirect-validation error: {e}")
+            raise
+        
+        try:
+            self.draw = Draw(device, features, backend)
+        except Exception as e:
+            print(f"indirect-draw-validation error: {e}")
+            raise
+    
+    def dispose(self, device: any) -> None:
+        """
+        Dispose of all validation resources.
+        
+        Args:
+            device: The HAL device.
+        """
+        self.dispatch.dispose(device)
+        self.draw.dispose(device)
 
+
+# Export submodules
+from .dispatch import Dispatch, DispatchValidator
+from .draw import Draw, DrawValidator
+from .utils import UniqueIndexScratch, BufferBarrierScratch, BufferBarriers
+
+__all__ = [
+    'IndirectValidation',
+    'BindGroups',
+    'Dispatch',
+    'DispatchValidator',
+    'Draw',
+    'DrawValidator',
+    'UniqueIndexScratch',
+    'BufferBarrierScratch',
+    'BufferBarriers',
+    'CreateIndirectValidationPipelineError',
+]
