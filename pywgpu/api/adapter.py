@@ -121,3 +121,12 @@ class Adapter:
             return self._inner.get_texture_format_features(format)
         else:
             raise NotImplementedError("Backend does not support get_texture_format_features")
+
+    def get_cooperative_matrix_properties(self) -> List[Any]:
+        """
+        Returns the supported cooperative matrix configurations for this adapter.
+        """
+        if hasattr(self._inner, 'get_cooperative_matrix_properties'):
+            return self._inner.get_cooperative_matrix_properties()
+        else:
+            return []

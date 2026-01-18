@@ -38,6 +38,7 @@ class RenderPassDescriptor(BaseModel):
     depth_stencil_attachment: Optional[RenderPassDepthStencilAttachment] = None
     timestamp_writes: Optional[RenderPassTimestampWrites] = None
     occlusion_query_set: Optional[Any] = None
+    multiview: Optional[int] = None
 
 class ComputePassDescriptor(BaseModel):
     label: Optional[str] = None

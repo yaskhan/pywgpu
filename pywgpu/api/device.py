@@ -135,6 +135,24 @@ class Device(DeviceExt):
         else:
             raise NotImplementedError("Backend does not support create_query_set")
 
+    def create_blas(self, descriptor: Any, geometry_descriptors: Any) -> 'Blas':
+        """Creates a Bottom-Level Acceleration Structure."""
+        from .rt import Blas
+        if hasattr(self._inner, 'create_blas'):
+            blas_inner = self._inner.create_blas(descriptor, geometry_descriptors)
+            return Blas(blas_inner, descriptor)
+        else:
+            raise NotImplementedError("Backend does not support create_blas")
+
+    def create_tlas(self, descriptor: Any) -> 'Tlas':
+        """Creates a Top-Level Acceleration Structure."""
+        from .rt import Tlas
+        if hasattr(self._inner, 'create_tlas'):
+            tlas_inner = self._inner.create_tlas(descriptor)
+            return Tlas(tlas_inner, descriptor)
+        else:
+            raise NotImplementedError("Backend does not support create_tlas")
+
     def create_compute_pipeline(self, descriptor: Any) -> 'ComputePipeline':
         """Creates a compute pipeline."""
         from .compute_pipeline import ComputePipeline

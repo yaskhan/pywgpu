@@ -25,6 +25,9 @@ class BufferBinding(BaseModel):
     offset: int = 0
     size: Optional[int] = None
 
+class AccelerationStructureBindingType(BaseModel):
+    type: str = "acceleration-structure"
+
 class BindGroupLayoutEntry(BaseModel):
     """Entry in a BindGroupLayout."""
     binding: int
@@ -34,6 +37,7 @@ class BindGroupLayoutEntry(BaseModel):
         SamplerBindingType,
         TextureBindingType,
         StorageTextureBindingType,
+        AccelerationStructureBindingType,
     ] = Field(..., discriminator="type")
     count: Optional[int] = None
 
@@ -47,7 +51,11 @@ class BindGroupLayout(BaseModel):
 class BindGroupEntry(BaseModel):
     """Entry in a BindGroup."""
     binding: int
-    resource: Union["BufferBinding", "TextureView", "Sampler"]
+    resource: Union[
+        "BufferBinding", List["BufferBinding"], 
+        "TextureView", List["TextureView"], 
+        "Sampler", List["Sampler"]
+    ]
 
 class BindGroupDescriptor(BaseModel):
     label: Optional[str] = None

@@ -102,6 +102,17 @@ class CommandEncoder:
         else:
             raise NotImplementedError("Backend does not support clear_buffer")
 
+    def build_acceleration_structures(
+        self, 
+        blas: Optional[Union['BlasBuildEntry', List['BlasBuildEntry']]] = None,
+        tlas: Optional[Union['Tlas', List['Tlas']]] = None
+    ) -> None:
+        """Builds acceleration structures."""
+        if hasattr(self._inner, 'build_acceleration_structures'):
+            self._inner.build_acceleration_structures(blas, tlas)
+        else:
+            raise NotImplementedError("Backend does not support build_acceleration_structures")
+
     def resolve_query_set(
         self, 
         query_set: 'QuerySet', 
