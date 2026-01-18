@@ -82,13 +82,14 @@ async def main():
         wgsl_code=shader_code,
     ))
     
-    # Create input data buffer
-    input_data_buffer = device.create_buffer(pywgpu.BufferDescriptor(
-        label=None,
-        size=len(args.numbers) * 4,  # f32 = 4 bytes
-        usage=[pywgpu.BufferUsages.STORAGE],
-        mapped_at_creation=False,
-    ))
+    # Create input data buffer and upload data
+    import struct
+    packed_input_data = struct.pack(f'{len(args.numbers)}f', *args.numbers)
+    input_data_buffer = device.create_buffer_init(
+        label="Input Buffer",
+        contents=packed_input_data,
+        usage=pywgpu.BufferUsages.STORAGE
+    )
     
     # Create output data buffer
     output_data_buffer = device.create_buffer(pywgpu.BufferDescriptor(

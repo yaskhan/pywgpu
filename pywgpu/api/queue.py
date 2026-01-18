@@ -1,22 +1,12 @@
 from typing import Any, List, Optional, Union, TYPE_CHECKING
-from pydantic import BaseModel
 from pywgpu_types.texture import Extent3d
+from pywgpu_types.queue import ImageCopyTexture, ImageCopyBuffer, ImageDataLayout
 
 if TYPE_CHECKING:
     from .command_buffer import CommandBuffer
     from .buffer import Buffer
     from .texture import Texture
     from .query_set import QuerySet
-
-class ImageCopyTexture(BaseModel):
-    texture: Any
-    mip_level: int = 0
-    origin: Union[List[int], Any] = [0, 0, 0]
-    aspect: str = 'all'
-
-class ImageCopyBuffer(BaseModel):
-    buffer: Any
-    layout: Any
 
 class Queue:
     """

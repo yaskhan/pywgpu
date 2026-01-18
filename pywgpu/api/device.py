@@ -1,9 +1,10 @@
-from typing import Optional, TYPE_CHECKING, Any
+from typing import Optional, TYPE_CHECKING, Any, Tuple
 from pywgpu_types.descriptors import (
     DeviceDescriptor, 
     BufferDescriptor, 
     ShaderModuleDescriptor
 )
+from pywgpu.util.device import DeviceExt
 
 if TYPE_CHECKING:
     from .buffer import Buffer
@@ -18,8 +19,9 @@ if TYPE_CHECKING:
     from .compute_pipeline import ComputePipeline
     from .render_pipeline import RenderPipeline
     from .pipeline_cache import PipelineCache
+    from .queue import Queue
 
-class Device:
+class Device(DeviceExt):
     """
     Open connection to a graphics and/or compute device.
     
@@ -48,7 +50,7 @@ class Device:
         from .buffer import Buffer
         if hasattr(self._inner, 'create_buffer'):
             buffer_inner = self._inner.create_buffer(descriptor)
-            return Buffer(buffer_inner)
+            return Buffer(buffer_inner, descriptor)
         else:
             raise NotImplementedError("Backend does not support create_buffer")
 
@@ -57,7 +59,7 @@ class Device:
         from .texture import Texture
         if hasattr(self._inner, 'create_texture'):
             texture_inner = self._inner.create_texture(descriptor)
-            return Texture(texture_inner)
+            return Texture(texture_inner, descriptor)
         else:
             raise NotImplementedError("Backend does not support create_texture")
 
@@ -66,7 +68,7 @@ class Device:
         from .sampler import Sampler
         if hasattr(self._inner, 'create_sampler'):
             sampler_inner = self._inner.create_sampler(descriptor)
-            return Sampler(sampler_inner)
+            return Sampler(sampler_inner, descriptor)
         else:
             raise NotImplementedError("Backend does not support create_sampler")
 
@@ -75,7 +77,7 @@ class Device:
         from .bind_group import BindGroup
         if hasattr(self._inner, 'create_bind_group'):
             bind_group_inner = self._inner.create_bind_group(descriptor)
-            return BindGroup(bind_group_inner)
+            return BindGroup(bind_group_inner, descriptor)
         else:
             raise NotImplementedError("Backend does not support create_bind_group")
 
@@ -84,7 +86,7 @@ class Device:
         from .bind_group_layout import BindGroupLayout
         if hasattr(self._inner, 'create_bind_group_layout'):
             layout_inner = self._inner.create_bind_group_layout(descriptor)
-            return BindGroupLayout(layout_inner)
+            return BindGroupLayout(layout_inner, descriptor)
         else:
             raise NotImplementedError("Backend does not support create_bind_group_layout")
 
@@ -102,7 +104,7 @@ class Device:
         from .shader_module import ShaderModule
         if hasattr(self._inner, 'create_shader_module'):
             shader_module_inner = self._inner.create_shader_module(descriptor)
-            return ShaderModule(shader_module_inner)
+            return ShaderModule(shader_module_inner, descriptor)
         else:
             raise NotImplementedError("Backend does not support create_shader_module")
 
@@ -111,7 +113,7 @@ class Device:
         from .command_encoder import CommandEncoder
         if hasattr(self._inner, 'create_command_encoder'):
             encoder_inner = self._inner.create_command_encoder(descriptor)
-            return CommandEncoder(encoder_inner)
+            return CommandEncoder(encoder_inner, descriptor)
         else:
             raise NotImplementedError("Backend does not support create_command_encoder")
 
@@ -120,7 +122,7 @@ class Device:
         from .render_bundle_encoder import RenderBundleEncoder
         if hasattr(self._inner, 'create_render_bundle_encoder'):
             encoder_inner = self._inner.create_render_bundle_encoder(descriptor)
-            return RenderBundleEncoder(encoder_inner)
+            return RenderBundleEncoder(encoder_inner, descriptor)
         else:
             raise NotImplementedError("Backend does not support create_render_bundle_encoder")
 
@@ -129,7 +131,7 @@ class Device:
         from .query_set import QuerySet
         if hasattr(self._inner, 'create_query_set'):
             query_set_inner = self._inner.create_query_set(descriptor)
-            return QuerySet(query_set_inner)
+            return QuerySet(query_set_inner, descriptor)
         else:
             raise NotImplementedError("Backend does not support create_query_set")
 

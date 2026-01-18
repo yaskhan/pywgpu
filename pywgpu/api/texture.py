@@ -65,9 +65,10 @@ class Texture:
         from .texture_view import TextureView
         if hasattr(self._inner, 'create_view'):
             view_inner = self._inner.create_view(descriptor)
-            return TextureView(view_inner)
+            return TextureView(view_inner, self)
         else:
-            raise NotImplementedError("Backend does not support create_view")
+            # Fallback for mock
+            return TextureView(None, self)
 
     def destroy(self) -> None:
         """Destroys the texture."""

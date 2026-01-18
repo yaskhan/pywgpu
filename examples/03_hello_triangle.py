@@ -46,20 +46,14 @@ async def main():
          0.0,  0.5,  0.0, 0.0, 1.0,  # Blue vertex
     ]
     
-    # Create vertex buffer
-    vertex_buffer = device.create_buffer(pywgpu.BufferDescriptor(
-        label=None,
-        size=len(vertices) * 4,  # f32 = 4 bytes
-        usage=[pywgpu.BufferUsages.VERTEX, pywgpu.BufferUsages.COPY_DST],
-        mapped_at_creation=False,
-    ))
-    
-    # Upload vertex data
+    # Create vertex buffer and upload data
     import struct
     vertex_data = struct.pack(f'{len(vertices)}f', *vertices)
-    await vertex_buffer.map_async(pywgpu.MapMode.WRITE)
-    vertex_buffer.get_mapped_range()[:] = vertex_data
-    vertex_buffer.unmap()
+    vertex_buffer = device.create_buffer_init(
+        label="Triangle Vertex Buffer",
+        contents=vertex_data,
+        usage=pywgpu.BufferUsages.VERTEX
+    )
     
     # Create shader module
     shader_code = """
