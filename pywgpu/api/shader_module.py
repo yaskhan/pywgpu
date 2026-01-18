@@ -19,4 +19,7 @@ class ShaderModule:
         This is useful for retrieving error messages and warnings from 
         compilation.
         """
-        pass
+        if hasattr(self._inner, 'get_compilation_info'):
+            return self._inner.get_compilation_info()
+        else:
+            raise NotImplementedError("Backend does not support get_compilation_info")

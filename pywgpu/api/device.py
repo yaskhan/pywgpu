@@ -31,23 +31,44 @@ class Device:
 
     def features(self) -> Any:
         """Returns the features supported by this device."""
-        pass
+        if hasattr(self._inner, 'features'):
+            return self._inner.features()
+        else:
+            raise NotImplementedError("Backend does not support features")
 
     def limits(self) -> Any:
         """Returns the limits of this device."""
-        pass
+        if hasattr(self._inner, 'limits'):
+            return self._inner.limits()
+        else:
+            raise NotImplementedError("Backend does not support limits")
 
     def create_buffer(self, descriptor: BufferDescriptor) -> 'Buffer':
         """Creates a buffer given its descriptor."""
-        pass
+        from .buffer import Buffer
+        if hasattr(self._inner, 'create_buffer'):
+            buffer_inner = self._inner.create_buffer(descriptor)
+            return Buffer(buffer_inner)
+        else:
+            raise NotImplementedError("Backend does not support create_buffer")
 
     def create_texture(self, descriptor: Any) -> 'Texture':
         """Creates a texture given its descriptor."""
-        pass
+        from .texture import Texture
+        if hasattr(self._inner, 'create_texture'):
+            texture_inner = self._inner.create_texture(descriptor)
+            return Texture(texture_inner)
+        else:
+            raise NotImplementedError("Backend does not support create_texture")
 
     def create_sampler(self, descriptor: Any = None) -> 'Sampler':
         """Creates a sampler given its descriptor."""
-        pass
+        from .sampler import Sampler
+        if hasattr(self._inner, 'create_sampler'):
+            sampler_inner = self._inner.create_sampler(descriptor)
+            return Sampler(sampler_inner)
+        else:
+            raise NotImplementedError("Backend does not support create_sampler")
 
     def create_bind_group(self, descriptor: Any) -> 'BindGroup':
         """Creates a bind group given its descriptor."""
@@ -63,11 +84,21 @@ class Device:
 
     def create_shader_module(self, descriptor: ShaderModuleDescriptor) -> 'ShaderModule':
         """Creates a shader module from source code (WGSL/SPIR-V/GLSL)."""
-        pass
+        from .shader_module import ShaderModule
+        if hasattr(self._inner, 'create_shader_module'):
+            shader_module_inner = self._inner.create_shader_module(descriptor)
+            return ShaderModule(shader_module_inner)
+        else:
+            raise NotImplementedError("Backend does not support create_shader_module")
 
     def create_command_encoder(self, descriptor: Any = None) -> 'CommandEncoder':
         """Creates a command encoder."""
-        pass
+        from .command_encoder import CommandEncoder
+        if hasattr(self._inner, 'create_command_encoder'):
+            encoder_inner = self._inner.create_command_encoder(descriptor)
+            return CommandEncoder(encoder_inner)
+        else:
+            raise NotImplementedError("Backend does not support create_command_encoder")
 
     def create_render_bundle_encoder(self, descriptor: Any) -> 'RenderBundleEncoder':
         """Creates a render bundle encoder."""

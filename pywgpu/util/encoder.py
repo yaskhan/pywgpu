@@ -4,4 +4,6 @@ class RenderEncoder:
     """
     A utility to help with recording render commands.
     """
-    pass
+    def __init__(self):
+        # Initialize any necessary state
+        pass

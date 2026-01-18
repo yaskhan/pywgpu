@@ -25,23 +25,32 @@ class Instance:
         self._descriptor = descriptor or InstanceDescriptor()
 
     async def request_adapter(
-        self, 
+        self,
         options: Optional[RequestAdapterOptions] = None
     ) -> Optional['Adapter']:
         """
         Requests an adapter from the instance.
-        
-        An adapter represents a specific graphics/compute device (e.g., a 
+
+        An adapter represents a specific graphics/compute device (e.g., a
         discrete GPU or integrated graphics).
-        
+
         Args:
-            options: Search options for the adapter, such as power preference 
+            options: Search options for the adapter, such as power preference
                 or surface compatibility.
-            
+
         Returns:
             The requested adapter, or None if no suitable adapter was found.
         """
-        pass
+        from .adapter import Adapter
+
+        # Check if we have an inner implementation with request_adapter method
+        if hasattr(self, '_inner') and hasattr(self._inner, 'request_adapter'):
+            adapter_inner = await self._inner.request_adapter(options)
+            return Adapter(adapter_inner) if adapter_inner else None
+        else:
+            # For now, return None since we don't have a real backend
+            # In a real implementation, this would use the system's GPU detection
+            return None
 
     def create_surface(self, target: 'SurfaceTarget') -> 'Surface':
         """

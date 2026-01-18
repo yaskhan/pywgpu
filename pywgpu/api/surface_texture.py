@@ -17,4 +17,7 @@ class SurfaceTexture:
 
     def present(self) -> None:
         """Presents the texture to the surface."""
-        pass
+        if hasattr(self._inner, 'present'):
+            self._inner.present()
+        else:
+            raise NotImplementedError("Backend does not support present")

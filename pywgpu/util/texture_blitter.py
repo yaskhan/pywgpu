@@ -8,4 +8,7 @@ class TextureBlitter:
         self.device = device
 
     def blit(self, source, destination):
-        pass
+        if hasattr(self, '_inner') and hasattr(self._inner, 'blit'):
+            return self._inner.blit(source, destination)
+        else:
+            raise NotImplementedError("Backend does not support blit")

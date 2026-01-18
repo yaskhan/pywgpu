@@ -36,7 +36,12 @@ class Queue:
         Args:
             command_buffers: List of command buffers to execute.
         """
-        pass
+        if hasattr(self._inner, 'submit'):
+            # Convert command buffers to their inner representations
+            command_buffer_inners = [cb._inner for cb in command_buffers]
+            self._inner.submit(command_buffer_inners)
+        else:
+            raise NotImplementedError("Backend does not support submit")
 
     def write_buffer(self, buffer: 'Buffer', offset: int, data: bytes) -> None:
         """
@@ -47,7 +52,10 @@ class Queue:
             offset: Offset in the buffer to start writing at.
             data: The data to write.
         """
-        pass
+        if hasattr(self._inner, 'write_buffer'):
+            self._inner.write_buffer(buffer._inner, offset, data)
+        else:
+            raise NotImplementedError("Backend does not support write_buffer")
 
     def write_texture(
         self, 
