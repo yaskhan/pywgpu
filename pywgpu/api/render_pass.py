@@ -14,9 +14,10 @@ class RenderPass:
     Created with :meth:`CommandEncoder.begin_render_pass`.
     """
     
-    def __init__(self, inner: Any, descriptor: RenderPassDescriptor) -> None:
+    def __init__(self, inner: Any, descriptor: RenderPassDescriptor, actions: Optional[Any] = None) -> None:
         self._inner = inner
         self._descriptor = descriptor
+        self._actions = actions
 
     def set_pipeline(self, pipeline: 'RenderPipeline') -> None:
         """Sets the active render pipeline via a handle."""
@@ -165,6 +166,32 @@ class RenderPass:
             self._inner.execute_bundles(bundles)
         else:
             raise NotImplementedError("Backend does not support execute_bundles")
+
+    def map_buffer_on_submit(
+        self, 
+        buffer: 'Buffer', 
+        mode: int, 
+        offset: int = 0, 
+        size: Optional[int] = None
+    ) -> None:
+        """Schedules a buffer mapping for after the command buffer is submitted."""
+        if self._actions:
+            from .command_buffer_actions import DeferredBufferMapping
+            if size is None:
+                size = buffer.size - offset
+                
+            self._actions.buffer_mappings.append(DeferredBufferMapping(
+                buffer=buffer,
+                mode=mode,
+                offset=offset,
+                size=size,
+                callback=lambda e: None
+            ))
+
+    def on_submitted_work_done(self, callback: Callable[[], None]) -> None:
+        """Registers a callback for when the submitted work is done."""
+        if self._actions:
+            self._actions.on_submitted_work_done_callbacks.append(callback)
 
     def end(self) -> None:
         """Ends the render pass."""

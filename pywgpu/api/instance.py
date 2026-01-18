@@ -22,7 +22,9 @@ class Instance:
             descriptor: Description of the instance to create. If None, default 
                 backends and options will be used.
         """
+        from ..backend import get_backend
         self._descriptor = descriptor or InstanceDescriptor()
+        self._inner = get_backend(self._descriptor)
 
     async def request_adapter(
         self,

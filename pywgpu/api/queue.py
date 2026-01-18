@@ -30,6 +30,11 @@ class Queue:
             # Convert command buffers to their inner representations
             command_buffer_inners = [cb._inner for cb in command_buffers]
             self._inner.submit(command_buffer_inners)
+            
+            # Execute deferred actions
+            for cb in command_buffers:
+                if cb._actions:
+                    cb._actions.execute(self)
         else:
             raise NotImplementedError("Backend does not support submit")
 

@@ -21,13 +21,15 @@ class CommandEncoder:
     def __init__(self, inner: Any, descriptor: CommandEncoderDescriptor) -> None:
         self._inner = inner
         self._descriptor = descriptor
+        from .command_buffer_actions import DeferredCommandBufferActions
+        self._actions = DeferredCommandBufferActions()
 
     def begin_render_pass(self, descriptor: Any) -> 'RenderPass':
         """Begins recording a render pass."""
         from .render_pass import RenderPass
         if hasattr(self._inner, 'begin_render_pass'):
             render_pass_inner = self._inner.begin_render_pass(descriptor)
-            return RenderPass(render_pass_inner, descriptor)
+            return RenderPass(render_pass_inner, descriptor, self._actions)
         else:
             raise NotImplementedError("Backend does not support begin_render_pass")
 
@@ -36,7 +38,7 @@ class CommandEncoder:
         from .compute_pass import ComputePass
         if hasattr(self._inner, 'begin_compute_pass'):
             compute_pass_inner = self._inner.begin_compute_pass(descriptor)
-            return ComputePass(compute_pass_inner, descriptor)
+            return ComputePass(compute_pass_inner, descriptor, self._actions)
         else:
             raise NotImplementedError("Backend does not support begin_compute_pass")
 
@@ -127,11 +129,35 @@ class CommandEncoder:
         else:
             raise NotImplementedError("Backend does not support resolve_query_set")
 
+    def map_buffer_on_submit(
+        self, 
+        buffer: 'Buffer', 
+        mode: int, 
+        offset: int = 0, 
+        size: Optional[int] = None
+    ) -> None:
+        """Schedules a buffer mapping for after the command buffer is submitted."""
+        from .command_buffer_actions import DeferredBufferMapping
+        if size is None:
+            size = buffer.size - offset
+            
+        self._actions.buffer_mappings.append(DeferredBufferMapping(
+            buffer=buffer,
+            mode=mode,
+            offset=offset,
+            size=size,
+            callback=lambda e: None # Basic callback
+        ))
+
+    def on_submitted_work_done(self, callback: Callable[[], None]) -> None:
+        """Registers a callback for when the submitted work is done."""
+        self._actions.on_submitted_work_done_callbacks.append(callback)
+
     def finish(self, descriptor: Optional[Any] = None) -> 'CommandBuffer':
         """Finishes recording and returns a CommandBuffer."""
         from .command_buffer import CommandBuffer
         if hasattr(self._inner, 'finish'):
             command_buffer_inner = self._inner.finish(descriptor)
-            return CommandBuffer(command_buffer_inner)
+            return CommandBuffer(command_buffer_inner, self._actions)
         else:
             raise NotImplementedError("Backend does not support finish")

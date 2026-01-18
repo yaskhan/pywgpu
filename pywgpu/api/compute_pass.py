@@ -14,9 +14,10 @@ class ComputePass:
     Created with :meth:`CommandEncoder.begin_compute_pass`.
     """
     
-    def __init__(self, inner: Any, descriptor: ComputePassDescriptor) -> None:
+    def __init__(self, inner: Any, descriptor: ComputePassDescriptor, actions: Optional[Any] = None) -> None:
         self._inner = inner
         self._descriptor = descriptor
+        self._actions = actions
 
     def set_pipeline(self, pipeline: 'ComputePipeline') -> None:
         """Sets the active compute pipeline."""
@@ -59,6 +60,32 @@ class ComputePass:
             self._inner.dispatch_workgroups_indirect(indirect_buffer._inner, indirect_offset)
         else:
             raise NotImplementedError("Backend does not support dispatch_workgroups_indirect")
+
+    def map_buffer_on_submit(
+        self, 
+        buffer: 'Buffer', 
+        mode: int, 
+        offset: int = 0, 
+        size: Optional[int] = None
+    ) -> None:
+        """Schedules a buffer mapping for after the command buffer is submitted."""
+        if self._actions:
+            from .command_buffer_actions import DeferredBufferMapping
+            if size is None:
+                size = buffer.size - offset
+                
+            self._actions.buffer_mappings.append(DeferredBufferMapping(
+                buffer=buffer,
+                mode=mode,
+                offset=offset,
+                size=size,
+                callback=lambda e: None
+            ))
+
+    def on_submitted_work_done(self, callback: Any) -> None:
+        """Registers a callback for when the submitted work is done."""
+        if self._actions:
+            self._actions.on_submitted_work_done_callbacks.append(callback)
 
     def end(self) -> None:
         """Ends the compute pass."""

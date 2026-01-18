@@ -16,6 +16,7 @@ from .api.render_pass import RenderPass
 from .api.compute_pass import ComputePass
 from .api.render_pipeline import RenderPipeline
 from .api.compute_pipeline import ComputePipeline
+from .api.pipeline_cache import PipelineCache
 from .api.surface import Surface
 
 # Re-export types from pywgpu-types
@@ -102,6 +103,7 @@ __all__ = [
     "ComputePass",
     "RenderPipeline",
     "ComputePipeline",
+    "PipelineCache",
     "Surface",
     "InstanceDescriptor",
     "RequestAdapterOptions",

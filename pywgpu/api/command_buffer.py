@@ -10,5 +10,6 @@ class CommandBuffer:
     Created with :meth:`CommandEncoder.finish`.
     """
     
-    def __init__(self, inner: Any) -> None:
+    def __init__(self, inner: Any, actions: Optional[Any] = None) -> None:
         self._inner = inner
+        self._actions = actions
