@@ -108,31 +108,114 @@ class RenderBundleEncoder:
             offset: The offset into the buffer.
             size: The size of the data to use.
         """
-        # Implementation depends on command recording
-        pass
+        self.base.commands.append(("SetIndexBuffer", buffer, index_format, offset, size))
+
+    def set_vertex_buffer(
+        self,
+        slot: int,
+        buffer: Any,
+        offset: int,
+        size: Optional[int],
+    ) -> None:
+        """
+        Set the vertex buffer.
+        
+        Args:
+            slot: The buffer slot to set.
+            buffer: The buffer to set.
+            offset: The offset into the buffer.
+            size: The size of the data to use.
+        """
+        self.base.commands.append(("SetVertexBuffer", slot, buffer, offset, size))
+
+    def set_pipeline(self, pipeline: Any) -> None:
+        """
+        Set the render pipeline.
+        
+        Args:
+            pipeline: The pipeline to set.
+        """
+        if self.current_pipeline.current == pipeline:
+            return
+        self.current_pipeline.current = pipeline
+        self.base.commands.append(("SetPipeline", pipeline))
+
+    def set_bind_group(
+        self,
+        index: int,
+        bind_group: Any,
+        dynamic_offsets: Optional[List[int]] = None,
+    ) -> None:
+        """
+        Set the bind group.
+        
+        Args:
+            index: The bind group index.
+            bind_group: The bind group to set.
+            dynamic_offsets: The dynamic offsets.
+        """
+        self.current_bind_groups.current[index] = bind_group
+        self.base.commands.append(("SetBindGroup", index, bind_group, dynamic_offsets))
+
+    def draw(
+        self,
+        vertex_count: int,
+        instance_count: int,
+        first_vertex: int,
+        first_instance: int,
+    ) -> None:
+        """
+        Draw primitives.
+        
+        Args:
+            vertex_count: The number of vertices to draw.
+            instance_count: The number of instances to draw.
+            first_vertex: The first vertex index.
+            first_instance: The first instance index.
+        """
+        self.base.commands.append(("Draw", vertex_count, instance_count, first_vertex, first_instance))
+
+    def draw_indexed(
+        self,
+        index_count: int,
+        instance_count: int,
+        first_index: int,
+        base_vertex: int,
+        first_instance: int,
+    ) -> None:
+        """
+        Draw indexed primitives.
+        
+        Args:
+            index_count: The number of indices to draw.
+            instance_count: The number of instances to draw.
+            first_index: The first index index.
+            base_vertex: The base vertex index.
+            first_instance: The first instance index.
+        """
+        self.base.commands.append(("DrawIndexed", index_count, instance_count, first_index, base_vertex, first_instance))
 
     def finish(
         self,
         desc: Any,
         device: Any,
-        hub: Any,
-    ) -> Any:
+    ) -> RenderBundle:
         """
         Finish recording the render bundle.
         
         Args:
             desc: The descriptor for the render bundle.
             device: The device.
-            hub: The resource hub.
         
         Returns:
             The created render bundle.
-        
-        Raises:
-            RenderBundleError: If finishing fails.
         """
-        # Implementation depends on command processing
-        pass
+        bundle = RenderBundle(device, desc.label or "")
+        bundle.base = self.base
+        bundle.context = self.context
+        bundle.is_depth_read_only = self.is_depth_read_only
+        bundle.is_stencil_read_only = self.is_stencil_read_only
+        return bundle
 
 
 @dataclass

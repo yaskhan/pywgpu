@@ -151,8 +151,22 @@ def set_immediates(
     Raises:
         InvalidValuesOffset: If values offset is invalid.
     """
-    # Implementation depends on command processing
-    pass
+    if values_offset is None:
+        raise InvalidValuesOffset("Values offset must be set")
+
+    end_offset_bytes = offset + size_bytes
+    values_end_offset = values_offset + size_bytes // 4 # IMMEDIATE_DATA_ALIGNMENT
+    data_slice = immediates_data[values_offset:values_end_offset]
+
+    pipeline_layout = state.binder.pipeline_layout
+    if pipeline_layout is None:
+        raise MissingPipeline()
+
+    # pipeline_layout.validate_immediates_ranges(offset, end_offset_bytes)
+
+    callback(data_slice)
+
+    state.base.raw_encoder.set_immediates(pipeline_layout.raw(), offset, data_slice)
 
 
 def flush_bindings_helper(state: Any) -> None:
@@ -162,5 +176,29 @@ def flush_bindings_helper(state: Any) -> None:
     Args:
         state: The pass state.
     """
-    # Implementation depends on command processing
-    pass
+    range_ = state.binder.take_rebind_range()
+    if not range_:
+        return
+
+    entries = state.binder.entries(range_)
+
+    for i, entry in entries:
+        bind_group = entry.group
+        if bind_group is None:
+            continue
+
+        # In Rust this extends buffer_memory_init_actions and texture_memory_actions
+        # state.base.buffer_memory_init_actions.extend(...)
+        # state.base.texture_memory_actions.register_init_action(action)
+        pass
+
+    pipeline_layout = state.binder.pipeline_layout
+    if pipeline_layout:
+        for i, entry in entries:
+            if entry.group:
+                state.base.raw_encoder.set_bind_group(
+                    pipeline_layout.raw(),
+                    i,
+                    entry.group.raw(),
+                    entry.dynamic_offsets,
+                )
