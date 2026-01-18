@@ -20,8 +20,8 @@ class WgpuCoreBackend:
         """
         options = options or RequestAdapterOptions()
         
-        # In a real implementation, this would be async if HAL supports it
-        # For now, we simulate async behavior
+        # Simulate async behavior for consistency with WebGPU API
+        # The actual adapter request is synchronous in pywgpu-core
         await asyncio.sleep(0)
         
         try:

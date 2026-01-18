@@ -59,12 +59,9 @@ class CommandAllocator:
             if free_encoders:
                 return free_encoders.pop()
             else:
+                # Create a new encoder using the imported CommandEncoder
                 from .encoder import CommandEncoder
                 return CommandEncoder(device)
-                # Create a new encoder
-                # Implementation depends on HAL
-                # For now, return None as a placeholder
-                return None
 
     def release_encoder(self, encoder: Any) -> None:
         """
