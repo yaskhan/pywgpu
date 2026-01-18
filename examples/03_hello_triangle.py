@@ -28,7 +28,7 @@ async def main():
     print(f"Running on Adapter: {adapter.get_info()}")
     
     # Create a device and queue from the adapter
-    device = await adapter.request_device(pywgpu.DeviceDescriptor(
+    device, queue = await adapter.request_device(pywgpu.DeviceDescriptor(
         label=None,
         required_features=[pywgpu.Features.VERTEX_WRITABLE_STORAGE],
         required_limits=pywgpu.Limits.default(),
@@ -36,6 +36,7 @@ async def main():
         memory_hints=pywgpu.MemoryHints.memory_usage,
         trace=pywgpu.Trace.off(),
     ))
+
     
     # Vertex data for a simple triangle
     vertices = [
@@ -45,20 +46,14 @@ async def main():
          0.0,  0.5,  0.0, 0.0, 1.0,  # Blue vertex
     ]
     
-    # Create vertex buffer
-    vertex_buffer = device.create_buffer(pywgpu.BufferDescriptor(
-        label=None,
-        size=len(vertices) * 4,  # f32 = 4 bytes
-        usage=[pywgpu.BufferUsages.VERTEX, pywgpu.BufferUsages.COPY_DST],
-        mapped_at_creation=False,
-    ))
-    
-    # Upload vertex data
+    # Create vertex buffer and upload data
     import struct
     vertex_data = struct.pack(f'{len(vertices)}f', *vertices)
-    await vertex_buffer.map_async(pywgpu.MapMode.WRITE)
-    vertex_buffer.get_mapped_range()[:] = vertex_data
-    vertex_buffer.unmap()
+    vertex_buffer = device.create_buffer_init(
+        label="Triangle Vertex Buffer",
+        contents=vertex_data,
+        usage=pywgpu.BufferUsages.VERTEX
+    )
     
     # Create shader module
     shader_code = """
@@ -147,12 +142,67 @@ async def main():
         ),
     ))
     
-    print("Pipeline created successfully!")
-    print("This example demonstrates:")
+    # Create a texture to render into (since we don't have a window/surface)
+    texture = device.create_texture(pywgpu.TextureDescriptor(
+        label="Render Texture",
+        size=(800, 600, 1),
+        mip_level_count=1,
+        sample_count=1,
+        dimension=pywgpu.TextureDimension.d2,
+        format=pywgpu.TextureFormat.rgba8unorm,
+        usage=[pywgpu.TextureUsages.RENDER_ATTACHMENT, pywgpu.TextureUsages.COPY_SRC],
+        view_formats=[],
+    ))
+    
+    texture_view = texture.create_view()
+    
+    # Create command encoder
+    encoder = device.create_command_encoder(pywgpu.CommandEncoderDescriptor(
+        label="Render Encoder"
+    ))
+    
+    # Begin render pass
+    render_pass = encoder.begin_render_pass(pywgpu.RenderPassDescriptor(
+        label="Triangle Render Pass",
+        color_attachments=[
+            pywgpu.RenderPassColorAttachment(
+                view=texture_view,
+                resolve_target=None,
+                ops=pywgpu.Operations(
+                    load=pywgpu.LoadOp.clear(pywgpu.Color.GREEN),
+                    store=pywgpu.StoreOp.store,
+                ),
+                depth_slice=None,
+            )
+        ],
+        depth_stencil_attachment=None,
+        timestamp_writes=None,
+        occlusion_query_set=None,
+    ))
+    
+    # Set pipeline and vertex buffer
+    render_pass.set_pipeline(render_pipeline)
+    render_pass.set_vertex_buffer(0, vertex_buffer)
+    
+    # Draw the triangle
+    render_pass.draw(vertices=3, instances=1, first_vertex=0, first_instance=0)
+    
+    # End render pass
+    render_pass.end()
+    
+    # Finish encoding and submit
+    command_buffer = encoder.finish()
+    queue.submit([command_buffer])
+    
+    print("Triangle rendering commands submitted successfully!")
+    print("This example now demonstrates:")
     print("- Vertex buffer creation and data upload")
     print("- Shader module compilation")
     print("- Render pipeline creation")
-    print("- Basic rendering concepts")
+    print("- Texture and View creation")
+    print("- Command encoding for a render pass")
+    print("- Drawing commands execution")
+
 
 
 if __name__ == "__main__":

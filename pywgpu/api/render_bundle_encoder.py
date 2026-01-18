@@ -42,7 +42,10 @@ class RenderBundleEncoder:
         offset: int = 0, 
         size: Optional[int] = None
     ) -> None:
-        pass
+        if hasattr(self._inner, 'set_vertex_buffer'):
+            self._inner.set_vertex_buffer(slot, buffer._inner, offset, size)
+        else:
+            raise NotImplementedError("Backend does not support set_vertex_buffer")
 
     def set_index_buffer(
         self, 
@@ -51,7 +54,10 @@ class RenderBundleEncoder:
         offset: int = 0, 
         size: Optional[int] = None
     ) -> None:
-        pass
+        if hasattr(self._inner, 'set_index_buffer'):
+            self._inner.set_index_buffer(buffer._inner, index_format, offset, size)
+        else:
+            raise NotImplementedError("Backend does not support set_index_buffer")
 
     def draw(
         self, 
@@ -60,7 +66,10 @@ class RenderBundleEncoder:
         first_vertex: int = 0, 
         first_instance: int = 0
     ) -> None:
-        pass
+        if hasattr(self._inner, 'draw'):
+            self._inner.draw(vertices, instances, first_vertex, first_instance)
+        else:
+            raise NotImplementedError("Backend does not support draw")
 
     def draw_indexed(
         self, 
@@ -70,13 +79,23 @@ class RenderBundleEncoder:
         base_vertex: int = 0, 
         first_instance: int = 0
     ) -> None:
-        pass
+        if hasattr(self._inner, 'draw_indexed'):
+            self._inner.draw_indexed(indices, instances, first_index, base_vertex, first_instance)
+        else:
+            raise NotImplementedError("Backend does not support draw_indexed")
 
     def draw_indirect(self, indirect_buffer: 'Buffer', indirect_offset: int) -> None:
-        pass
+        if hasattr(self._inner, 'draw_indirect'):
+            self._inner.draw_indirect(indirect_buffer._inner, indirect_offset)
+        else:
+            raise NotImplementedError("Backend does not support draw_indirect")
 
     def draw_indexed_indirect(self, indirect_buffer: 'Buffer', indirect_offset: int) -> None:
-        pass
+        if hasattr(self._inner, 'draw_indexed_indirect'):
+            self._inner.draw_indexed_indirect(indirect_buffer._inner, indirect_offset)
+        else:
+            raise NotImplementedError("Backend does not support draw_indexed_indirect")
+
 
     def finish(self, descriptor: Optional[Any] = None) -> 'RenderBundle':
         """Finishes recording and returns a RenderBundle."""

@@ -28,7 +28,7 @@ async def main():
     print(f"Running on Adapter: {adapter.get_info()}")
     
     # Create a device and queue from the adapter
-    device = await adapter.request_device(pywgpu.DeviceDescriptor(
+    device, queue = await adapter.request_device(pywgpu.DeviceDescriptor(
         label=None,
         required_features=[],
         required_limits=pywgpu.Limits.default(),
@@ -36,6 +36,7 @@ async def main():
         memory_hints=pywgpu.MemoryHints.memory_usage,
         trace=pywgpu.Trace.off(),
     ))
+
     
     # 1. Create a vertex buffer
     print("\\n1. Creating vertex buffer...")
@@ -44,20 +45,12 @@ async def main():
          0.5, -0.5, 0.0, 1.0, 0.0,
          0.0,  0.5, 0.0, 0.0, 1.0,
     ]
-    
-    vertex_buffer = device.create_buffer(pywgpu.BufferDescriptor(
-        label="Vertex Buffer",
-        size=len(vertex_data) * 4,  # f32 = 4 bytes
-        usage=[pywgpu.BufferUsages.VERTEX, pywgpu.BufferUsages.COPY_DST],
-        mapped_at_creation=False,
-    ))
-    
-    # Upload vertex data
     packed_vertex_data = struct.pack(f'{len(vertex_data)}f', *vertex_data)
-    await vertex_buffer.map_async(pywgpu.MapMode.WRITE)
-    mapped_data = vertex_buffer.get_mapped_range()
-    mapped_data[:] = packed_vertex_data
-    vertex_buffer.unmap()
+    vertex_buffer = device.create_buffer_init(
+        label="Vertex Buffer",
+        contents=packed_vertex_data,
+        usage=pywgpu.BufferUsages.VERTEX
+    )
     print(f"  - Vertex buffer created with {len(vertex_data)} floats")
     print(f"  - Buffer size: {vertex_buffer.size} bytes")
     print(f"  - Buffer usage: {vertex_buffer.usage}")
@@ -65,20 +58,12 @@ async def main():
     # 2. Create an index buffer
     print("\\n2. Creating index buffer...")
     index_data = [0, 1, 2]  # Triangle indices
-    
-    index_buffer = device.create_buffer(pywgpu.BufferDescriptor(
-        label="Index Buffer",
-        size=len(index_data) * 4,  # u32 = 4 bytes
-        usage=[pywgpu.BufferUsages.INDEX, pywgpu.BufferUsages.COPY_DST],
-        mapped_at_creation=False,
-    ))
-    
-    # Upload index data
     packed_index_data = struct.pack(f'{len(index_data)}I', *index_data)
-    await index_buffer.map_async(pywgpu.MapMode.WRITE)
-    mapped_data = index_buffer.get_mapped_range()
-    mapped_data[:] = packed_index_data
-    index_buffer.unmap()
+    index_buffer = device.create_buffer_init(
+        label="Index Buffer",
+        contents=packed_index_data,
+        usage=pywgpu.BufferUsages.INDEX
+    )
     print(f"  - Index buffer created with {len(index_data)} indices")
     print(f"  - Buffer size: {index_buffer.size} bytes")
     
@@ -91,40 +76,24 @@ async def main():
         0.0, 0.0, 1.0, 0.0,  # Row 2
         0.0, 0.0, 0.0, 1.0,  # Row 3
     ]
-    
-    uniform_buffer = device.create_buffer(pywgpu.BufferDescriptor(
-        label="Uniform Buffer",
-        size=len(uniform_data) * 4,
-        usage=[pywgpu.BufferUsages.UNIFORM, pywgpu.BufferUsages.COPY_DST],
-        mapped_at_creation=False,
-    ))
-    
-    # Upload uniform data
     packed_uniform_data = struct.pack(f'{len(uniform_data)}f', *uniform_data)
-    await uniform_buffer.map_async(pywgpu.MapMode.WRITE)
-    mapped_data = uniform_buffer.get_mapped_range()
-    mapped_data[:] = packed_uniform_data
-    uniform_buffer.unmap()
+    uniform_buffer = device.create_buffer_init(
+        label="Uniform Buffer",
+        contents=packed_uniform_data,
+        usage=pywgpu.BufferUsages.UNIFORM
+    )
     print(f"  - Uniform buffer created for 4x4 matrix")
     print(f"  - Buffer size: {uniform_buffer.size} bytes")
     
     # 4. Create a storage buffer for compute operations
     print("\\n4. Creating storage buffer...")
     compute_data = [1.0, 2.0, 3.0, 4.0, 5.0]
-    
-    storage_buffer = device.create_buffer(pywgpu.BufferDescriptor(
-        label="Storage Buffer",
-        size=len(compute_data) * 4,
-        usage=[pywgpu.BufferUsages.STORAGE, pywgpu.BufferUsages.COPY_DST, pywgpu.BufferUsages.COPY_SRC],
-        mapped_at_creation=False,
-    ))
-    
-    # Upload compute data
     packed_compute_data = struct.pack(f'{len(compute_data)}f', *compute_data)
-    await storage_buffer.map_async(pywgpu.MapMode.WRITE)
-    mapped_data = storage_buffer.get_mapped_range()
-    mapped_data[:] = packed_compute_data
-    storage_buffer.unmap()
+    storage_buffer = device.create_buffer_init(
+        label="Storage Buffer",
+        contents=packed_compute_data,
+        usage=pywgpu.BufferUsages.STORAGE | pywgpu.BufferUsages.COPY_SRC
+    )
     print(f"  - Storage buffer created for compute operations")
     print(f"  - Initial data: {compute_data}")
     print(f"  - Buffer size: {storage_buffer.size} bytes")
@@ -150,7 +119,8 @@ async def main():
     )
     
     command_buffer = command_encoder.finish()
-    device.queue.submit([command_buffer])
+    queue.submit([command_buffer])
+
     
     # Read back the data
     await read_buffer.map_async(pywgpu.MapMode.READ)

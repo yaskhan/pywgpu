@@ -1,5 +1,7 @@
-from typing import Optional, TYPE_CHECKING, Any
+from typing import Optional, TYPE_CHECKING, Any, Union
 from pywgpu_types.descriptors import CommandEncoderDescriptor
+from pywgpu_types.queue import ImageCopyBuffer, ImageCopyTexture
+from pywgpu_types.texture import Extent3d
 
 if TYPE_CHECKING:
     from .command_buffer import CommandBuffer
@@ -25,7 +27,7 @@ class CommandEncoder:
         from .render_pass import RenderPass
         if hasattr(self._inner, 'begin_render_pass'):
             render_pass_inner = self._inner.begin_render_pass(descriptor)
-            return RenderPass(render_pass_inner)
+            return RenderPass(render_pass_inner, descriptor)
         else:
             raise NotImplementedError("Backend does not support begin_render_pass")
 
@@ -34,7 +36,7 @@ class CommandEncoder:
         from .compute_pass import ComputePass
         if hasattr(self._inner, 'begin_compute_pass'):
             compute_pass_inner = self._inner.begin_compute_pass(descriptor)
-            return ComputePass(compute_pass_inner)
+            return ComputePass(compute_pass_inner, descriptor)
         else:
             raise NotImplementedError("Backend does not support begin_compute_pass")
 
@@ -54,9 +56,9 @@ class CommandEncoder:
 
     def copy_buffer_to_texture(
         self, 
-        source: Any, 
-        destination: Any, 
-        copy_size: Any
+        source: ImageCopyBuffer, 
+        destination: ImageCopyTexture, 
+        copy_size: Extent3d
     ) -> None:
         """Copy data from a buffer to a texture."""
         if hasattr(self._inner, 'copy_buffer_to_texture'):
@@ -66,9 +68,9 @@ class CommandEncoder:
 
     def copy_texture_to_buffer(
         self, 
-        source: Any, 
-        destination: Any, 
-        copy_size: Any
+        source: ImageCopyTexture, 
+        destination: ImageCopyBuffer, 
+        copy_size: Extent3d
     ) -> None:
         """Copy data from a texture to a buffer."""
         if hasattr(self._inner, 'copy_texture_to_buffer'):
@@ -78,9 +80,9 @@ class CommandEncoder:
 
     def copy_texture_to_texture(
         self, 
-        source: Any, 
-        destination: Any, 
-        copy_size: Any
+        source: ImageCopyTexture, 
+        destination: ImageCopyTexture, 
+        copy_size: Extent3d
     ) -> None:
         """Copy data from one texture to another."""
         if hasattr(self._inner, 'copy_texture_to_texture'):

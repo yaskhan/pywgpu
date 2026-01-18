@@ -50,7 +50,7 @@ async def main():
         return
     
     # Create a device and queue from the adapter
-    device = await adapter.request_device(pywgpu.DeviceDescriptor(
+    device, queue = await adapter.request_device(pywgpu.DeviceDescriptor(
         label=None,
         required_features=[],
         required_limits=pywgpu.Limits.downlevel_defaults(),
@@ -58,6 +58,7 @@ async def main():
         memory_hints=pywgpu.MemoryHints.memory_usage,
         trace=pywgpu.Trace.off(),
     ))
+
     
     # Create a shader module from our shader code
     shader_code = """
@@ -81,13 +82,14 @@ async def main():
         wgsl_code=shader_code,
     ))
     
-    # Create input data buffer
-    input_data_buffer = device.create_buffer(pywgpu.BufferDescriptor(
-        label=None,
-        size=len(args.numbers) * 4,  # f32 = 4 bytes
-        usage=[pywgpu.BufferUsages.STORAGE],
-        mapped_at_creation=False,
-    ))
+    # Create input data buffer and upload data
+    import struct
+    packed_input_data = struct.pack(f'{len(args.numbers)}f', *args.numbers)
+    input_data_buffer = device.create_buffer_init(
+        label="Input Buffer",
+        contents=packed_input_data,
+        usage=pywgpu.BufferUsages.STORAGE
+    )
     
     # Create output data buffer
     output_data_buffer = device.create_buffer(pywgpu.BufferDescriptor(
@@ -202,7 +204,8 @@ async def main():
     command_buffer = encoder.finish()
     
     # Submit work to queue
-    device.queue.submit([command_buffer])
+    queue.submit([command_buffer])
+
     
     # Wait for completion and read results
     await download_buffer.map_async(pywgpu.MapMode.READ)

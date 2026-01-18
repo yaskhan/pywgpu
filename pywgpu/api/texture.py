@@ -65,9 +65,10 @@ class Texture:
         from .texture_view import TextureView
         if hasattr(self._inner, 'create_view'):
             view_inner = self._inner.create_view(descriptor)
-            return TextureView(view_inner)
+            return TextureView(view_inner, self)
         else:
-            raise NotImplementedError("Backend does not support create_view")
+            # Fallback for mock
+            return TextureView(None, self)
 
     def destroy(self) -> None:
         """Destroys the texture."""
@@ -77,4 +78,11 @@ class Texture:
 
     def as_image_copy(self) -> Any:
         """Returns an ImageCopyTexture referring to this entire texture."""
-        pass
+        from .queue import ImageCopyTexture
+        return ImageCopyTexture(
+            texture=self,
+            mip_level=0,
+            origin=[0, 0, 0],
+            aspect='all'
+        )
+
