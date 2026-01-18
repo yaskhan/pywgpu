@@ -124,7 +124,8 @@ class PipelineCacheHeader:
             None if successful.
         """
         # Implementation depends on buffer size
-        pass
+        # For now, this is a placeholder that would write header to buffer
+        return None
 
 
 def validate_pipeline_cache(
@@ -178,4 +179,5 @@ def add_cache_header(
         validation_key: The validation key.
     """
     # Implementation depends on adapter info
-    pass
+    # For now, this is a placeholder that would add header to cache data
+    # In a real implementation, this would serialize the header into the buffer

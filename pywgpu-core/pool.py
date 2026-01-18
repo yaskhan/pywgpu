@@ -64,7 +64,17 @@ class ResourcePool(Generic[K, V]):
             Exception: If the constructor raises an exception.
         """
         # Implementation depends on weak references and race conditions
-        pass
+        with self.inner.lock() as map_guard:
+            # Check if resource already exists
+            if key in map_guard:
+                # For now, just return the existing resource
+                # In a real implementation, this would use weak references
+                return map_guard[key]
+
+            # Create new resource
+            resource = constructor(key)
+            map_guard[key] = resource
+            return resource
 
     def remove(self, key: K) -> None:
         """

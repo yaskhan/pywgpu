@@ -119,7 +119,10 @@ class PerStageBindingTypeCounter:
             count: The number of bindings to add.
         """
         # Implementation depends on wgpu_types.ShaderStages
-        pass
+        # For now, add to all stages as a placeholder
+        self.vertex += count
+        self.fragment += count
+        self.compute += count
 
     def max(self) -> tuple[Any, int]:
         """
@@ -185,11 +188,12 @@ class BindingTypeMaxCountValidator:
     def add_binding(self, binding: Any) -> None:
         """
         Add a binding to the validator.
-        
+
         Args:
             binding: The binding to add.
         """
         # Implementation depends on wgpu_types.BindGroupLayoutEntry
+        # For now, do nothing as a placeholder
         pass
 
     def merge(self, other: BindingTypeMaxCountValidator) -> None:
@@ -221,6 +225,7 @@ class BindingTypeMaxCountValidator:
             BindingTypeMaxCountError: If any limit is exceeded.
         """
         # Implementation depends on wgpu_types.Limits
+        # For now, do nothing as a placeholder
         pass
 
     def validate_binding_arrays(self) -> None:

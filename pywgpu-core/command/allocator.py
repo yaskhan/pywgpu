@@ -61,6 +61,10 @@ class CommandAllocator:
             else:
                 from .encoder import CommandEncoder
                 return CommandEncoder(device)
+                # Create a new encoder
+                # Implementation depends on HAL
+                # For now, return None as a placeholder
+                return None
 
     def release_encoder(self, encoder: Any) -> None:
         """

@@ -24,6 +24,15 @@ class TextureDescriptor:
 class Device:
     """
     Device reference / logic.
+
+    A Device represents a logical connection to a GPU, providing methods to
+    create resources like buffers, textures, and pipelines.
+
+    Attributes:
+        label: Human-readable label for debugging.
+        valid: Whether the device is valid (not lost).
+        features: Enabled features for this device.
+        limits: Limits for this device.
     """
     def __init__(self) -> None:
         self.features = 0

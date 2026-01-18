@@ -15,10 +15,13 @@ interface for resource management.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any, Generic, Optional, TypeVar
 
 from . import errors
 from .device import Device
+
+
+T = TypeVar("T")
 
 
 @dataclass
@@ -66,52 +69,44 @@ class ResourceType:
 class Labeled(ResourceType):
     """
     Resource with a label.
-    
+
     This trait provides methods for getting the label of a resource,
     which is useful for debugging and error messages.
-    
+
     Attributes:
         label: The label of the resource.
     """
 
     label: str = ""
 
-    def label(self) -> str:
-        """Get the label of the resource."""
-        return self.label
-
     def error_ident(self) -> ResourceErrorIdent:
         """Get a resource error identifier."""
         return ResourceErrorIdent(
             r#type=self.TYPE,
-            label=self.label
+            label=self.label,
         )
 
 
 class ParentDevice(Labeled):
     """
     Resource that has a parent device.
-    
+
     This trait provides methods for accessing the parent device and
     checking if resources are from the same device.
-    
+
     Attributes:
         device: The parent device.
     """
 
     device: Device
 
-    def device(self) -> Device:
-        """Get the parent device."""
-        return self.device
-
     def is_equal(self, other: Any) -> bool:
         """
         Check if this resource is equal to another resource.
-        
+
         Args:
             other: The other resource.
-        
+
         Returns:
             True if the resources are the same, False otherwise.
         """
@@ -120,14 +115,14 @@ class ParentDevice(Labeled):
     def same_device_as(self, other: Any) -> None:
         """
         Check if this resource is from the same device as another resource.
-        
+
         Args:
             other: The other resource.
-        
+
         Raises:
             DeviceError: If the resources are from different devices.
         """
-        if not self.is_equal(other.device()):
+        if not self.is_equal(other.device):
             raise errors.DeviceError(
                 f"Resource {self.error_ident()} is from a different device"
             )
@@ -135,10 +130,10 @@ class ParentDevice(Labeled):
     def same_device(self, device: Device) -> None:
         """
         Check if this resource is from the given device.
-        
+
         Args:
             device: The device to check.
-        
+
         Raises:
             DeviceError: If the resource is from a different device.
         """

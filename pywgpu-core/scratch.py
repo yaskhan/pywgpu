@@ -52,4 +52,5 @@ class ScratchBuffer:
         """Destroy the scratch buffer when garbage collected."""
         if self.raw is not None:
             # Implementation depends on HAL
-            pass
+            # In a real implementation, this would properly destroy the raw buffer
+            self.raw = None

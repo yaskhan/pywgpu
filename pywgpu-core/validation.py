@@ -116,15 +116,16 @@ class NumericType:
     def from_vertex_format(cls, format: Any) -> NumericType:
         """
         Create a NumericType from a vertex format.
-        
+
         Args:
             format: The vertex format.
-        
+
         Returns:
             The numeric type.
         """
         # Implementation depends on wgpu_types.VertexFormat
-        pass
+        # For now, return a default numeric type
+        return cls(dim=NumericDimension(), scalar=None)
 
 
 @dataclass
@@ -207,29 +208,31 @@ class Interface:
 def map_storage_format_to_naga(format: Any) -> Optional[Any]:
     """
     Map a wgpu texture format to a naga storage format.
-    
+
     Args:
         format: The wgpu texture format.
-    
+
     Returns:
         The naga storage format, or None if not supported.
     """
     # Implementation depends on wgpu_types.TextureFormat
-    pass
+    # For now, return None
+    return None
 
 
 def map_storage_format_from_naga(format: Any) -> Any:
     """
     Map a naga storage format to a wgpu texture format.
-    
+
     Args:
         format: The naga storage format.
-    
+
     Returns:
         The wgpu texture format.
     """
     # Implementation depends on naga.StorageFormat
-    pass
+    # For now, return None
+    return None
 
 
 class ShaderModule:
