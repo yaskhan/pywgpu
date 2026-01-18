@@ -28,7 +28,7 @@ async def main():
     print(f"Running on Adapter: {adapter.get_info()}")
     
     # Create a device and queue from the adapter
-    device = await adapter.request_device(pywgpu.DeviceDescriptor(
+    device, queue = await adapter.request_device(pywgpu.DeviceDescriptor(
         label=None,
         required_features=[],
         required_limits=pywgpu.Limits.default(),
@@ -36,6 +36,7 @@ async def main():
         memory_hints=pywgpu.MemoryHints.memory_usage,
         trace=pywgpu.Trace.off(),
     ))
+
     
     # 1. Create a vertex buffer
     print("\\n1. Creating vertex buffer...")
@@ -150,7 +151,8 @@ async def main():
     )
     
     command_buffer = command_encoder.finish()
-    device.queue.submit([command_buffer])
+    queue.submit([command_buffer])
+
     
     # Read back the data
     await read_buffer.map_async(pywgpu.MapMode.READ)

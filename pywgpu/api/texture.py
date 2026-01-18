@@ -77,4 +77,11 @@ class Texture:
 
     def as_image_copy(self) -> Any:
         """Returns an ImageCopyTexture referring to this entire texture."""
-        pass
+        from .queue import ImageCopyTexture
+        return ImageCopyTexture(
+            texture=self,
+            mip_level=0,
+            origin=[0, 0, 0],
+            aspect='all'
+        )
+

@@ -11,6 +11,10 @@ class BufferMapState(Enum):
     PENDING = 1
     MAPPED = 2
 
+class MapMode:
+    READ = 1
+    WRITE = 2
+
 class Buffer:
     """
     Handle to a GPU-accessible buffer.
@@ -50,9 +54,17 @@ class Buffer:
         Returns:
             A BufferSlice representing the specified range.
         """
-        pass
+        if end is None:
+            end = self.size
+        return BufferSlice(self, start, end - start)
 
-    def map_async(self, mode: int, start: int = 0, end: Optional[int] = None, callback: Any = None) -> None:
+    async def map_async(
+        self, 
+        mode: int, 
+        start: int = 0, 
+        end: Optional[int] = None, 
+        callback: Any = None
+    ) -> None:
         """
         Maps the buffer or a range of it asynchronously.
         
@@ -62,7 +74,11 @@ class Buffer:
             end: End offset.
             callback: Function called when mapping completes.
         """
-        pass
+        if hasattr(self._inner, 'map_async'):
+            await self._inner.map_async(mode, start, end, callback)
+        else:
+            # Fallback for mock/placeholder
+            pass
 
     def get_mapped_range(self, start: int = 0, end: Optional[int] = None) -> memoryview:
         """
@@ -70,11 +86,19 @@ class Buffer:
         
         The buffer must be mapped.
         """
-        pass
+        if hasattr(self._inner, 'get_mapped_range'):
+            return self._inner.get_mapped_range(start, end)
+        else:
+            # Return an empty memoryview as fallback
+            return memoryview(bytearray(0))
 
     def unmap(self) -> None:
         """Unmaps the buffer, making it accessible to the GPU again."""
-        pass
+        if hasattr(self._inner, 'unmap'):
+            self._inner.unmap()
+        else:
+            pass
+
 
     def destroy(self) -> None:
         """Destroys the buffer."""
@@ -94,10 +118,11 @@ class BufferSlice:
         self.offset = offset
         self.size = size
 
-    def map_async(self, mode: int, callback: Any = None) -> None:
+    async def map_async(self, mode: int, callback: Any = None) -> None:
         """Maps this slice asynchronously."""
-        pass
+        await self.buffer.map_async(mode, self.offset, self.size, callback)
 
     def get_mapped_range(self) -> memoryview:
         """Returns a view into the mapped range of this slice."""
-        pass
+        return self.buffer.get_mapped_range(self.offset, self.size)
+

@@ -73,10 +73,18 @@ class Queue:
             data_layout: Layout of the source data (stride, rows, etc.).
             size: Size of the write.
         """
-        pass
+        if hasattr(self._inner, 'write_texture'):
+            self._inner.write_texture(texture, data, data_layout, size)
+        else:
+            raise NotImplementedError("Backend does not support write_texture")
 
     def on_submitted_work_done(self, callback: Any) -> None:
         """
         Registers a callback to be invoked when submitted work is done.
         """
-        pass
+        if hasattr(self._inner, 'on_submitted_work_done'):
+            self._inner.on_submitted_work_done(callback)
+        else:
+            # Fallback
+            pass
+

@@ -27,7 +27,16 @@ class Surface:
         Returns:
             SurfaceCapabilities object containing supported formats, present modes, etc.
         """
-        pass
+        if hasattr(self._inner, 'get_capabilities'):
+            return self._inner.get_capabilities(adapter._inner)
+        else:
+            # Return some basic default capabilities for mock purposes
+            return {
+                "formats": ["rgba8unorm"],
+                "present_modes": ["fifo"],
+                "alpha_modes": ["opaque"],
+            }
+
 
     def get_current_texture(self) -> 'SurfaceTexture':
         """

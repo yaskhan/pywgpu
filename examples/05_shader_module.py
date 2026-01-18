@@ -27,7 +27,7 @@ async def main():
     print(f"Running on Adapter: {adapter.get_info()}")
     
     # Create a device and queue from the adapter
-    device = await adapter.request_device(pywgpu.DeviceDescriptor(
+    device, queue = await adapter.request_device(pywgpu.DeviceDescriptor(
         label=None,
         required_features=[],
         required_limits=pywgpu.Limits.default(),
@@ -35,6 +35,7 @@ async def main():
         memory_hints=pywgpu.MemoryHints.memory_usage,
         trace=pywgpu.Trace.off(),
     ))
+
     
     # 1. Create a simple vertex and fragment shader pair
     print("\\n1. Creating basic vertex and fragment shaders...")

@@ -50,7 +50,7 @@ async def main():
         return
     
     # Create a device and queue from the adapter
-    device = await adapter.request_device(pywgpu.DeviceDescriptor(
+    device, queue = await adapter.request_device(pywgpu.DeviceDescriptor(
         label=None,
         required_features=[],
         required_limits=pywgpu.Limits.downlevel_defaults(),
@@ -58,6 +58,7 @@ async def main():
         memory_hints=pywgpu.MemoryHints.memory_usage,
         trace=pywgpu.Trace.off(),
     ))
+
     
     # Create a shader module from our shader code
     shader_code = """
@@ -202,7 +203,8 @@ async def main():
     command_buffer = encoder.finish()
     
     # Submit work to queue
-    device.queue.submit([command_buffer])
+    queue.submit([command_buffer])
+
     
     # Wait for completion and read results
     await download_buffer.map_async(pywgpu.MapMode.READ)
