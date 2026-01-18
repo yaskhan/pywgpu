@@ -70,7 +70,7 @@ class Image:
     def __init__(self, dim: ImageDimension, arrayed: bool, class_: str) -> None:
         self.dim = dim
         self.arrayed = arrayed
-        self.class = class_
+        self.class_ = class_
         self.format = None
 
 class TypeInner(Enum):

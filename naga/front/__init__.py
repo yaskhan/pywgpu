@@ -1,5 +1,5 @@
 from typing import Any, Protocol, TypeVar, Generic, Optional
-from ...ir import Module
+from ..ir import Module
 
 T = TypeVar('T')
 

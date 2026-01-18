@@ -3,6 +3,7 @@
 *~
 *.swn
 *.pyc
+__pycache__/
 .coverage
 .ropeproject
 *.egg-info
