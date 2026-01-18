@@ -1,9 +1,20 @@
+from __future__ import annotations
+from typing import Any
+from .buffer import BufferTracker
+from .texture import TextureTracker
+
 class Tracker:
     """
-    Tracks usage of resources (buffers, textures).
+    A collection of all resource trackers.
+    
+    This class orchestrates tracking for different types of resources
+    (buffers, textures, etc.) within a command buffer or device.
     """
     def __init__(self) -> None:
-        self.resources = []
+        self.buffers = BufferTracker()
+        self.textures = TextureTracker()
 
-    def track(self, resource) -> None:
-        self.resources.append(resource)
+    def set_size(self, buffer_size: int, texture_size: int) -> None:
+        """Sets the size of the internal trackers."""
+        self.buffers.set_size(buffer_size)
+        self.textures.set_size(texture_size)

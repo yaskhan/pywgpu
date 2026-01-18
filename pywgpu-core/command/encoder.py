@@ -12,6 +12,8 @@ class CommandBuffer:
     label: str
     commands: List[Any]
 
+from ..track import Tracker
+
 class CommandEncoder:
     """
     A command encoder for recording GPU commands.
@@ -21,7 +23,7 @@ class CommandEncoder:
         self.label = label
         self._status = "Recording"
         self._commands: List[Any] = []
-        self.tracker = None # Tracker setup would go here
+        self.tracker = Tracker()
         self.buffer_memory_init_actions: List[Any] = []
         self.texture_memory_actions: Any = None # CommandBufferTextureMemoryActions()
 
