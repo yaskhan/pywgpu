@@ -1,5 +1,5 @@
 from typing import List, Any, Iterator, Optional, Tuple
-from span import Span
+from ..span import Span
 
 class Block:
     """
@@ -25,11 +25,11 @@ class Block:
     @classmethod
     def with_capacity(cls, capacity: int) -> 'Block':
         """Create a block with a pre-allocated capacity."""
+        _ = capacity
         block = cls()
         block.body = []
         block.span_info = []
-        block.body.reserve(capacity)
-        block.span_info.reserve(capacity)
+        # Python lists don't have reserve(), but we can pre-allocate if needed.
         return block
 
     def push(self, statement: Any, span: Span) -> None:
