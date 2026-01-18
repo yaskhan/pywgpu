@@ -1,4 +1,4 @@
-from typing import Generic, TypeVar, Dict, Optional, List, Set, Iterator
+from typing import Generic, TypeVar, Dict, Optional, List, Set, Iterator, Any
 from dataclasses import dataclass
 
 T = TypeVar('T')
