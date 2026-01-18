@@ -61,7 +61,8 @@ class CommandAllocator:
             else:
                 # Create a new encoder
                 # Implementation depends on HAL
-                pass
+                # For now, return None as a placeholder
+                return None
 
     def release_encoder(self, encoder: Any) -> None:
         """

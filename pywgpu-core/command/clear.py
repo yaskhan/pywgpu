@@ -80,6 +80,7 @@ def clear_buffer(
         ClearError: If clearing fails.
     """
     # Implementation depends on HAL
+    # For now, do nothing as a placeholder
     pass
 
 
@@ -100,6 +101,7 @@ def clear_texture_cmd(
         ClearError: If clearing fails.
     """
     # Implementation depends on HAL
+    # For now, do nothing as a placeholder
     pass
 
 
@@ -130,4 +132,5 @@ def clear_texture(
         ClearError: If clearing fails.
     """
     # Implementation depends on HAL
+    # For now, do nothing as a placeholder
     pass
