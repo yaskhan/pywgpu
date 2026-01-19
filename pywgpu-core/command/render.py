@@ -46,6 +46,26 @@ from .query import (
     write_timestamp
 )
 
+try:
+    from ..track import Tracker
+except ImportError:
+    # Minimal Tracker for type checking/safe attribute access
+    class Tracker:
+        def __init__(self):
+            class Dummy:
+                def merge_scope(self, other): return []
+                def set_size(self, size): pass
+            self.buffers = Dummy()
+            self.textures = Dummy()
+            self.render_pipelines = Dummy()
+            self.compute_pipelines = Dummy()
+            self.bundles = Dummy()
+            self.bind_groups = Dummy()
+            self.query_sets = Dummy()
+            self.views = Dummy()
+        def merge_scope(self, other): return {'buffers': [], 'textures': []}
+
+
 
 # ============================================================================
 # Enums and Constants
@@ -198,6 +218,26 @@ class RenderPassErrorInner(Exception):
     """Inner error type for render pass errors."""
     DEVICE = "Device error"
     COLOR_ATTACHMENT = "Color attachment error"
+
+
+class EncoderStateLocked(Exception):
+    """Encoder is already locked by a pass."""
+    pass
+
+
+class EncoderStateEnded(Exception):
+    """Encoder has already been finished."""
+    pass
+
+
+class EncoderStateSubmitted(Exception):
+    """Encoder has already been submitted."""
+    pass
+
+
+class EncoderStateInvalid(Exception):
+    """Encoder is in an invalid state."""
+    pass
     INVALID_ATTACHMENT = "Invalid attachment"
     ENCODER_STATE = "Encoder state error"
     INVALID_PARENT_ENCODER = "Parent encoder is invalid"
@@ -2252,41 +2292,53 @@ class Global:
                 pass
         
         # Lock encoder data
-        # cmd_buf_data = cmd_enc.data.lock()
-        
-        # Try to lock the encoder
-        # This transitions: Open -> Locked
+        # In this implementation, we directly interact with the encoder's status
         try:
-            # result = cmd_buf_data.lock_encoder()
-            # if result is Err:
-            #     Handle different error cases
-            pass
+            if not cmd_enc:
+                raise EncoderStateInvalid("Command encoder not found")
+            
+            status = getattr(cmd_enc, '_status', 'Recording')
+            if status == 'Locked':
+                raise EncoderStateLocked("Command encoder is already locked by another pass")
+            elif status == 'Finished':
+                raise EncoderStateEnded("Command encoder has already been finished")
+            elif status == 'Submitted':
+                raise EncoderStateSubmitted("Command encoder has already been submitted")
+            elif status == 'Invalid':
+                raise EncoderStateInvalid("Command encoder is in an invalid state")
+            
+            # Successfully "locked" the encoder
+            cmd_enc._status = 'Locked'
+            
         except Exception as err:
             # Encoder is in invalid state
             # Create invalid pass and return error
             error_name = type(err).__name__
             
-            if error_name == 'EncoderStateLocked':
+            if isinstance(err, EncoderStateLocked):
                 # Attempting to open pass while encoder locked
                 # Invalidates encoder but doesn't generate validation error
-                # cmd_buf_data.invalidate(err)
-                render_pass = RenderPass(parent=cmd_enc, desc=desc)
+                if hasattr(cmd_enc, 'invalidate'):
+                    cmd_enc.invalidate(err)
+                render_pass = RenderPass(cmd_enc, desc)
                 render_pass.base = None  # Invalid
                 return (render_pass, None)
             
-            elif error_name in ['EncoderStateEnded', 'EncoderStateSubmitted']:
+            elif isinstance(err, (EncoderStateEnded, EncoderStateSubmitted)):
                 # Attempting to open pass after encoder ended
                 # Generates immediate validation error
-                render_pass = RenderPass(parent=cmd_enc, desc=desc)
+                render_pass = RenderPass(cmd_enc, desc)
                 render_pass.base = None  # Invalid
                 return (render_pass, err)
             
-            elif error_name == 'EncoderStateInvalid':
+            elif isinstance(err, EncoderStateInvalid):
                 # Encoder is invalid, but we can still create pass
-                # (it will be invalid too, but no point storing commands)
-                render_pass = RenderPass(parent=cmd_enc, desc=desc)
+                render_pass = RenderPass(cmd_enc, desc)
                 render_pass.base = None  # Invalid
                 return (render_pass, None)
+            else:
+                # Unexpected error, re-raise or handle as invalid
+                raise err
         
         # Encoder successfully locked, now validate descriptor
         # This is the fill_arc_desc function from Rust
@@ -2498,15 +2550,13 @@ class Global:
         # Clear parent to prevent double-end
         pass_obj.parent = None
         
-        # Lock encoder data
-        # cmd_buf_data = cmd_enc.data.lock()
-        
-        # Unlock the encoder
-        # This transitions encoder from Locked -> Open state
-        # After this, new passes can be created
+        # Lock encoder data (in Python we call the unlock method)
         try:
-            # cmd_buf_data.unlock_encoder()
-            pass
+            if hasattr(cmd_enc, '_unlock_encoder'):
+                cmd_enc._unlock_encoder()
+            else:
+                # Fallback if method not present
+                cmd_enc._status = "Recording"
         except Exception as e:
             # If unlock fails, encoder is in bad state
             raise RuntimeError(f"Failed to unlock encoder: {e}")
@@ -2550,11 +2600,8 @@ class Global:
             raise RuntimeError(f"Failed to create RunRenderPass command: {e}")
         
         # Push command to encoder's command buffer
-        # cmd_buf_data.push(command)
-        # or
-        # cmd_buf_data.push_with(|| -> Result<_, RenderPassError> {
-        #     Ok(ArcCommand::RunRenderPass { ... })
-        # })
+        if hasattr(cmd_enc, '_commands'):
+            cmd_enc._commands.append(command)
         
         # Clear pass attachments to prevent reuse
         pass_obj.color_attachments = []
@@ -3749,6 +3796,13 @@ def encode_render_pass(
     pending_query_resets = {}
     pending_discard_init_fixups = []
     
+    # Initialize local tracker for the pass
+    # This acts as a UsageScope in wgpu-core
+    tracker = Tracker()
+    if hasattr(parent_state, 'tracker'):
+        # Initialize sizes from parent
+        pass # Tracker.__init__ handles basic setup
+    
     # Start the render pass - validates attachments and initializes HAL
     info = RenderPassInfo.start(
         device=device,
@@ -3758,7 +3812,7 @@ def encode_render_pass(
         timestamp_writes=timestamp_writes,
         occlusion_query_set=occlusion_query_set,
         encoder=raw_encoder,
-        trackers=parent_state.tracker if hasattr(parent_state, 'tracker') else None,
+        trackers=tracker,
         texture_memory_actions=parent_state.texture_memory_actions if hasattr(parent_state, 'texture_memory_actions') else None,
         pending_query_resets=pending_query_resets,
         pending_discard_init_fixups=pending_discard_init_fixups,
@@ -3795,7 +3849,7 @@ def encode_render_pass(
         active_occlusion_query=None,
         active_pipeline_statistics_query=None,
         device=device,
-        tracker=parent_state.tracker if hasattr(parent_state, 'tracker') else None,
+        tracker=tracker,
         raw_encoder=raw_encoder,
         reset_state=None,
     )
@@ -3940,16 +3994,33 @@ def encode_render_pass(
     )
     
     # Update resource tracking
-    # parent_state.tracker.buffers.merge(...)
-    # parent_state.tracker.textures.merge(...)
+    # Merge the local pass tracker back into the parent command encoder's tracker
+    if hasattr(parent_state, 'tracker'):
+        transitions = parent_state.tracker.merge_scope(tracker)
+        # These transitions would be used to generate barriers
+        # In this implementation, barriers are handled at submit time or here
+        pass
     
     # Process pending query resets
-    # for query_set, indices in pending_query_resets.items():
-    #     ...
+    # These are queries that must be reset (cleared) before their first use in the pass
+    if raw_encoder:
+        for query_set, indices in pending_query_resets.items():
+            # In HAL, we would call reset_query_set
+            if hasattr(raw_encoder, 'reset_query_set'):
+                # Assuming indices is a combined range or we iterate
+                # This is simplified: Rust uses a more complex bitmask or range list
+                for index in indices:
+                    raw_encoder.reset_query_set(query_set, index, 1)
     
     # Process pending discard fixups
-    # for fixup in pending_discard_init_fixups:
-    #     ...
+    # These are textures that were in DISCARD state and now need explicit initialization
+    # if they were partially updated or need to be transitioned to a stable state.
+    if pending_discard_init_fixups:
+        for fixup in pending_discard_init_fixups:
+            # fixup is likely a TextureInitRange or similar
+            # In a full implementation, we would register these in the command buffer's
+            # initialization tracker.
+            pass
 
 
 

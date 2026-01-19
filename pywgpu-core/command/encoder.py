@@ -57,6 +57,11 @@ class CommandEncoder:
         self._status = "Locked"
         return ComputePass(self, desc)
 
+    def invalidate(self, error: Exception):
+        """Invalidate the encoder due to an error."""
+        self._status = "Invalid"
+        self._error = error
+
     def _unlock_encoder(self):
         """Unlock the encoder (called by passes when they end)."""
         if self._status != "Locked":
