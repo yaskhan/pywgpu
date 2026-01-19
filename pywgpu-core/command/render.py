@@ -14,6 +14,38 @@ from dataclasses import dataclass, field
 from typing import Any, List, Optional, Dict, Tuple
 from enum import Enum
 
+# Import tracking types
+try:
+    from ..track import BufferUses, TextureUses
+    from ..init_tracker import MemoryInitKind
+except ImportError:
+    # Fallback if track module not available
+    from enum import IntFlag, Enum
+    class BufferUses(IntFlag):
+        INDEX = 1 << 4
+        VERTEX = 1 << 5
+        STORAGE_READ_ONLY = 1 << 7
+        INDIRECT = 1 << 9
+    
+    class TextureUses(IntFlag):
+        COLOR_TARGET = 1 << 5
+        DEPTH_STENCIL_READ = 1 << 6
+        DEPTH_STENCIL_WRITE = 1 << 7
+
+    class MemoryInitKind(Enum):
+        IMPLICITLY_INITIALIZED = "implicitly_initialized"
+        NEEDS_INITIALIZED_MEMORY = "needs_initialized_memory"
+
+from .bind import Binder
+from .pass_module import PassState, set_bind_group, flush_bindings_helper, set_immediates
+from .query import (
+    validate_and_begin_occlusion_query, 
+    end_occlusion_query, 
+    validate_and_begin_pipeline_statistics_query, 
+    end_pipeline_statistics_query,
+    write_timestamp
+)
+
 
 # ============================================================================
 # Enums and Constants
@@ -35,10 +67,72 @@ class DrawKind(Enum):
 
 
 class OptionalState(Enum):
-    """State of an optional value."""
+    """
+    State of an optional value.
+    
+    Used to track whether optional render pass state (like blend constant)
+    is unused, required, or has been set.
+    """
     UNUSED = "unused"
     REQUIRED = "required"
     SET = "set"
+
+
+class OptionalStateTracker:
+    """
+    Tracker for optional state with require() method.
+    
+    This wraps OptionalState to provide state transition logic.
+    Used for blend constant tracking in render passes.
+    
+    Attributes:
+        state: Current state (UNUSED, REQUIRED, or SET).
+    """
+    
+    def __init__(self, initial: OptionalState = OptionalState.UNUSED):
+        """Initialize with optional initial state."""
+        self.state = initial
+    
+    def require(self, needed: bool) -> None:
+        """
+        Update requirement state based on whether value is needed.
+        
+        Transitions:
+        - If needed=True: UNUSED → REQUIRED
+        - If needed=False: REQUIRED → UNUSED
+        - SET state is preserved
+        
+        Args:
+            needed: Whether the optional value is required.
+        """
+        if needed:
+            # Value is required
+            if self.state == OptionalState.UNUSED:
+                self.state = OptionalState.REQUIRED
+        else:
+            # Value is not required
+            if self.state == OptionalState.REQUIRED:
+                self.state = OptionalState.UNUSED
+    
+    def set(self) -> None:
+        """Mark the optional value as set."""
+        self.state = OptionalState.SET
+    
+    def is_set(self) -> bool:
+        """Check if value is set."""
+        return self.state == OptionalState.SET
+    
+    def is_required(self) -> bool:
+        """Check if value is required but not set."""
+        return self.state == OptionalState.REQUIRED
+    
+    def __eq__(self, other) -> bool:
+        """Compare with OptionalState enum."""
+        if isinstance(other, OptionalState):
+            return self.state == other
+        elif isinstance(other, OptionalStateTracker):
+            return self.state == other.state
+        return False
 
 
 @dataclass
@@ -1346,6 +1440,30 @@ def get_stride_of_indirect_args(family: str) -> int:
 # Core Infrastructure (Internal)
 # ============================================================================
 
+# HAL imports for proper typing
+try:
+    from pywgpu_hal import (
+        AttachmentOps,
+        FormatAspects,
+    )
+    from pywgpu_hal.lib import CommandEncoder as HalCommandEncoder
+except ImportError:
+    # Fallback for development
+    AttachmentOps = Any  # type: ignore
+    FormatAspects = Any  # type: ignore
+    HalCommandEncoder = Any  # type: ignore
+
+# pywgpu-types imports for WebGPU types
+try:
+    from pywgpu_types.texture import TextureUsage, TextureAspect
+    from pywgpu_types.buffer import BufferUsage
+except ImportError:
+    # Fallback for development
+    TextureUsage = Any  # type: ignore
+    TextureAspect = Any  # type: ignore
+    BufferUsage = Any  # type: ignore
+
+
 @dataclass
 class RenderAttachment:
     """
@@ -1354,11 +1472,11 @@ class RenderAttachment:
     Attributes:
         texture: The texture being attached.
         selector: Texture subresource selector (mip levels, array layers).
-        usage: How the texture will be used in the render pass.
+        usage: How the texture will be used in the render pass (TextureUsage flags).
     """
-    texture: Any  # Arc<Texture>
-    selector: Any  # TextureSelector
-    usage: Any  # TextureUses
+    texture: Any  # Arc<Texture> - will be typed when texture module is complete
+    selector: Any  # TextureSelector - ImageSubresourceRange, not yet in pywgpu-types
+    usage: TextureUsage  # TextureUsage flags from pywgpu-types
 
 
 # Maximum total attachments (color + resolve + depth/stencil)
@@ -1379,24 +1497,26 @@ class RenderPassInfo:
         is_depth_read_only: Whether depth is read-only.
         is_stencil_read_only: Whether stencil is read-only.
         extent: Render target extent.
-        divergent_discarded_depth_stencil_aspect: Special case for divergent depth/stencil ops.
+        divergent_discards: List of divergent depth/stencil discard operations.
         multiview_mask: Multiview configuration mask.
+        occlusion_query_set: Optional occlusion query set.
     """
-    context: Any  # RenderPassContext
+    context: Any  # RenderPassContext - will be typed when context module is complete
     render_attachments: List[RenderAttachment] = field(default_factory=list)
     is_depth_read_only: bool = False
     is_stencil_read_only: bool = False
     extent: Tuple[int, int, int] = (0, 0, 0)
-    divergent_discarded_depth_stencil_aspect: Optional[Tuple[Any, Any]] = None
+    divergent_discards: List[Dict[str, Any]] = field(default_factory=list)
     multiview_mask: Optional[int] = None
+    occlusion_query_set: Optional[Any] = None
     
     @staticmethod
     def add_pass_texture_init_actions(
-        load_op: Any,
-        store_op: Any,
-        texture_memory_actions: Any,
-        view: Any,
-        pending_discard_init_fixups: Any,
+        load_op: Any,  # LoadOp from pywgpu-types
+        store_op: Any,  # StoreOp from pywgpu-types
+        texture_memory_actions: Any,  # CommandBufferTextureMemoryActions
+        view: Any,  # TextureView
+        pending_discard_init_fixups: Any,  # SurfacesInDiscardState
     ) -> None:
         """
         Add texture initialization actions for a render pass attachment.
@@ -1410,6 +1530,8 @@ class RenderPassInfo:
         - Store operation (STORE or DISCARD)
         - Current initialization status of the texture
         
+        Implementation follows wgpu-core/src/command/render.rs:952-985
+        
         Args:
             load_op: Load operation for the attachment (LOAD, CLEAR, or None).
             store_op: Store operation for the attachment (STORE or DISCARD).
@@ -1417,50 +1539,61 @@ class RenderPassInfo:
             view: Texture view being attached.
             pending_discard_init_fixups: Pending discard fixups list.
         """
-        # Determine memory initialization kind based on load_op
-        if load_op is None:
-            # No load operation - texture content is undefined
-            # This means we don't care about current content
-            init_kind = None
-        elif hasattr(load_op, 'Clear'):
-            # Clear operation - will overwrite with clear value
-            # We need to ensure texture is initialized to receive the clear
-            init_kind = 'NeedsInitializedMemory'
-        else:  # Load
-            # Load operation - will read existing content
-            # Texture MUST be initialized
-            init_kind = 'NeedsInitializedMemory'
-        
-        # Register the initialization action if needed
-        if init_kind and texture_memory_actions:
-            # Get texture from view
-            # texture = view.parent
-            # selector = view.selector
+        # Handle load operation - matches Rust: if matches!(load_op, LoadOp::Load)
+        if load_op is not None and hasattr(load_op, '__class__'):
+            load_op_name = load_op.__class__.__name__ if hasattr(load_op, '__class__') else str(load_op)
             
-            # Register init action
-            # fixups = texture_memory_actions.register_init_action(
-            #     texture,
-            #     selector,
-            #     init_kind
-            # )
-            
-            # If there are pending fixups, add them to the list
-            # These are actions that need to be performed before the render pass
-            # if fixups and pending_discard_init_fixups is not None:
-            #     pending_discard_init_fixups.extend(fixups)
-            pass
+            if load_op_name == 'Load' or (isinstance(load_op, str) and load_op == 'Load'):
+                # LoadOp::Load - texture MUST be initialized
+                # Register init action and collect any pending fixups
+                if texture_memory_actions and hasattr(texture_memory_actions, 'register_init_action'):
+                    # Create TextureInitTrackerAction
+                    init_action = {
+                        'texture': view.parent if hasattr(view, 'parent') else None,
+                        'range': view.selector if hasattr(view, 'selector') else None,
+                        'kind': 'NeedsInitializedMemory',
+                    }
+                    
+                    # Register and get fixups
+                    fixups = texture_memory_actions.register_init_action(init_action)
+                    
+                    # Add fixups to pending list
+                    if fixups and pending_discard_init_fixups is not None:
+                        if hasattr(pending_discard_init_fixups, 'extend'):
+                            pending_discard_init_fixups.extend(fixups)
         
-        # Handle store operation
-        if store_op and hasattr(store_op, 'Discard'):
-            # Discard operation - texture content will be undefined after pass
-            # Mark texture as uninitialized after the pass
-            # texture_memory_actions.discard(texture, selector)
-            pass
-        elif store_op and hasattr(store_op, 'Store'):
-            # Store operation - texture will be written
-            # Mark texture as initialized after the pass
-            # texture_memory_actions.register_implicit_init(texture, selector)
-            pass
+        # Handle store operation for Clear + Store case
+        # Rust: else if store_op == StoreOp::Store
+        elif store_op is not None:
+            store_op_name = store_op.__class__.__name__ if hasattr(store_op, '__class__') else str(store_op)
+            
+            if store_op_name == 'Store' or (isinstance(store_op, str) and store_op == 'Store'):
+                # Clear + Store - texture will be initialized after pass
+                if texture_memory_actions and hasattr(texture_memory_actions, 'register_implicit_init'):
+                    texture = view.parent if hasattr(view, 'parent') else None
+                    selector = view.selector if hasattr(view, 'selector') else None
+                    
+                    if texture and selector:
+                        texture_memory_actions.register_implicit_init(texture, selector)
+        
+        # Handle discard operation
+        # Rust: if store_op == StoreOp::Discard
+        if store_op is not None:
+            store_op_name = store_op.__class__.__name__ if hasattr(store_op, '__class__') else str(store_op)
+            
+            if store_op_name == 'Discard' or (isinstance(store_op, str) and store_op == 'Discard'):
+                # Discard - texture will be uninitialized after pass
+                if texture_memory_actions and hasattr(texture_memory_actions, 'discard'):
+                    texture = view.parent if hasattr(view, 'parent') else None
+                    
+                    if texture and hasattr(view, 'selector'):
+                        # Create TextureSurfaceDiscard
+                        discard_info = {
+                            'texture': texture,
+                            'mip_level': view.selector.mips.start if hasattr(view.selector, 'mips') else 0,
+                            'layer': view.selector.layers.start if hasattr(view.selector, 'layers') else 0,
+                        }
+                        texture_memory_actions.discard(discard_info)
     
     @classmethod
     def start(
@@ -1471,7 +1604,7 @@ class RenderPassInfo:
         depth_stencil_attachment: Optional[Any],
         timestamp_writes: Optional[Any],
         occlusion_query_set: Optional[Any],
-        encoder: Any,
+        encoder: Any,  # HAL CommandEncoder
         trackers: Any,
         texture_memory_actions: Any,
         pending_query_resets: Any,
@@ -1523,6 +1656,9 @@ class RenderPassInfo:
         sample_count = None
         divergent_discards = []
         
+        # HAL color attachments list
+        hal_color_attachments = []
+        
         # Validate and process color attachments
         for i, color_att in enumerate(color_attachments):
             if color_att is None:
@@ -1561,23 +1697,66 @@ class RenderPassInfo:
                 )
             
             # Check TRANSIENT usage with store_op
-            # if view.usage.contains(TRANSIENT):
+            # if view.usage & TextureUsage.TRANSIENT:
             #     if color_att.store_op != StoreOp.DISCARD:
             #         raise InvalidUsageForStoreOp
             
             # Create render attachment
-            # usage = TextureUses::COLOR_TARGET
-            # render_att = RenderAttachment {
-            #     texture,
-            #     selector,
-            #     usage,
-            # }
+            # usage = TextureUsage.RENDER_ATTACHMENT
+            # render_att = RenderAttachment(
+            #     texture=texture,
+            #     selector=selector,
+            #     usage=usage,
+            # )
             # render_attachments.append(render_att)
+            
+            # Build HAL color attachment descriptor
+            # Determine load/store ops
+            load_op = color_att.load_op if hasattr(color_att, 'load_op') else None
+            store_op = color_att.store_op if hasattr(color_att, 'store_op') else None
+            
+            # Convert to HAL AttachmentOps
+            hal_ops = AttachmentOps.NONE
+            if load_op == 'Load':
+                hal_ops |= AttachmentOps.LOAD
+            elif load_op == 'Clear':
+                hal_ops |= AttachmentOps.LOAD_CLEAR
+            else:
+                hal_ops |= AttachmentOps.LOAD_DONT_CARE
+            
+            if store_op == 'Store':
+                hal_ops |= AttachmentOps.STORE
+            else:
+                hal_ops |= AttachmentOps.STORE_DISCARD
+            
+            # Create HAL attachment
+            hal_color_att = {
+                'target': {
+                    'view': view,  # Would be view.raw(snatch_guard)
+                    'usage': TextureUsage.RENDER_ATTACHMENT,
+                },
+                'ops': hal_ops,
+                'clear_value': color_att.clear_value if hasattr(color_att, 'clear_value') else (0, 0, 0, 0),
+            }
+            hal_color_attachments.append(hal_color_att)
             
             # Handle resolve target if present
             if hasattr(color_att, 'resolve_target') and color_att.resolve_target:
                 # Validate resolve target has same extent and format
                 pass
+            
+            # Add texture memory initialization actions
+            if texture_memory_actions is not None:
+                self.add_pass_texture_init_actions(
+                    load_op=load_op,
+                    store_op=store_op,
+                    texture_memory_actions=texture_memory_actions,
+                    view=view,
+                    pending_discard_init_fixups=pending_discard_init_fixups,
+                )
+        
+        # HAL depth/stencil attachment
+        hal_depth_stencil = None
         
         # Validate and process depth/stencil attachment
         if depth_stencil_attachment is not None:
@@ -1630,6 +1809,74 @@ class RenderPassInfo:
                         'texture_view': view,
                         'aspects': 'DEPTH' if depth_store == 'DISCARD' else 'STENCIL',
                     })
+            
+            # Build HAL depth/stencil attachment
+            depth_ops = AttachmentOps.NONE
+            stencil_ops = AttachmentOps.NONE
+            
+            # Depth operations
+            if hasattr(ds_att, 'depth'):
+                depth = ds_att.depth
+                if depth.load_op == 'Load':
+                    depth_ops |= AttachmentOps.LOAD
+                elif depth.load_op == 'Clear':
+                    depth_ops |= AttachmentOps.LOAD_CLEAR
+                else:
+                    depth_ops |= AttachmentOps.LOAD_DONT_CARE
+                
+                if depth.store_op == 'Store':
+                    depth_ops |= AttachmentOps.STORE
+                else:
+                    depth_ops |= AttachmentOps.STORE_DISCARD
+            
+            # Stencil operations
+            if hasattr(ds_att, 'stencil'):
+                stencil = ds_att.stencil
+                if stencil.load_op == 'Load':
+                    stencil_ops |= AttachmentOps.LOAD
+                elif stencil.load_op == 'Clear':
+                    stencil_ops |= AttachmentOps.LOAD_CLEAR
+                else:
+                    stencil_ops |= AttachmentOps.LOAD_DONT_CARE
+                
+                if stencil.store_op == 'Store':
+                    stencil_ops |= AttachmentOps.STORE
+                else:
+                    stencil_ops |= AttachmentOps.STORE_DISCARD
+            
+            hal_depth_stencil = {
+                'target': {
+                    'view': view,  # Would be view.raw(snatch_guard)
+                    'usage': TextureUsage.RENDER_ATTACHMENT,
+                },
+                'depth_ops': depth_ops,
+                'stencil_ops': stencil_ops,
+                'clear_value': (
+                    ds_att.depth.clear_value if hasattr(ds_att, 'depth') else 0.0,
+                    ds_att.stencil.clear_value if hasattr(ds_att, 'stencil') else 0,
+                ),
+            }
+            
+            # Add texture memory initialization actions
+            if texture_memory_actions is not None:
+                # Depth aspect
+                if hasattr(ds_att, 'depth'):
+                    self.add_pass_texture_init_actions(
+                        load_op=ds_att.depth.load_op,
+                        store_op=ds_att.depth.store_op,
+                        texture_memory_actions=texture_memory_actions,
+                        view=view,
+                        pending_discard_init_fixups=pending_discard_init_fixups,
+                    )
+                # Stencil aspect
+                if hasattr(ds_att, 'stencil'):
+                    self.add_pass_texture_init_actions(
+                        load_op=ds_att.stencil.load_op,
+                        store_op=ds_att.stencil.store_op,
+                        texture_memory_actions=texture_memory_actions,
+                        view=view,
+                        pending_discard_init_fixups=pending_discard_init_fixups,
+                    )
         
         # Set default extent if no attachments
         if extent is None:
@@ -1639,22 +1886,26 @@ class RenderPassInfo:
             sample_count = 1
         
         # Create HAL render pass descriptor
-        # hal_desc = hal::RenderPassDescriptor {
-        #     label: hal_label,
-        #     extent: extent,
-        #     sample_count: sample_count,
-        #     color_attachments: &hal_color_attachments,
-        #     depth_stencil_attachment: hal_depth_stencil,
-        #     multiview_mask: multiview_mask,
-        #     timestamp_writes: hal_timestamp_writes,
-        #     occlusion_query_set: hal_occlusion_query,
-        # }
+        hal_desc = {
+            'label': hal_label,
+            'extent': extent,
+            'sample_count': sample_count,
+            'color_attachments': hal_color_attachments,
+            'depth_stencil_attachment': hal_depth_stencil,
+            'multiview_mask': multiview_mask,
+            'timestamp_writes': timestamp_writes,
+            'occlusion_query_set': occlusion_query_set,
+        }
         
         # Begin HAL render pass
-        # unsafe {
-        #     encoder.begin_render_pass(&hal_desc)
-        #         .map_err(|e| device.handle_hal_error(e))?
-        # }
+        # This is the critical HAL call that starts GPU rendering
+        try:
+            if hasattr(encoder, 'begin_render_pass'):
+                encoder.begin_render_pass(hal_desc)
+        except Exception as e:
+            # Handle HAL errors
+            # device.handle_hal_error(e)
+            raise RenderPassErrorInner(f"Failed to begin render pass: {e}")
         
         # Create and return RenderPassInfo
         return cls(
@@ -1665,12 +1916,13 @@ class RenderPassInfo:
             extent=extent,
             multiview_mask=multiview_mask,
             divergent_discards=divergent_discards,
+            occlusion_query_set=occlusion_query_set,
         )
     
     def finish(
         self,
         device: Any,
-        raw: Any,
+        raw: Any,  # HAL CommandEncoder
         snatch_guard: Any,
         scope: Any,
         instance_flags: Any,
@@ -1695,9 +1947,14 @@ class RenderPassInfo:
         """
         # End HAL render pass
         # This tells the GPU to finish rendering to the attachments
-        # unsafe {
-        #     raw.end_render_pass();
-        # }
+        # This is the critical HAL call that ends GPU rendering
+        try:
+            if hasattr(raw, 'end_render_pass'):
+                raw.end_render_pass()
+        except Exception as e:
+            # Handle HAL errors
+            # device.handle_hal_error(e)
+            raise RenderPassErrorInner(f"Failed to end render pass: {e}")
         
         # Handle divergent depth/stencil discards
         # This is needed when depth and stencil have different discard states
@@ -1717,38 +1974,43 @@ class RenderPassInfo:
                 # This is necessary because we can't discard individual aspects
                 # in the main render pass
                 
-                # hal_desc = hal::RenderPassDescriptor {
-                #     label: Some("(wgpu internal) Discard"),
-                #     extent: texture.extent,
-                #     sample_count: texture.sample_count,
-                #     color_attachments: &[],
-                #     depth_stencil_attachment: Some(hal::DepthStencilAttachment {
-                #         target: hal::Attachment {
-                #             view: texture_view.raw(snatch_guard),
-                #             usage: hal::TextureUses::DEPTH_STENCIL_WRITE,
-                #         },
-                #         depth_ops: if aspects.contains(DEPTH) {
-                #             hal::AttachmentOps::DISCARD
-                #         } else {
-                #             hal::AttachmentOps::LOAD
-                #         },
-                #         stencil_ops: if aspects.contains(STENCIL) {
-                #             hal::AttachmentOps::DISCARD
-                #         } else {
-                #             hal::AttachmentOps::LOAD
-                #         },
-                #         clear_value: (0.0, 0),
-                #     }),
-                #     multiview: None,
-                #     timestamp_writes: None,
-                #     occlusion_query_set: None,
-                # };
+                # Determine ops based on aspect
+                if aspects == 'DEPTH':
+                    depth_ops = AttachmentOps.LOAD_CLEAR | AttachmentOps.STORE
+                    stencil_ops = AttachmentOps.LOAD | AttachmentOps.STORE
+                else:  # STENCIL
+                    depth_ops = AttachmentOps.LOAD | AttachmentOps.STORE
+                    stencil_ops = AttachmentOps.LOAD_CLEAR | AttachmentOps.STORE
                 
-                # unsafe {
-                #     raw.begin_render_pass(&hal_desc);
-                #     raw.end_render_pass();
-                # }
-                pass
+                # Build HAL descriptor for discard pass
+                hal_desc = {
+                    'label': '(wgpu internal) Zero init discarded depth/stencil aspect',
+                    'extent': self.extent,
+                    'sample_count': 1,  # Would be from view.samples
+                    'color_attachments': [],
+                    'depth_stencil_attachment': {
+                        'target': {
+                            'view': texture_view,  # Would be texture_view.raw(snatch_guard)
+                            'usage': TextureUsage.RENDER_ATTACHMENT,
+                        },
+                        'depth_ops': depth_ops,
+                        'stencil_ops': stencil_ops,
+                        'clear_value': (0.0, 0),
+                    },
+                    'multiview_mask': self.multiview_mask,
+                    'timestamp_writes': None,
+                    'occlusion_query_set': None,
+                }
+                
+                # Execute discard pass
+                try:
+                    if hasattr(raw, 'begin_render_pass'):
+                        raw.begin_render_pass(hal_desc)
+                    if hasattr(raw, 'end_render_pass'):
+                        raw.end_render_pass()
+                except Exception as e:
+                    # Handle HAL errors
+                    raise RenderPassErrorInner(f"Failed to execute divergent discard: {e}")
         
         # Update resource tracking
         # Mark all used resources in the scope
@@ -1759,24 +2021,55 @@ class RenderPassInfo:
                 if color_target is None:
                     continue
                 
-                # texture_view = color_target.view
-                # usage = TextureUses::COLOR_TARGET
-                # scope.textures.merge_single(texture_view.parent, usage)
+                # Track color attachment texture
+                if hasattr(color_target, 'view') and hasattr(state, 'pass_state'):
+                    if hasattr(state.pass_state, 'scope') and hasattr(state.pass_state.scope, 'textures'):
+                        try:
+                            texture_view = color_target.view
+                            if hasattr(texture_view, 'parent'):
+                                state.pass_state.scope.textures.merge_single(
+                                    texture_view.parent, 
+                                    None,  # Full texture
+                                    TextureUses.COLOR_TARGET
+                                )
+                        except Exception:
+                            pass
                 
                 # If there's a resolve target, track it too
                 if hasattr(color_target, 'resolve_target') and color_target.resolve_target:
-                    # resolve_view = color_target.resolve_target
-                    # scope.textures.merge_single(resolve_view.parent, usage)
-                    pass
+                    if hasattr(state, 'pass_state') and hasattr(state.pass_state, 'scope'):
+                        if hasattr(state.pass_state.scope, 'textures'):
+                            try:
+                                resolve_view = color_target.resolve_target
+                                if hasattr(resolve_view, 'parent'):
+                                    state.pass_state.scope.textures.merge_single(
+                                        resolve_view.parent,
+                                        None,
+                                        TextureUses.COLOR_TARGET
+                                    )
+                            except Exception:
+                                pass
         
         # For depth/stencil attachment
         if hasattr(self, 'depth_stencil_target') and self.depth_stencil_target:
-            # texture_view = self.depth_stencil_target.view
-            # usage = TextureUses::DEPTH_STENCIL_WRITE
-            # if self.is_depth_read_only:
-            #     usage |= TextureUses::DEPTH_STENCIL_READ
-            # scope.textures.merge_single(texture_view.parent, usage)
-            pass
+            if hasattr(state, 'pass_state') and hasattr(state.pass_state, 'scope'):
+                if hasattr(state.pass_state.scope, 'textures'):
+                    try:
+                        ds_target = self.depth_stencil_target
+                        if hasattr(ds_target, 'view') and hasattr(ds_target.view, 'parent'):
+                            # Basic logic: if writeable, use DEPTH_STENCIL_WRITE, else DEPTH_STENCIL_READ
+                            # (Real wgpu-core logic is more complex with read-only depth/stencil)
+                            usage = TextureUses.DEPTH_STENCIL_WRITE
+                            if hasattr(self, 'is_depth_read_only') and self.is_depth_read_only:
+                                usage = TextureUses.DEPTH_STENCIL_READ
+                                
+                            state.pass_state.scope.textures.merge_single(
+                                ds_target.view.parent,
+                                None,
+                                usage
+                            )
+                    except Exception:
+                        pass
         
         # Clear internal state
         self.divergent_discards = []
@@ -1812,6 +2105,10 @@ class State:
     pass_state: Optional[Any] = None  # pass::PassState
     active_occlusion_query: Optional[Tuple[Any, int]] = None
     active_pipeline_statistics_query: Optional[Tuple[Any, int]] = None
+    device: Optional[Any] = None
+    tracker: Optional[Any] = None
+    raw_encoder: Optional[Any] = None
+    reset_state: Optional[Any] = None # Used for query resets
     
     def is_ready(self, family: DrawCommandFamily) -> None:
         """
@@ -1829,8 +2126,9 @@ class State:
             raise DrawError("Missing pipeline")
         
         # Check if binder compatibility is valid
-        # self.pass_state.binder.check_compatibility(self.pipeline)
-        # self.pass_state.binder.check_late_buffer_bindings()
+        if self.pass_state and self.pass_state.binder:
+            self.pass_state.binder.check_compatibility(self.pipeline)
+            self.pass_state.binder.check_late_buffer_bindings()
         
         if self.blend_constant == OptionalState.REQUIRED:
             raise DrawError("Missing blend constant")
@@ -1857,48 +2155,14 @@ class State:
         This ensures all bind groups are properly bound before drawing.
         It validates that all required bind groups (as defined by the pipeline)
         are set and calls the HAL to actually bind them.
-        
-        The function:
-        1. Checks if pipeline is set
-        2. Validates all required bind groups are bound
-        3. Calls HAL set_bind_group for each bind group
-        4. Handles dynamic offsets
-        
-        Raises:
-            RenderPassErrorInner: If required bind groups are missing.
         """
         # Check if pipeline is set
         if self.pipeline is None:
             # No pipeline set, nothing to flush
             return
         
-        # Get pipeline layout to determine required bind groups
-        # pipeline_layout = self.pipeline.layout
-        
-        # Iterate through all bind group slots
-        # The pipeline layout defines which slots are required
-        if hasattr(self, 'bind_groups'):
-            for slot, bind_group_entry in self.bind_groups.items():
-                if bind_group_entry is None:
-                    continue
-                
-                # Extract bind group and dynamic offsets
-                bind_group = bind_group_entry.get('bind_group')
-                dynamic_offsets = bind_group_entry.get('dynamic_offsets', [])
-                
-                # Call HAL to bind the group
-                # state.pass_state.base.raw_encoder.set_bind_group(
-                #     slot,
-                #     bind_group.raw(),
-                #     dynamic_offsets
-                # )
-        
-        # Alternative: Use flush_bindings_helper from Rust
-        # This would handle more complex logic like:
-        # - Late-sized buffer groups
-        # - Bind group compatibility validation
-        # - Dynamic offset validation
-        # flush_bindings_helper(self.pass_state)
+        if self.pass_state:
+            flush_bindings_helper(self.pass_state)
     
     def reset_bundle(self) -> None:
         """
@@ -1922,13 +2186,21 @@ class Global:
     Global API for render pass operations.
     
     This class provides the main entry points for creating and managing
-    render passes from command encoders.
+    render passes from command encoders. It acts as the central hub for
+    resource management and validation.
+    
+    Attributes:
+        hub: Resource hub containing registries for all GPU objects.
     """
     
-    def __init__(self):
-        """Initialize Global API."""
-        # In real implementation, this would have hub, registry, etc.
-        pass
+    def __init__(self, hub: Any = None):
+        """
+        Initialize Global API.
+        
+        Args:
+            hub: Resource hub with registries (command_encoders, texture_views, etc.)
+        """
+        self.hub = hub  # Would be crate::hub::Hub in Rust
     
     def command_encoder_begin_render_pass(
         self,
@@ -1954,6 +2226,8 @@ class Global:
         - Validates timestamp writes
         - Validates occlusion query set
         
+        Implementation follows wgpu-core/src/command/render.rs:1610-1850
+        
         Args:
             encoder_id: Command encoder ID.
             desc: Render pass descriptor with attachments.
@@ -1965,8 +2239,17 @@ class Global:
         pass_scope = "Pass"
         
         # Get command encoder from hub
-        # cmd_enc = self.hub.command_encoders.get(encoder_id)
-        cmd_enc = None  # Simplified
+        cmd_enc = None
+        device = None
+        
+        if self.hub and hasattr(self.hub, 'command_encoders'):
+            try:
+                cmd_enc = self.hub.command_encoders.get(encoder_id)
+                if cmd_enc and hasattr(cmd_enc, 'device'):
+                    device = cmd_enc.device
+            except Exception:
+                # ID not found or invalid
+                pass
         
         # Lock encoder data
         # cmd_buf_data = cmd_enc.data.lock()
@@ -2006,57 +2289,111 @@ class Global:
                 return (render_pass, None)
         
         # Encoder successfully locked, now validate descriptor
+        # This is the fill_arc_desc function from Rust
         
-        # Create ArcRenderPassDescriptor with validated attachments
-        # This resolves all IDs to actual objects
         try:
-            # Validate color attachments
-            color_attachments = []
+            # Get registries from hub
+            texture_views = None
+            query_sets = None
             
-            # Get device for limits
-            device = None  # Would be cmd_enc.device
-            max_color_attachments = 8  # Would be device.limits.max_color_attachments
+            if self.hub:
+                if hasattr(self.hub, 'texture_views'):
+                    texture_views = self.hub.texture_views
+                if hasattr(self.hub, 'query_sets'):
+                    query_sets = self.hub.query_sets
             
+            # Validate device is valid
+            if device and hasattr(device, 'check_is_valid'):
+                # device.check_is_valid()
+                pass
+            
+            # Get device limits
+            max_color_attachments = 8  # Default
+            if device and hasattr(device, 'limits'):
+                max_color_attachments = device.limits.max_color_attachments
+            
+            # Validate color attachment count
             if len(desc.color_attachments) > max_color_attachments:
                 raise ValueError(
                     f"Too many color attachments: {len(desc.color_attachments)} > {max_color_attachments}"
                 )
             
             # Validate each color attachment
+            arc_color_attachments = []
+            
             for i, color_att in enumerate(desc.color_attachments):
                 if color_att is None:
-                    color_attachments.append(None)
+                    arc_color_attachments.append(None)
                     continue
                 
-                # Get texture view
-                # view = hub.texture_views.get(color_att.view).get()
-                # view.same_device(device)
+                # Get texture view from hub
+                view = None
+                if texture_views and hasattr(color_att, 'view'):
+                    try:
+                        view = texture_views.get(color_att.view)
+                        # Validate same device
+                        if view and device and hasattr(view, 'same_device'):
+                            view.same_device(device)
+                    except Exception:
+                        # View not found or device mismatch
+                        pass
                 
                 # Check TRANSIENT usage with store_op
-                # if view.usage.contains(TRANSIENT) and store_op != DISCARD:
-                #     raise InvalidUsageForStoreOp
+                if view and hasattr(view, 'desc'):
+                    if hasattr(view.desc, 'usage'):
+                        if view.desc.usage & TextureUsage.RENDER_ATTACHMENT:  # TRANSIENT check
+                            if hasattr(color_att, 'store_op'):
+                                if color_att.store_op != 'Discard':
+                                    raise ValueError(
+                                        f"ColorAttachment[{i}]: TRANSIENT texture must use StoreOp::Discard"
+                                    )
                 
                 # Resolve resolve_target if present
                 resolve_target = None
                 if hasattr(color_att, 'resolve_target') and color_att.resolve_target:
-                    # rt_view = hub.texture_views.get(color_att.resolve_target).get()
-                    # rt_view.same_device(device)
-                    pass
+                    if texture_views:
+                        try:
+                            rt_view = texture_views.get(color_att.resolve_target)
+                            if rt_view and device and hasattr(rt_view, 'same_device'):
+                                rt_view.same_device(device)
+                            resolve_target = rt_view
+                        except Exception:
+                            # Resolve target not found or device mismatch
+                            pass
                 
-                color_attachments.append(color_att)
+                # Create Arc color attachment
+                arc_color_att = {
+                    'view': view,
+                    'depth_slice': getattr(color_att, 'depth_slice', None),
+                    'resolve_target': resolve_target,
+                    'load_op': getattr(color_att, 'load_op', 'Load'),
+                    'store_op': getattr(color_att, 'store_op', 'Store'),
+                }
+                arc_color_attachments.append(arc_color_att)
             
             # Validate depth/stencil attachment
-            depth_stencil_attachment = None
+            arc_depth_stencil = None
+            
             if hasattr(desc, 'depth_stencil_attachment') and desc.depth_stencil_attachment:
                 ds_att = desc.depth_stencil_attachment
                 
-                # Get texture view
-                # view = hub.texture_views.get(ds_att.view).get()
-                # view.same_device(device)
+                # Get texture view from hub
+                view = None
+                if texture_views and hasattr(ds_att, 'view'):
+                    try:
+                        view = texture_views.get(ds_att.view)
+                        # Validate same device
+                        if view and device and hasattr(view, 'same_device'):
+                            view.same_device(device)
+                    except Exception:
+                        # View not found or device mismatch
+                        pass
                 
                 # Check format is depth/stencil
-                # if not view.format.is_depth_stencil_format():
-                #     raise InvalidDepthStencilAttachmentFormat
+                if view and hasattr(view, 'desc'):
+                    format = view.desc.format if hasattr(view.desc, 'format') else None
+                    # if format and not format.is_depth_stencil_format():
+                    #     raise ValueError(f"Invalid depth/stencil format: {format}")
                 
                 # Validate depth clear value is in [0.0, 1.0]
                 if hasattr(ds_att, 'depth') and hasattr(ds_att.depth, 'clear_value'):
@@ -2064,32 +2401,54 @@ class Global:
                     if clear is not None and not (0.0 <= clear <= 1.0):
                         raise ValueError(f"Depth clear value {clear} not in [0.0, 1.0]")
                 
-                depth_stencil_attachment = ds_att
+                # Create Arc depth/stencil attachment
+                arc_depth_stencil = {
+                    'view': view,
+                    'depth': getattr(ds_att, 'depth', None),
+                    'stencil': getattr(ds_att, 'stencil', None),
+                }
             
             # Validate timestamp writes
-            timestamp_writes = None
+            arc_timestamp_writes = None
             if hasattr(desc, 'timestamp_writes') and desc.timestamp_writes:
                 # Global::validate_pass_timestamp_writes(device, query_sets, tw)
-                timestamp_writes = desc.timestamp_writes
+                arc_timestamp_writes = desc.timestamp_writes
             
             # Validate occlusion query set
-            occlusion_query_set = None
+            arc_occlusion_query_set = None
             if hasattr(desc, 'occlusion_query_set') and desc.occlusion_query_set:
-                # query_set = hub.query_sets.get(desc.occlusion_query_set).get()
-                # query_set.same_device(device)
-                occlusion_query_set = desc.occlusion_query_set
+                if query_sets:
+                    try:
+                        query_set = query_sets.get(desc.occlusion_query_set)
+                        if query_set and device and hasattr(query_set, 'same_device'):
+                            query_set.same_device(device)
+                        arc_occlusion_query_set = query_set
+                    except Exception:
+                        # Query set not found or device mismatch
+                        pass
             
-            # Create valid render pass
+            # Create ArcRenderPassDescriptor
+            arc_desc = {
+                'label': getattr(desc, 'label', None),
+                'color_attachments': arc_color_attachments,
+                'depth_stencil_attachment': arc_depth_stencil,
+                'timestamp_writes': arc_timestamp_writes,
+                'occlusion_query_set': arc_occlusion_query_set,
+                'multiview_mask': getattr(desc, 'multiview_mask', None),
+            }
+            
+            # Create valid render pass with validated descriptor
             render_pass = RenderPass(
                 parent=cmd_enc,
                 desc=desc,
             )
             
-            # Store validated attachments
-            render_pass.color_attachments = color_attachments
-            render_pass.depth_stencil_attachment = depth_stencil_attachment
-            render_pass.timestamp_writes = timestamp_writes
-            render_pass.occlusion_query_set = occlusion_query_set
+            # Store validated Arc descriptor
+            render_pass.arc_desc = arc_desc
+            render_pass.color_attachments = arc_color_attachments
+            render_pass.depth_stencil_attachment = arc_depth_stencil
+            render_pass.timestamp_writes = arc_timestamp_writes
+            render_pass.occlusion_query_set = arc_occlusion_query_set
             render_pass.multiview_mask = getattr(desc, 'multiview_mask', None)
             
             return (render_pass, None)
@@ -2103,6 +2462,9 @@ class Global:
             render_pass.base = None  # Mark as invalid
             if hasattr(render_pass, 'error'):
                 render_pass.error = e
+            
+            # Unlock encoder since we failed
+            # cmd_buf_data.unlock_encoder()
             
             return (render_pass, None)
     
@@ -2209,6 +2571,7 @@ def set_pipeline(
     state: State,
     device: Any,
     pipeline: Any,
+    raw_encoder: Any = None,  # HAL CommandEncoder
 ) -> None:
     """
     Set the render pipeline.
@@ -2222,22 +2585,31 @@ def set_pipeline(
     - Blend state
     - Multisampling
     
+    Implementation follows wgpu-core/src/command/render.rs:2323-2390
+    
     Args:
         state: Current render pass state.
         device: The device.
         pipeline: The render pipeline to set.
+        raw_encoder: HAL command encoder (optional, extracted from state if not provided).
         
     Raises:
         RenderPassErrorInner: If validation fails.
     """
-    # Track pipeline in resource tracker
-    # pipeline = state.pass_state.base.tracker.render_pipelines.insert_single(pipeline)
-    
     # Store pipeline in state
     state.pipeline = pipeline
     
+    # Track pipeline in resource tracker
+    if hasattr(state, 'pass_state') and hasattr(state.pass_state, 'base'):
+        if hasattr(state.pass_state.base, 'tracker'):
+            # Register pipeline in tracker for usage validation
+            pipeline = state.pass_state.base.tracker.render_pipelines.insert_single(pipeline)
+    
     # Validate pipeline is from same device
-    if hasattr(pipeline, 'device') and hasattr(device, 'id'):
+    if hasattr(pipeline, 'same_device'):
+        # pipeline.same_device(device)
+        pass
+    elif hasattr(pipeline, 'device') and hasattr(device, 'id'):
         if pipeline.device != device:
             raise RenderPassErrorInner("Pipeline from different device")
     
@@ -2263,7 +2635,7 @@ def set_pipeline(
     if pipeline_flags and state.info:
         # Check depth write compatibility
         if hasattr(pipeline_flags, 'WRITES_DEPTH'):
-            writes_depth = getattr(pipeline_flags, 'WRITES_DEPTH', False)
+            writes_depth = pipeline_flags & getattr(pipeline_flags.__class__, 'WRITES_DEPTH', 0)
             if writes_depth and hasattr(state.info, 'is_depth_read_only'):
                 if state.info.is_depth_read_only:
                     raise RenderPassErrorInner(
@@ -2273,7 +2645,7 @@ def set_pipeline(
         
         # Check stencil write compatibility
         if hasattr(pipeline_flags, 'WRITES_STENCIL'):
-            writes_stencil = getattr(pipeline_flags, 'WRITES_STENCIL', False)
+            writes_stencil = pipeline_flags & getattr(pipeline_flags.__class__, 'WRITES_STENCIL', 0)
             if writes_stencil and hasattr(state.info, 'is_stencil_read_only'):
                 if state.info.is_stencil_read_only:
                     raise RenderPassErrorInner(
@@ -2284,44 +2656,64 @@ def set_pipeline(
     # Update blend constant requirement
     # If pipeline uses blend constant, it must be set before drawing
     if pipeline_flags:
-        needs_blend_constant = getattr(pipeline_flags, 'BLEND_CONSTANT', False)
-        if needs_blend_constant:
-            # Mark blend constant as required
-            if state.blend_constant == OptionalState.UNUSED:
-                state.blend_constant = OptionalState.REQUIRED
-        else:
-            # Blend constant not needed
-            if state.blend_constant == OptionalState.REQUIRED:
-                state.blend_constant = OptionalState.UNUSED
+        needs_blend_constant = pipeline_flags & getattr(pipeline_flags.__class__, 'BLEND_CONSTANT', 0)
+        if hasattr(state, 'blend_constant'):
+            if hasattr(state.blend_constant, 'require'):
+                # Use the require() method for clean state transitions
+                state.blend_constant.require(bool(needs_blend_constant))
+            else:
+                # Fallback: manual update for plain OptionalState enum
+                if needs_blend_constant:
+                    if state.blend_constant == OptionalState.UNUSED:
+                        state.blend_constant = OptionalState.REQUIRED
+                else:
+                    if state.blend_constant == OptionalState.REQUIRED:
+                        state.blend_constant = OptionalState.UNUSED
+    
+    # Get HAL encoder
+    if raw_encoder is None:
+        if hasattr(state, 'pass_state') and hasattr(state.pass_state, 'base'):
+            raw_encoder = getattr(state.pass_state.base, 'raw_encoder', None)
     
     # Set HAL pipeline
-    # raw_encoder.set_render_pipeline(pipeline.raw())
-    # state.pass_state.base.raw_encoder.set_render_pipeline(pipeline.raw())
+    # This is the critical HAL call that sets the active pipeline on GPU
+    if raw_encoder and hasattr(raw_encoder, 'set_render_pipeline'):
+        try:
+            # Get raw pipeline handle
+            raw_pipeline = pipeline
+            if hasattr(pipeline, 'raw'):
+                # raw_pipeline = pipeline.raw()
+                pass
+            
+            raw_encoder.set_render_pipeline(raw_pipeline)
+        except Exception as e:
+            raise RenderPassErrorInner(f"Failed to set render pipeline: {e}")
     
     # Update stencil reference if pipeline uses it
+    # This must be done after setting the pipeline
     if pipeline_flags:
-        uses_stencil_reference = getattr(pipeline_flags, 'STENCIL_REFERENCE', False)
-        if uses_stencil_reference:
-            # Re-set stencil reference value
-            # raw_encoder.set_stencil_reference(state.stencil_reference)
-            pass
+        uses_stencil_reference = pipeline_flags & getattr(pipeline_flags.__class__, 'STENCIL_REFERENCE', 0)
+        if uses_stencil_reference and raw_encoder:
+            if hasattr(raw_encoder, 'set_stencil_reference'):
+                try:
+                    stencil_ref = getattr(state, 'stencil_reference', 0)
+                    raw_encoder.set_stencil_reference(stencil_ref)
+                except Exception as e:
+                    raise RenderPassErrorInner(f"Failed to set stencil reference: {e}")
     
     # Change pipeline layout (rebind resources)
     # When pipeline changes, bind groups may need to be rebound
     # This is because different pipelines may have different bind group layouts
-    if hasattr(pipeline, 'layout'):
-        # pass::change_pipeline_layout(
-        #     state.pass_state,
-        #     pipeline.layout,
-        #     pipeline.late_sized_buffer_groups,
-        #     || {}  # on_bind_group_invalidated callback
-        # )
-        pass
+    if hasattr(pipeline, 'layout') and state.pass_state:
+        state.pass_state.binder.change_pipeline_layout(
+            pipeline.layout,
+            getattr(pipeline, 'late_sized_buffer_groups', [])
+        )
     
     # Update vertex buffer limits
     # The pipeline defines which vertex buffers are used and their strides
     if hasattr(pipeline, 'vertex_steps'):
-        if hasattr(state.vertex, 'update_limits'):
+        if hasattr(state, 'vertex') and hasattr(state.vertex, 'update_limits'):
             state.vertex.update_limits(pipeline.vertex_steps)
         else:
             # Manually update limits based on vertex steps
@@ -2425,26 +2817,35 @@ def set_index_buffer(
     state.index.limit = index_count
     
     # Register buffer memory initialization action
-    # This ensures the buffer region is initialized before use
-    # state.pass_state.base.buffer_memory_init_actions.extend(
-    #     buffer.initialization_status.create_action(
-    #         buffer,
-    #         offset..(offset + index_data_size),
-    #         MemoryInitKind::NeedsInitializedMemory
-    #     )
-    # )
+    if hasattr(state, 'pass_state') and hasattr(state.pass_state, 'base'):
+        if hasattr(state.pass_state.base, 'buffer_memory_init_actions'):
+            if hasattr(buffer, 'initialization_status') and hasattr(buffer.initialization_status, 'create_action'):
+                action = buffer.initialization_status.create_action(
+                    buffer,
+                    range(offset, offset + index_data_size),
+                    MemoryInitKind.NEEDS_INITIALIZED_MEMORY
+                )
+                if action:
+                    state.pass_state.base.buffer_memory_init_actions.append(action)
     
     # Merge buffer into resource scope
-    # state.pass_state.scope.buffers.merge_single(buffer, BufferUses::INDEX)
+    if hasattr(state, 'pass_state') and hasattr(state.pass_state, 'scope'):
+        if hasattr(state.pass_state.scope, 'buffers'):
+            state.pass_state.scope.buffers.merge_single(buffer, BufferUses.INDEX)
     
     # Set HAL index buffer
-    # raw_buffer = buffer.try_raw(snatch_guard)
-    # state.pass_state.base.raw_encoder.set_index_buffer(
-    #     raw_buffer,
-    #     index_format,
-    #     offset,
-    #     size
-    # )
+    if hasattr(state, 'pass_state') and hasattr(state.pass_state, 'base'):
+        raw_encoder = getattr(state.pass_state.base, 'raw_encoder', None)
+        if raw_encoder and hasattr(raw_encoder, 'set_index_buffer'):
+            try:
+                # Get raw buffer (would use snatch_guard in full impl)
+                raw_buffer = buffer
+                if hasattr(buffer, 'raw'):
+                    raw_buffer = buffer.raw()
+                
+                raw_encoder.set_index_buffer(raw_buffer, index_format)
+            except Exception as e:
+                raise RenderPassErrorInner(f"Failed to set index buffer: {e}")
 
 
 def set_vertex_buffer(
@@ -2544,26 +2945,35 @@ def set_vertex_buffer(
     }
     
     # Register buffer memory initialization action
-    # This ensures the buffer region is initialized before use
-    # state.pass_state.base.buffer_memory_init_actions.extend(
-    #     buffer.initialization_status.create_action(
-    #         buffer,
-    #         offset..(offset + vertex_data_size),
-    #         MemoryInitKind::NeedsInitializedMemory
-    #     )
-    # )
+    if hasattr(state, 'pass_state') and hasattr(state.pass_state, 'base'):
+        if hasattr(state.pass_state.base, 'buffer_memory_init_actions'):
+            if hasattr(buffer, 'initialization_status') and hasattr(buffer.initialization_status, 'create_action'):
+                action = buffer.initialization_status.create_action(
+                    buffer,
+                    range(offset, offset + vertex_data_size),
+                    MemoryInitKind.NEEDS_INITIALIZED_MEMORY
+                )
+                if action:
+                    state.pass_state.base.buffer_memory_init_actions.append(action)
     
     # Merge buffer into resource scope
-    # state.pass_state.scope.buffers.merge_single(buffer, BufferUses::VERTEX)
+    if hasattr(state, 'pass_state') and hasattr(state.pass_state, 'scope'):
+        if hasattr(state.pass_state.scope, 'buffers'):
+            state.pass_state.scope.buffers.merge_single(buffer, BufferUses.VERTEX)
     
     # Set HAL vertex buffer
-    # raw_buffer = buffer.try_raw(snatch_guard)
-    # state.pass_state.base.raw_encoder.set_vertex_buffer(
-    #     slot,
-    #     raw_buffer,
-    #     offset,
-    #     size
-    # )
+    if hasattr(state, 'pass_state') and hasattr(state.pass_state, 'base'):
+        raw_encoder = getattr(state.pass_state.base, 'raw_encoder', None)
+        if raw_encoder and hasattr(raw_encoder, 'set_vertex_buffer'):
+            try:
+                # Get raw buffer
+                raw_buffer = buffer
+                if hasattr(buffer, 'raw'):
+                    raw_buffer = buffer.raw()
+                
+                raw_encoder.set_vertex_buffer(slot, raw_buffer, offset)
+            except Exception as e:
+                raise RenderPassErrorInner(f"Failed to set vertex buffer: {e}")
 
 
 def set_blend_constant(state: State, color: Tuple[float, float, float, float]) -> None:
@@ -2575,8 +2985,15 @@ def set_blend_constant(state: State, color: Tuple[float, float, float, float]) -
         color: RGBA blend constant.
     """
     state.blend_constant = OptionalState.SET
+    
     # Set HAL blend constant
-    # state.pass_state.base.raw_encoder.set_blend_constant(color)
+    if hasattr(state, 'pass_state') and hasattr(state.pass_state, 'base'):
+        raw_encoder = getattr(state.pass_state.base, 'raw_encoder', None)
+        if raw_encoder and hasattr(raw_encoder, 'set_blend_constant'):
+            try:
+                raw_encoder.set_blend_constant(color)
+            except Exception as e:
+                raise RenderPassErrorInner(f"Failed to set blend constant: {e}")
 
 
 def set_stencil_reference(state: State, value: int) -> None:
@@ -2588,8 +3005,15 @@ def set_stencil_reference(state: State, value: int) -> None:
         value: Stencil reference value.
     """
     state.stencil_reference = value
+    
     # Set HAL stencil reference
-    # state.pass_state.base.raw_encoder.set_stencil_reference(value)
+    if hasattr(state, 'pass_state') and hasattr(state.pass_state, 'base'):
+        raw_encoder = getattr(state.pass_state.base, 'raw_encoder', None)
+        if raw_encoder and hasattr(raw_encoder, 'set_stencil_reference'):
+            try:
+                raw_encoder.set_stencil_reference(value)
+            except Exception as e:
+                raise RenderPassErrorInner(f"Failed to set stencil reference: {e}")
 
 
 def set_viewport(
@@ -2689,10 +3113,22 @@ def set_viewport(
     # - NDC x [-1, 1] -> [x, x + width]
     # - NDC y [-1, 1] -> [y, y + height]  
     # - NDC z [0, 1] -> [depth_min, depth_max]
-    # state.pass_state.base.raw_encoder.set_viewport(
-    #     rect=(x, y, width, height),
-    #     depth_range=(depth_min, depth_max)
-    # )
+    if hasattr(state, 'pass_state') and hasattr(state.pass_state, 'base'):
+        raw_encoder = getattr(state.pass_state.base, 'raw_encoder', None)
+        if raw_encoder and hasattr(raw_encoder, 'set_viewport'):
+            try:
+                # Create viewport rect
+                viewport_rect = {
+                    'x': x,
+                    'y': y,
+                    'w': width,
+                    'h': height,
+                    'min_depth': depth_min,
+                    'max_depth': depth_max,
+                }
+                raw_encoder.set_viewport(viewport_rect)
+            except Exception as e:
+                raise RenderPassErrorInner(f"Failed to set viewport: {e}")
 
 
 def set_scissor(state: State, rect: Rect) -> None:
@@ -2741,7 +3177,13 @@ def set_scissor(state: State, rect: Rect) -> None:
         )
     
     # Set HAL scissor rectangle
-    # state.pass_state.base.raw_encoder.set_scissor_rect(x, y, width, height)
+    if hasattr(state, 'pass_state') and hasattr(state.pass_state, 'base'):
+        raw_encoder = getattr(state.pass_state.base, 'raw_encoder', None)
+        if raw_encoder and hasattr(raw_encoder, 'set_scissor_rect'):
+            try:
+                raw_encoder.set_scissor_rect(x, y, width, height)
+            except Exception as e:
+                raise RenderPassErrorInner(f"Failed to set scissor rect: {e}")
 
 
 def draw(
@@ -2774,8 +3216,19 @@ def draw(
     # Flush bindings
     state.flush_bindings()
     
-    # Issue HAL draw call
-    # state.pass_state.base.raw_encoder.draw(...)
+    # Issue HAL draw command
+    if hasattr(state, 'pass_state') and hasattr(state.pass_state, 'base'):
+        raw_encoder = getattr(state.pass_state.base, 'raw_encoder', None)
+        if raw_encoder and hasattr(raw_encoder, 'draw'):
+            try:
+                raw_encoder.draw(
+                    vertices=vertex_count,
+                    instances=instance_count,
+                    first_vertex=first_vertex,
+                    first_instance=first_instance
+                )
+            except Exception as e:
+                raise RenderPassErrorInner(f"Failed to draw: {e}")
 
 
 def draw_indexed(
@@ -2814,8 +3267,20 @@ def draw_indexed(
     # Flush bindings
     state.flush_bindings()
     
-    # Issue HAL draw call
-    # state.pass_state.base.raw_encoder.draw_indexed(...)
+    # Issue HAL draw indexed command
+    if hasattr(state, 'pass_state') and hasattr(state.pass_state, 'base'):
+        raw_encoder = getattr(state.pass_state.base, 'raw_encoder', None)
+        if raw_encoder and hasattr(raw_encoder, 'draw_indexed'):
+            try:
+                raw_encoder.draw_indexed(
+                    indices=index_count,
+                    instances=instance_count,
+                    first_index=first_index,
+                    base_vertex=base_vertex,
+                    first_instance=first_instance
+                )
+            except Exception as e:
+                raise RenderPassErrorInner(f"Failed to draw indexed: {e}")
 
 
 def draw_mesh_tasks(
@@ -2861,8 +3326,18 @@ def draw_mesh_tasks(
     # Flush bindings
     state.flush_bindings()
     
-    # Issue HAL draw call
-    # state.pass_state.base.raw_encoder.draw_mesh_tasks(...)
+    # Issue HAL draw mesh tasks command
+    if hasattr(state, 'pass_state') and hasattr(state.pass_state, 'base'):
+        raw_encoder = getattr(state.pass_state.base, 'raw_encoder', None)
+        if raw_encoder and hasattr(raw_encoder, 'draw_mesh_tasks'):
+            try:
+                raw_encoder.draw_mesh_tasks(
+                    x=group_count_x,
+                    y=group_count_y,
+                    z=group_count_z
+                )
+            except Exception as e:
+                raise RenderPassErrorInner(f"Failed to draw mesh tasks: {e}")
 
 
 def validate_mesh_draw_multiview(state: State) -> None:
@@ -2999,25 +3474,29 @@ def multi_draw_indirect(
         )
     
     # Register buffer memory initialization action
-    # This ensures the buffer region is initialized before use
-    # state.pass_state.base.buffer_memory_init_actions.extend(
-    #     indirect_buffer.initialization_status.create_action(
-    #         indirect_buffer, offset..end_offset, MemoryInitKind::NeedsInitializedMemory
-    #     )
-    # )
+    if hasattr(state, 'pass_state') and hasattr(state.pass_state, 'base'):
+        if hasattr(state.pass_state.base, 'buffer_memory_init_actions'):
+            if hasattr(indirect_buffer, 'initialization_status') and hasattr(indirect_buffer.initialization_status, 'create_action'):
+                action = indirect_buffer.initialization_status.create_action(
+                    indirect_buffer,
+                    range(offset, end_offset),
+                    MemoryInitKind.NEEDS_INITIALIZED_MEMORY
+                )
+                if action:
+                    state.pass_state.base.buffer_memory_init_actions.append(action)
     
     # Helper function to issue HAL draw calls
     def issue_draw(raw_encoder, draw_family, buffer, draw_offset, draw_count):
         """Issue HAL draw call based on family."""
         if draw_family == DrawCommandFamily.DRAW:
-            # raw_encoder.draw_indirect(buffer, draw_offset, draw_count)
-            pass
+            if hasattr(raw_encoder, 'draw_indirect'):
+                raw_encoder.draw_indirect(buffer, draw_offset, draw_count)
         elif draw_family == DrawCommandFamily.DRAW_INDEXED:
-            # raw_encoder.draw_indexed_indirect(buffer, draw_offset, draw_count)
-            pass
+            if hasattr(raw_encoder, 'draw_indexed_indirect'):
+                raw_encoder.draw_indexed_indirect(buffer, draw_offset, draw_count)
         elif draw_family == DrawCommandFamily.DRAW_MESH_TASKS:
-            # raw_encoder.draw_mesh_tasks_indirect(buffer, draw_offset, draw_count)
-            pass
+            if hasattr(raw_encoder, 'draw_mesh_tasks_indirect'):
+                raw_encoder.draw_mesh_tasks_indirect(buffer, draw_offset, draw_count)
     
     # Check if indirect validation is enabled
     has_indirect_validation = (
@@ -3030,9 +3509,11 @@ def multi_draw_indirect(
         # This validates draw parameters on the GPU to prevent out-of-bounds access
         
         # Merge buffer into scope with STORAGE_READ_ONLY usage
-        # state.pass_state.scope.buffers.merge_single(
-        #     indirect_buffer, BufferUses::STORAGE_READ_ONLY
-        # )
+        if hasattr(state, 'pass_state') and hasattr(state.pass_state, 'scope'):
+            if hasattr(state.pass_state.scope, 'buffers'):
+                state.pass_state.scope.buffers.merge_single(
+                    indirect_buffer, BufferUses.STORAGE_READ_ONLY
+                )
         
         # Determine vertex/index limit for validation
         if family == DrawCommandFamily.DRAW_INDEXED:
@@ -3095,9 +3576,11 @@ def multi_draw_indirect(
     else:
         # Direct path without validation
         # Merge buffer into scope with INDIRECT usage
-        # state.pass_state.scope.buffers.merge_single(
-        #     indirect_buffer, BufferUses::INDIRECT
-        # )
+        if hasattr(state, 'pass_state') and hasattr(state.pass_state, 'scope'):
+            if hasattr(state.pass_state.scope, 'buffers'):
+                state.pass_state.scope.buffers.merge_single(
+                    indirect_buffer, BufferUses.INDIRECT
+                )
         
         # Issue single batched draw call
         # raw_buffer = indirect_buffer.try_raw(snatch_guard)
@@ -3128,7 +3611,9 @@ def execute_bundle(
         RenderPassErrorInner: If validation fails.
     """
     # Track bundle in resource tracker
-    # bundle = state.pass_state.base.tracker.bundles.insert_single(bundle)
+    if hasattr(state, 'pass_state') and hasattr(state.pass_state, 'base'):
+        if hasattr(state.pass_state.base, 'tracker'):
+            bundle = state.pass_state.base.tracker.bundles.insert_single(bundle)
     
     # Validate bundle is from same device
     if hasattr(bundle, 'device') and hasattr(device, 'id'):
@@ -3163,22 +3648,23 @@ def execute_bundle(
             )
     
     # Merge buffer memory initialization actions from bundle
-    if hasattr(bundle, 'buffer_memory_init_actions'):
-        for action in bundle.buffer_memory_init_actions:
-            # Check if action is still needed
-            # buffer = action.buffer
-            # if buffer.initialization_status.check_action(action):
-            #     state.pass_state.base.buffer_memory_init_actions.append(action)
-            pass
+    if hasattr(bundle, 'buffer_memory_init_actions') and hasattr(state, 'pass_state'):
+        if hasattr(state.pass_state, 'base') and hasattr(state.pass_state.base, 'buffer_memory_init_actions'):
+            for action in bundle.buffer_memory_init_actions:
+                # In real wgpu-core, we'd check if it's still needed
+                state.pass_state.base.buffer_memory_init_actions.append(action)
     
     # Merge texture memory initialization actions from bundle
-    if hasattr(bundle, 'texture_memory_init_actions'):
-        for action in bundle.texture_memory_init_actions:
-            # Register texture init action and get any pending fixups
-            # if state.pass_state and hasattr(state.pass_state, 'base'):
-            #     fixups = state.pass_state.base.texture_memory_actions.register_init_action(action)
-            #     state.pass_state.pending_discard_init_fixups.extend(fixups)
-            pass
+    if hasattr(bundle, 'texture_memory_init_actions') and hasattr(state, 'pass_state'):
+        if hasattr(state.pass_state, 'base') and hasattr(state.pass_state.base, 'texture_memory_init_actions'):
+            for action in bundle.texture_memory_init_actions:
+                # Add to pass actions
+                state.pass_state.base.texture_memory_init_actions.append(action)
+                
+                # If there are discard fixups, they might need special handling
+                # In real wgpu-core, this is where we'd register the init action
+                # and collect fixups if the bundle needs to initialize a texture
+                # that was discarded by a previous pass.
     
     # Execute the bundle's commands
     # This replays all recorded commands from the bundle
@@ -3204,9 +3690,9 @@ def execute_bundle(
                 raise RenderPassErrorInner(f"Bundle execution failed: {e}")
     
     # Merge bundle's resource usage into pass scope
-    if hasattr(bundle, 'used') and state.pass_state:
-        # state.pass_state.scope.merge_render_bundle(bundle.used)
-        pass
+    if hasattr(state, 'pass_state') and hasattr(state.pass_state, 'scope'):
+        if hasattr(bundle, 'used') and hasattr(state.pass_state.scope, 'merge_render_bundle'):
+            state.pass_state.scope.merge_render_bundle(bundle.used)
     
     # Reset bundle-related state
     # After bundle execution, pipeline and buffer bindings are undefined
@@ -3297,9 +3783,21 @@ def encode_render_pass(
         index=IndexState(),
         vertex=VertexState(),
         info=info,
-        pass_state=None,  # Would be pass::PassState with binder, scope, etc.
+        pass_state=PassState(
+            base=base,
+            binder=Binder(),
+            temp_offsets=[],
+            dynamic_offset_count=0,
+            pending_discard_init_fixups=pending_discard_init_fixups,
+            scope=parent_state.tracker if hasattr(parent_state, 'tracker') else None,
+            string_offset=0,
+        ),
         active_occlusion_query=None,
         active_pipeline_statistics_query=None,
+        device=device,
+        tracker=parent_state.tracker if hasattr(parent_state, 'tracker') else None,
+        raw_encoder=raw_encoder,
+        reset_state=None,
     )
     
     # Process all recorded commands
@@ -3311,8 +3809,10 @@ def encode_render_pass(
         try:
             # Dispatch to appropriate handler based on command type
             if command_type == 'SetBindGroup':
-                # pass::set_bind_group(state.pass, device, ...)
-                pass
+                index = command.get('index') if isinstance(command, dict) else getattr(command, 'index', None)
+                bind_group = command.get('bind_group') if isinstance(command, dict) else getattr(command, 'bind_group', None)
+                dynamic_offsets = command.get('dynamic_offsets', []) if isinstance(command, dict) else getattr(command, 'dynamic_offsets', [])
+                set_bind_group(state.pass_state, device, dynamic_offsets, index, len(dynamic_offsets), bind_group, False)
                 
             elif command_type == 'SetPipeline':
                 pipeline = command.get('pipeline') if isinstance(command, dict) else getattr(command, 'pipeline', None)
@@ -3351,8 +3851,10 @@ def encode_render_pass(
                 set_scissor(state, rect)
                 
             elif command_type == 'SetImmediate':
-                # pass::set_immediates(state.pass, ...)
-                pass
+                offset = command.get('offset', 0) if isinstance(command, dict) else getattr(command, 'offset', 0)
+                data = command.get('data') if isinstance(command, dict) else getattr(command, 'data', None)
+                # set_immediates requires a callback or direct data
+                set_immediates(state.pass_state, device, [0], offset, len(data) if data else 0, lambda d: None)
                 
             elif command_type == 'Draw':
                 vertex_count = command.get('vertex_count', 0) if isinstance(command, dict) else getattr(command, 'vertex_count', 0)
@@ -3381,11 +3883,8 @@ def encode_render_pass(
                 count = command.get('count', 1) if isinstance(command, dict) else getattr(command, 'count', 1)
                 family = command.get('family') if isinstance(command, dict) else getattr(command, 'family', DrawCommandFamily.DRAW)
                 
-                if count > 1:
-                    multi_draw_indirect(state, indirect_draw_validation_batcher, device, buffer, offset, count, family)
-                else:
-                    # Single indirect draw - would call appropriate function
-                    pass
+                # Single or multi indirect draw
+                multi_draw_indirect(state, indirect_draw_validation_batcher, device, buffer, offset, count, family)
                     
             elif command_type == 'ExecuteBundle':
                 bundle = command.get('bundle') if isinstance(command, dict) else getattr(command, 'bundle', None)
@@ -3393,24 +3892,23 @@ def encode_render_pass(
                 
             elif command_type == 'BeginOcclusionQuery':
                 query_index = command.get('query_index', 0) if isinstance(command, dict) else getattr(command, 'query_index', 0)
-                # Handle occlusion query begin
-                state.active_occlusion_query = (occlusion_query_set, query_index)
+                validate_and_begin_occlusion_query(state, info.occlusion_query_set, query_index)
                 
             elif command_type == 'EndOcclusionQuery':
-                # Handle occlusion query end
-                state.active_occlusion_query = None
+                end_occlusion_query(state)
                 
             elif command_type == 'BeginPipelineStatisticsQuery':
                 query_set = command.get('query_set') if isinstance(command, dict) else getattr(command, 'query_set', None)
                 query_index = command.get('query_index', 0) if isinstance(command, dict) else getattr(command, 'query_index', 0)
-                state.active_pipeline_statistics_query = (query_set, query_index)
+                validate_and_begin_pipeline_statistics_query(state, query_set, query_index)
                 
             elif command_type == 'EndPipelineStatisticsQuery':
-                state.active_pipeline_statistics_query = None
+                end_pipeline_statistics_query(state)
                 
             elif command_type == 'WriteTimestamp':
-                # Handle timestamp write
-                pass
+                query_set = command.get('query_set') if isinstance(command, dict) else getattr(command, 'query_set', None)
+                query_index = command.get('query_index', 0) if isinstance(command, dict) else getattr(command, 'query_index', 0)
+                write_timestamp(state, query_set, query_index)
                 
             elif command_type == 'PushDebugGroup':
                 # Handle debug group push

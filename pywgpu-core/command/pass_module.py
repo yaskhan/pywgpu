@@ -125,8 +125,29 @@ def set_bind_group(
     Raises:
         BindGroupIndexOutOfRange: If index is out of range.
     """
-    # Implementation depends on command processing
-    pass
+    # Limits validation
+    max_bind_groups = 8 # device.limits.max_bind_groups
+    if index >= max_bind_groups:
+        raise BindGroupIndexOutOfRange(index, max_bind_groups)
+
+    # Device validation
+    if bind_group.device is not device:
+        raise ValueError("Bind group is from a different device")
+    
+    # Validation of dynamic offsets count
+    expected_dynamic_offsets = getattr(bind_group.layout, 'dynamic_offset_count', 0)
+    if len(dynamic_offsets) != expected_dynamic_offsets:
+        raise ValueError(f"Dynamic offsets count mismatch: expected {expected_dynamic_offsets}, got {len(dynamic_offsets)}")
+
+    # Update binder
+    state.binder.assign_group(index, bind_group, dynamic_offsets)
+    
+    # Resource tracking - bind groups keep resources alive
+    state.scope.bind_groups.insert_single(bind_group)
+    
+    # In Rust, we also track buffers and textures inside the bind group here
+    # but wgpu-core often defers this until flush_bindings or draw time.
+    # For now, we just update the binder.
 
 
 def set_immediates(
@@ -169,36 +190,75 @@ def set_immediates(
     state.base.raw_encoder.set_immediates(pipeline_layout.raw(), offset, data_slice)
 
 
+try:
+    from ..track import BufferUses, TextureUses
+except ImportError:
+    # Use fallback if not available
+    class BufferUses:
+        UNIFORM = 1 << 6
+        STORAGE_READ_ONLY = 1 << 7
+        STORAGE_READ_WRITE = 1 << 8
+    class TextureUses:
+        RESOURCE = 1 << 4
+        STORAGE_READ_ONLY = 1 << 8
+        STORAGE_READ_WRITE = 1 << 10
+
 def flush_bindings_helper(state: Any) -> None:
     """
-    Flush bindings helper.
+    Flush bindings to the HAL encoder.
+    
+    This function:
+    1. Gets the range of bind groups that need rebinding.
+    2. Iterates over them and tracks their resources in the pass scope.
+    3. Translates and issues HAL set_bind_group commands.
     
     Args:
-        state: The pass state.
+        state: The pass state (PassState).
     """
     range_ = state.binder.take_rebind_range()
     if not range_:
         return
 
     entries = state.binder.entries(range_)
+    pipeline_layout = state.binder.pipeline_layout
+    if not pipeline_layout:
+        raise MissingPipeline()
 
     for i, entry in entries:
         bind_group = entry.group
         if bind_group is None:
             continue
 
-        # In Rust this extends buffer_memory_init_actions and texture_memory_actions
-        # state.base.buffer_memory_init_actions.extend(...)
-        # state.base.texture_memory_actions.register_init_action(action)
-        pass
+        # 1. Track resources in the bind group
+        # Each bind group knows which resources it contains and their usages
+        for bg_entry in bind_group.entries:
+            resource = bg_entry.resource
+            # We need to find the layout entry for this binding to get the usage
+            # For now, let's assume we can determine usage from the resource type 
+            # and some hint from the BGL
+            
+            # Simple heuristic for now:
+            if hasattr(resource, 'resource_type'): # e.g. Buffer
+                usage = BufferUses.UNIFORM # Default
+                # TODO: Get actual usage from BGL entry
+                state.scope.buffers.set_single(resource, usage)
+                # Register memory init action if it's a buffer
+                # state.base.buffer_memory_init_actions.extend(...)
+            elif hasattr(resource, 'view'): # e.g. TextureView
+                usage = TextureUses.RESOURCE # Default
+                # TODO: Get actual usage from BGL entry
+                state.scope.textures.set_single(resource, usage)
+                # Register memory init action if it's a texture
+                # state.base.texture_memory_actions.register_init_action(...)
 
-    pipeline_layout = state.binder.pipeline_layout
-    if pipeline_layout:
-        for i, entry in entries:
-            if entry.group:
-                state.base.raw_encoder.set_bind_group(
-                    pipeline_layout.raw(),
-                    i,
-                    entry.group.raw(),
-                    entry.dynamic_offsets,
-                )
+        # 2. Add bind group to stateless tracking (keep-alive)
+        state.scope.bind_groups.insert_single(bind_group)
+
+        # 3. Issue HAL command
+        if hasattr(state.base, 'raw_encoder') and state.base.raw_encoder:
+            state.base.raw_encoder.set_bind_group(
+                pipeline_layout.raw(),
+                i,
+                bind_group.raw(),
+                entry.dynamic_offsets,
+            )

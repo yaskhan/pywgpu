@@ -81,9 +81,8 @@ class BufferTracker:
             self.set_size(index + 1)
         
         current_state = self.end[index]
-        if current_state != state:
-            # Check if we can skip the barrier (simplified)
-            # In a full implementation we'd check if both are in ORDERED etc.
+        if self._needs_transition(current_state, state):
+            from . import PendingTransition, StateTransition
             transition = PendingTransition(
                 id=index,
                 selector=None,
@@ -94,6 +93,49 @@ class BufferTracker:
             self.metadata.insert(index, buffer)
             return transition
         return None
+
+    def merge_scope(self, scope: BufferUsageScope) -> Iterator[PendingTransition]:
+        """Merges a usage scope into this tracker and returns transitions."""
+        from . import PendingTransition, StateTransition
+        
+        for index in scope.metadata.active_indices():
+            if index >= len(self.end):
+                self.set_size(index + 1)
+            
+            new_state = scope.state[index]
+            old_state = self.end[index]
+            
+            if self._needs_transition(old_state, new_state):
+                transition = PendingTransition(
+                    id=index,
+                    selector=None,
+                    usage=StateTransition(from_state=old_state, to_state=new_state)
+                )
+                self.end[index] = new_state
+                self.metadata.insert(index, scope.metadata.get(index))
+                yield transition
+            else:
+                # Still need to update end state and metadata if it's a new resource or usage
+                self.end[index] = old_state | new_state
+                self.metadata.insert(index, scope.metadata.get(index))
+
+    def _needs_transition(self, current: BufferUses, next: BufferUses) -> bool:
+        """Determines if a transition/barrier is needed between two states."""
+        if current == next:
+            return False
+        
+        # If both are in INCLUSIVE and neither is EXCLUSIVE, no transition needed?
+        # Actually, if both are in ORDERED (which includes INCLUSIVE), we might skip.
+        # But if next has any EXCLUSIVE flag, we definitely need a transition.
+        if (next & BufferUses.EXCLUSIVE) or (current & BufferUses.EXCLUSIVE):
+            return True
+            
+        # If they are both shared (INCLUSIVE), no transition strictly required by spec?
+        # wgpu-core logic is more complex, but this is a good start.
+        if (current & BufferUses.INCLUSIVE) and (next & BufferUses.INCLUSIVE):
+            return False
+            
+        return True
 
     def drain_transitions(self) -> Iterator[PendingTransition]:
         """Yields and clears all pending transitions."""

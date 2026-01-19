@@ -13,7 +13,7 @@ layout and validates late buffer binding sizes.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, List, Optional
+from typing import Any, Iterator, List, Optional
 
 from . import errors
 
@@ -215,6 +215,19 @@ class Binder:
         """
         return self.manager.take_rebind_range()
 
+    def entries(self, range_: range) -> Iterator[tuple[int, EntryPayload]]:
+        """
+        Get entries for a range of indices.
+        
+        Args:
+            range_: The range of indices.
+            
+        Returns:
+            Iterator of (index, payload) pairs.
+        """
+        for i in range_:
+            yield i, self.payloads[i]
+
     def list_active(self) -> List[Any]:
         """
         List active bind groups.
@@ -236,8 +249,9 @@ class Binder:
             List of (index, payload) pairs.
         """
         return [
-            (index, self.payloads[index])
-            for index in range(self.manager.num_valid_entries())
+            (i, self.payloads[i])
+            for i in range(len(self.payloads))
+            if self.manager.entries[i].is_valid()
         ]
 
     def check_compatibility(self, pipeline: Any) -> None:

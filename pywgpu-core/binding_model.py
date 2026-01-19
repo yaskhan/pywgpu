@@ -364,14 +364,26 @@ class BindGroupLayout:
     Attributes:
         device: The device that owns this resource.
         label: A human-readable label for debugging.
+        entries: List of bind group layout entries.
         tracking_data: Data for resource tracking.
     """
 
-    def __init__(self, device: Device, label: str = "") -> None:
+    def __init__(self, device: Device, entries: List[Any], label: str = "") -> None:
         """Initialize the bind group layout."""
         self.device = device
         self.label = label
+        self.entries = entries
         self.tracking_data = None  # Would be TrackingData
+
+    def is_equal(self, other: Any) -> bool:
+        """Check if this layout is equal to another."""
+        if not isinstance(other, BindGroupLayout):
+            return False
+        if self is other:
+            return True
+        # In a real implementation, we would compare the entries
+        # For now, we compare identity or some hash if available
+        return id(self) == id(other)
 
     def error_ident(self) -> ResourceErrorIdent:
         """Get a resource error identifier."""
@@ -392,14 +404,18 @@ class BindGroup:
     Attributes:
         device: The device that owns this resource.
         label: A human-readable label for debugging.
+        layout: The bind group layout.
         tracking_data: Data for resource tracking.
     """
 
-    def __init__(self, device: Device, label: str = "") -> None:
+    def __init__(self, device: Device, layout: BindGroupLayout, entries: List[BindGroupEntry], label: str = "") -> None:
         """Initialize the bind group."""
         self.device = device
         self.label = label
+        self.layout = layout
+        self.entries = entries
         self.tracking_data = None  # Would be TrackingData
+        self.late_buffer_binding_infos = [] # Stores LateBufferBindingInfo
 
     def error_ident(self) -> ResourceErrorIdent:
         """Get a resource error identifier."""
@@ -419,14 +435,43 @@ class PipelineLayout:
     Attributes:
         device: The device that owns this resource.
         label: A human-readable label for debugging.
+        bind_group_layouts: List of bind group layouts.
+        immediate_size: Size of immediate data.
         tracking_data: Data for resource tracking.
     """
 
-    def __init__(self, device: Device, label: str = "") -> None:
+    def __init__(
+        self, 
+        device: Device, 
+        bind_group_layouts: List[BindGroupLayout], 
+        immediate_size: int = 0,
+        label: str = ""
+    ) -> None:
         """Initialize the pipeline layout."""
         self.device = device
         self.label = label
+        self.bind_group_layouts = bind_group_layouts
+        self.immediate_size = immediate_size
         self.tracking_data = None  # Would be TrackingData
+
+    def is_equal(self, other: Any) -> bool:
+        """Check if this layout is equal to another."""
+        if not isinstance(other, PipelineLayout):
+            return False
+        if self is other:
+            return True
+        
+        if self.immediate_size != other.immediate_size:
+            return False
+        
+        if len(self.bind_group_layouts) != len(other.bind_group_layouts):
+            return False
+            
+        for a, b in zip(self.bind_group_layouts, other.bind_group_layouts):
+            if not a.is_equal(b):
+                return False
+                
+        return True
 
     def error_ident(self) -> ResourceErrorIdent:
         """Get a resource error identifier."""
@@ -434,3 +479,7 @@ class PipelineLayout:
             r#type="PipelineLayout",
             label=self.label
         )
+
+    def raw(self) -> Any:
+        """Get the raw HAL layout."""
+        return None

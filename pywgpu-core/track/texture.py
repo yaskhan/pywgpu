@@ -224,6 +224,99 @@ class TextureTracker:
         
         return transitions
 
+    def merge_scope(self, scope: TextureUsageScope) -> Iterator[Any]:
+        """Merges a texture usage scope into this tracker and returns transitions."""
+        from . import PendingTransition, StateTransition
+        
+        for index in scope.metadata.active_indices():
+            if index >= len(self.end_set.simple):
+                self.set_size(index + 1)
+            
+            texture = scope.metadata.get(index)
+            self.metadata.insert(index, texture)
+            
+            scope_simple = scope.set.simple[index]
+            end_simple = self.end_set.simple[index]
+            
+            if scope_simple != TextureUses.COMPLEX and end_simple != TextureUses.COMPLEX:
+                # Both simple states
+                if self._needs_transition(end_simple, scope_simple):
+                    t = PendingTransition(
+                        id=index,
+                        selector=None, # Full texture
+                        usage=StateTransition(from_state=end_simple, to_state=scope_simple)
+                    )
+                    self.end_set.simple[index] = scope_simple
+                    yield t
+                else:
+                    self.end_set.simple[index] = end_simple | scope_simple
+            else:
+                # At least one is complex, handle subresources
+                # Ensure end_set is complex
+                if self.end_set.simple[index] != TextureUses.COMPLEX:
+                    old_simple = self.end_set.simple[index]
+                    mip_count = getattr(texture, 'mip_level_count', 16)
+                    layer_count = getattr(texture, 'array_layer_count', 1)
+                    complex_state = ComplexTextureState(mip_count, layer_count)
+                    for rs in complex_state.mips:
+                        rs.ranges[0][1] = old_simple
+                    self.end_set.simple[index] = TextureUses.COMPLEX
+                    self.end_set.complex[index] = complex_state
+                
+                end_complex = self.end_set.complex[index]
+                
+                # Iterate over scope states
+                if scope_simple == TextureUses.COMPLEX:
+                    scope_complex = scope.set.complex[index]
+                    for mip_idx, scope_rs in enumerate(scope_complex.mips):
+                        end_rs = end_complex.mips[mip_idx]
+                        for scope_range, scope_val in scope_rs.ranges:
+                            target_indices = end_rs.isolate(scope_range, TextureUses.UNINITIALIZED)
+                            for idx in target_indices:
+                                old_val = end_rs.ranges[idx][1]
+                                if self._needs_transition(old_val, scope_val):
+                                    t = PendingTransition(
+                                        id=index,
+                                        selector=TextureSelector(mips=range(mip_idx, mip_idx+1), layers=end_rs.ranges[idx][0]),
+                                        usage=StateTransition(from_state=old_val, to_state=scope_val)
+                                    )
+                                    end_rs.ranges[idx][1] = scope_val
+                                    yield t
+                                else:
+                                    end_rs.ranges[idx][1] = old_val | scope_val
+                        end_rs.coalesce()
+                else:
+                    # Scope is simple, end is complex
+                    for mip_idx, end_rs in enumerate(end_complex.mips):
+                        for idx in range(len(end_rs.ranges)):
+                            old_val = end_rs.ranges[idx][1]
+                            if self._needs_transition(old_val, scope_simple):
+                                t = PendingTransition(
+                                    id=index,
+                                    selector=TextureSelector(mips=range(mip_idx, mip_idx+1), layers=end_rs.ranges[idx][0]),
+                                    usage=StateTransition(from_state=old_val, to_state=scope_simple)
+                                )
+                                end_rs.ranges[idx][1] = scope_simple
+                                yield t
+                            else:
+                                end_rs.ranges[idx][1] = old_val | scope_simple
+                        end_rs.coalesce()
+
+    def _needs_transition(self, current: TextureUses, next: TextureUses) -> bool:
+        """Determines if a transition/barrier is needed."""
+        if current == next:
+            return False
+        if next == TextureUses.UNINITIALIZED:
+            return False # No transition to uninitialized?
+        
+        if (next & TextureUses.EXCLUSIVE) or (current & TextureUses.EXCLUSIVE):
+            return True
+            
+        if (current & TextureUses.INCLUSIVE) and (next & TextureUses.INCLUSIVE):
+            return False
+            
+        return True
+
     def drain_transitions(self) -> Iterator[Any]:
         """Yields and clears all pending transitions."""
         yield from self.temp
