@@ -67,21 +67,79 @@ class AttachmentErrorLocation(Enum):
     COLOR = "color"
     COLOR_RESOLVE = "color_resolve"
     DEPTH = "depth"
+    
+    def __str__(self) -> str:
+        if self == AttachmentErrorLocation.COLOR:
+            return "color attachment's texture view"
+        elif self == AttachmentErrorLocation.COLOR_RESOLVE:
+            return "color attachment's resolve texture view"
+        elif self == AttachmentErrorLocation.DEPTH:
+            return "depth attachment's texture view"
 
 
 class ColorAttachmentError(Exception):
     """Errors related to color attachments."""
-    pass
+    INVALID_FORMAT = "Attachment format {0} is not a color format"
+    TOO_MANY = "The number of color attachments {0} exceeds the limit {1}"
+    TOO_MANY_BYTES_PER_SAMPLE = "The total number of bytes per sample in color attachments {0} exceeds the limit {1}"
+    DEPTH_SLICE_LIMIT = "Depth slice must be less than {1} but is {0}"
+    MISSING_DEPTH_SLICE = "Color attachment's view is 3D and requires depth slice to be provided"
+    UNNEEDED_DEPTH_SLICE = "Depth slice was provided but the color attachment's view is not 3D"
+    SUBRESOURCE_OVERLAP = "{view}'s subresource at mip {mip_level} and depth/array layer {depth_or_array_layer} is already attached to this render pass"
+    INVALID_USAGE_FOR_STORE_OP = "Color attachment's usage contains {0}. This can only be used with StoreOp::{1}, but StoreOp::{2} was provided"
 
 
 class AttachmentError(Exception):
     """Errors related to attachments."""
-    pass
+    INVALID_DEPTH_STENCIL_ATTACHMENT_FORMAT = "The format of the depth-stencil attachment ({0}) is not a depth-or-stencil format"
+    READ_ONLY_WITH_LOAD = "LoadOp must be None for read-only attachments"
+    READ_ONLY_WITH_STORE = "StoreOp must be None for read-only attachments"
+    NO_LOAD = "Attachment without load"
+    NO_STORE = "Attachment without store"
+    NO_CLEAR_VALUE = "LoadOp is `Clear` but no clear value was provided"
+    CLEAR_VALUE_OUT_OF_RANGE = "Clear value ({0}) must be between 0.0 and 1.0, inclusive"
 
 
 class RenderPassErrorInner(Exception):
     """Inner error type for render pass errors."""
-    pass
+    DEVICE = "Device error"
+    COLOR_ATTACHMENT = "Color attachment error"
+    INVALID_ATTACHMENT = "Invalid attachment"
+    ENCODER_STATE = "Encoder state error"
+    INVALID_PARENT_ENCODER = "Parent encoder is invalid"
+    DEBUG_GROUP_ERROR = "Debug group error"
+    UNSUPPORTED_RESOLVE_TARGET_FORMAT = "The format of the {location} ({format}) is not resolvable"
+    MISSING_ATTACHMENTS = "No color attachments or depth attachments were provided, at least one attachment of any kind must be provided"
+    TEXTURE_VIEW_IS_NOT_RENDERABLE = "The {location} is not renderable"
+    ATTACHMENTS_DIMENSION_MISMATCH = "Attachments have differing sizes: the {expected_location} has extent {expected_extent} but is followed by the {actual_location} which has {actual_extent}"
+    ATTACHMENT_SAMPLE_COUNT_MISMATCH = "Attachments have differing sample counts: the {expected_location} has count {expected_samples} but is followed by the {actual_location} which has count {actual_samples}"
+    INVALID_RESOLVE_SAMPLE_COUNTS = "The resolve source, {location}, must be multi-sampled (has {src} samples) while the resolve destination must not be multisampled (has {dst} samples)"
+    MISMATCHED_RESOLVE_TEXTURE_FORMAT = "Resource source, {location}, format ({src}) must match the resolve destination format ({dst})"
+    INVALID_DEPTH_OPS = "Unable to clear non-present/read-only depth"
+    INVALID_STENCIL_OPS = "Unable to clear non-present/read-only stencil"
+    INVALID_VALUES_OFFSET = "Invalid values offset"
+    MISSING_FEATURES = "Missing features"
+    MISSING_DOWNLEVEL_FLAGS = "Missing downlevel flags"
+    UNALIGNED_INDIRECT_BUFFER_OFFSET = "Indirect buffer offset {0} is not a multiple of 4"
+    INDIRECT_BUFFER_OVERRUN = "Indirect draw uses bytes {offset}..{end_offset} using count {count} which overruns indirect buffer of size {buffer_size}"
+    INDIRECT_COUNT_BUFFER_OVERRUN = "Indirect draw uses bytes {begin_count_offset}..{end_count_offset} which overruns indirect buffer of size {count_buffer_size}"
+    RESOURCE_USAGE_COMPATIBILITY = "Resource usage compatibility error"
+    INCOMPATIBLE_BUNDLE_TARGETS = "Render bundle has incompatible targets"
+    INCOMPATIBLE_BUNDLE_READ_ONLY_DEPTH_STENCIL = "Render bundle has incompatible read-only flags"
+    RENDER_COMMAND = "Render command error"
+    BIND = "Bind error"
+    IMMEDIATE_OFFSET_ALIGNMENT = "Immediate data offset must be aligned to 4 bytes"
+    IMMEDIATE_DATA_ALIGNMENT = "Immediate data size must be aligned to 4 bytes"
+    IMMEDIATE_OUT_OF_MEMORY = "Ran out of immediate data space. Don't set 4gb of immediates per ComputePass."
+    QUERY_USE = "Query use error"
+    MULTI_VIEW_MISMATCH = "Multiview layer count must match"
+    MULTI_VIEW_DIMENSION_MISMATCH = "Multiview pass texture views with more than one array layer must have D2Array dimension"
+    TOO_MANY_MULTI_VIEW_VIEWS = "Multiview view count limit violated"
+    MISSING_OCCLUSION_QUERY_SET = "missing occlusion query set"
+    DESTROYED_RESOURCE = "Destroyed resource error"
+    PASS_ENDED = "The compute pass has already ended and no further commands can be recorded"
+    INVALID_RESOURCE = "Invalid resource error"
+    TIMESTAMP_WRITES = "Timestamp writes error"
 
 
 class RenderPassError(Exception):
@@ -95,12 +153,20 @@ class RenderPassError(Exception):
 
 class DrawError(Exception):
     """Errors related to draw calls."""
-    pass
+    VERTEX_BEYOND_LIMIT = "Vertex {last_vertex} beyond limit {vertex_limit} for slot {slot}"
+    INSTANCE_BEYOND_LIMIT = "Instance {last_instance} beyond limit {instance_limit} for slot {slot}"
+    MISSING_PIPELINE = "Missing pipeline"
+    MISSING_BLEND_CONSTANT = "Missing blend constant"
+    MISSING_INDEX_BUFFER = "Missing index buffer"
+    UNMATCHED_INDEX_FORMATS = "Pipeline expects {pipeline_format} but buffer has {buffer_format}"
+    WRONG_PIPELINE_TYPE = "Wrong pipeline type"
+    MISSING_VERTEX_BUFFER = "Missing vertex buffer"
+    INDEX_BEYOND_LIMIT = "Index {last_index} beyond limit {limit}"
 
 
 class RenderCommandError(Exception):
     """Errors related to render commands."""
-    pass
+    BIND_GROUP_INDEX_OUT_OF_RANGE = "Bind group index out of range"
 
 
 class PassStateError(Exception):
@@ -401,13 +467,59 @@ class VertexLimits:
     instance_limit: int = 2**64 - 1
     instance_limit_slot: int = 0
     
+    @classmethod
+    def new(cls, buffer_sizes, pipeline_steps) -> 'VertexLimits':
+        """
+        Create new vertex limits from buffer sizes and pipeline steps.
+        
+        Implements validation from WebGPU specification.
+        """
+        vertex_limit = 2**64 - 1
+        vertex_limit_slot = 0
+        instance_limit = 2**64 - 1
+        instance_limit_slot = 0
+        
+        for idx, (buffer_size, step) in enumerate(zip(buffer_sizes, pipeline_steps)):
+            if buffer_size is None:
+                # Missing required vertex buffer
+                continue
+            
+            if step.last_stride > buffer_size:
+                # The buffer cannot fit the last vertex.
+                limit = 0
+            elif step.stride == 0:
+                # Same vertex will be repeated, slot can accommodate any number of vertices
+                continue
+            else:
+                # The general case
+                limit = (buffer_size - step.last_stride) // step.stride + 1
+            
+            if step.mode == "vertex":  # VertexStepMode::Vertex
+                if limit < vertex_limit:
+                    vertex_limit = limit
+                    vertex_limit_slot = idx
+            elif step.mode == "instance":  # VertexStepMode::Instance
+                if limit < instance_limit:
+                    instance_limit = limit
+                    instance_limit_slot = idx
+        
+        return cls(
+            vertex_limit=vertex_limit,
+            vertex_limit_slot=vertex_limit_slot,
+            instance_limit=instance_limit,
+            instance_limit_slot=instance_limit_slot
+        )
+    
     def validate_vertex_limit(self, first_vertex: int, vertex_count: int):
         """Validate vertex count against limits."""
         last_vertex = first_vertex + vertex_count
         if last_vertex > self.vertex_limit:
             raise DrawError(
-                f"Vertex {last_vertex} beyond limit {self.vertex_limit} "
-                f"for slot {self.vertex_limit_slot}"
+                DrawError.VERTEX_BEYOND_LIMIT.format(
+                    last_vertex=last_vertex,
+                    vertex_limit=self.vertex_limit,
+                    slot=self.vertex_limit_slot
+                )
             )
     
     def validate_instance_limit(self, first_instance: int, instance_count: int):
@@ -415,8 +527,11 @@ class VertexLimits:
         last_instance = first_instance + instance_count
         if last_instance > self.instance_limit:
             raise DrawError(
-                f"Instance {last_instance} beyond limit {self.instance_limit} "
-                f"for slot {self.instance_limit_slot}"
+                DrawError.INSTANCE_BEYOND_LIMIT.format(
+                    last_instance=last_instance,
+                    instance_limit=self.instance_limit,
+                    slot=self.instance_limit_slot
+                )
             )
 
 
