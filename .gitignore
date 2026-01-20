@@ -13,3 +13,7 @@ build
 Cargo.lock
 wgpu-trunk
 
+*.exe
+*.dll
+*.lib
+*.obj

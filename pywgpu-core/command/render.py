@@ -17,7 +17,7 @@ from enum import Enum
 # Import tracking types
 try:
     from ..track import BufferUses, TextureUses
-    from ..init_tracker import MemoryInitKind
+    from ..init_tracker import MemoryInitKind, Range
 except ImportError:
     # Fallback if track module not available
     from enum import IntFlag, Enum
@@ -35,6 +35,11 @@ except ImportError:
     class MemoryInitKind(Enum):
         IMPLICITLY_INITIALIZED = "implicitly_initialized"
         NEEDS_INITIALIZED_MEMORY = "needs_initialized_memory"
+
+    @dataclass
+    class Range:
+        start: int
+        end: int
 
 from .bind import Binder
 from .pass_module import PassState, set_bind_group, flush_bindings_helper, set_immediates
@@ -1524,6 +1529,67 @@ MAX_TOTAL_ATTACHMENTS = 8 + 8 + 1  # hal::MAX_COLOR_ATTACHMENTS * 2 + 1
 
 
 @dataclass
+class RenderPassContext:
+    """
+    Context for a render pass, used for compatibility checks.
+    
+    Attributes:
+        color_formats: Formats of color attachments.
+        depth_stencil_format: Format of depth/stencil attachment.
+        sample_count: Sample count.
+        multiview_mask: Multiview mask.
+    """
+    color_formats: List[Optional[Any]] = field(default_factory=list)
+    depth_stencil_format: Optional[Any] = None
+    sample_count: int = 1
+    multiview_mask: Optional[int] = None
+    
+    def check_compatible(self, other: 'RenderPassContext', resource: Any) -> None:
+        """
+        Check if this context is compatible with another.
+        
+        Args:
+            other: The other context to check against.
+            resource: The resource being checked (for error reporting).
+            
+        Raises:
+            RenderPassErrorInner: If contexts are incompatible.
+        """
+        if self.sample_count != other.sample_count:
+            raise RenderPassErrorInner(
+                f"IncompatibleSampleCount: pass={self.sample_count}, "
+                f"resource={other.sample_count} for {resource}"
+            )
+            
+        if self.multiview_mask != other.multiview_mask:
+            raise RenderPassErrorInner(
+                f"IncompatibleMultiview: pass={self.multiview_mask}, "
+                f"resource={other.multiview_mask} for {resource}"
+            )
+            
+        # Check color formats
+        if len(self.color_formats) != len(other.color_formats):
+            raise RenderPassErrorInner(
+                f"IncompatibleColorAttachmentCount: pass={len(self.color_formats)}, "
+                f"resource={len(other.color_formats)}"
+            )
+            
+        for i, (fmt1, fmt2) in enumerate(zip(self.color_formats, other.color_formats)):
+            if fmt1 != fmt2:
+                raise RenderPassErrorInner(
+                    f"IncompatibleColorFormat[{i}]: pass={fmt1}, "
+                    f"resource={fmt2}"
+                )
+                
+        # Check depth/stencil format
+        if self.depth_stencil_format != other.depth_stencil_format:
+            raise RenderPassErrorInner(
+                f"IncompatibleDepthStencilFormat: pass={self.depth_stencil_format}, "
+                f"resource={other.depth_stencil_format}"
+            )
+
+
+@dataclass
 class RenderPassInfo:
     """
     Internal render pass information and lifecycle management.
@@ -1948,8 +2014,15 @@ class RenderPassInfo:
             raise RenderPassErrorInner(f"Failed to begin render pass: {e}")
         
         # Create and return RenderPassInfo
+        context = RenderPassContext(
+            color_formats=[getattr(att.view, 'format', None) if att else None for att in color_attachments],
+            depth_stencil_format=getattr(depth_stencil_attachment.view, 'format', None) if depth_stencil_attachment else None,
+            sample_count=sample_count,
+            multiview_mask=multiview_mask,
+        )
+        
         return cls(
-            context=None,  # Would be RenderPassContext with formats, etc.
+            context=context,
             render_attachments=render_attachments,
             is_depth_read_only=is_depth_read_only,
             is_stencil_read_only=is_stencil_read_only,
@@ -2869,7 +2942,7 @@ def set_index_buffer(
             if hasattr(buffer, 'initialization_status') and hasattr(buffer.initialization_status, 'create_action'):
                 action = buffer.initialization_status.create_action(
                     buffer,
-                    range(offset, offset + index_data_size),
+                    Range(offset, offset + index_data_size),
                     MemoryInitKind.NEEDS_INITIALIZED_MEMORY
                 )
                 if action:
@@ -2922,7 +2995,9 @@ def set_vertex_buffer(
         RenderPassErrorInner: If validation fails.
     """
     # Track buffer in resource tracker
-    # buffer = state.pass_state.base.tracker.buffers.insert_single(buffer)
+    if hasattr(state, 'pass_state') and hasattr(state.pass_state, 'base'):
+        if hasattr(state.pass_state.base, 'tracker'):
+            buffer = state.pass_state.base.tracker.buffers.insert_single(buffer)
     
     # Validate buffer is from same device
     if hasattr(buffer, 'device') and hasattr(device, 'id'):
@@ -2931,17 +3006,18 @@ def set_vertex_buffer(
     
     # Check buffer has VERTEX usage flag
     if hasattr(buffer, 'usage'):
-        # Should have BufferUsages::VERTEX
-        # if not buffer.usage.contains(BufferUsages::VERTEX):
-        #     raise RenderPassErrorInner("Buffer missing VERTEX usage")
-        pass
+        if not (buffer.usage & BufferUsage.VERTEX):
+            raise RenderPassErrorInner(
+                f"Buffer {getattr(buffer, 'label', '')} is missing VERTEX usage"
+            )
     
     # Check buffer is not destroyed
-    # buffer.check_destroyed(snatch_guard)
+    snatch_guard = getattr(state.pass_state.base, 'snatch_guard', None) if hasattr(state, 'pass_state') and hasattr(state.pass_state, 'base') else None
+    if hasattr(buffer, 'check_destroyed') and snatch_guard:
+        buffer.check_destroyed(snatch_guard)
     
     # Validate slot is within bounds
-    # Typical limit is 8 or 16 vertex buffers
-    max_vertex_buffers = 16  # Should come from device.limits.max_vertex_buffers
+    max_vertex_buffers = getattr(device.limits, 'max_vertex_buffers', 16) if hasattr(device, 'limits') else 16
     if slot >= max_vertex_buffers:
         raise RenderPassErrorInner(
             f"Vertex buffer slot {slot} exceeds maximum {max_vertex_buffers}"
@@ -2997,7 +3073,7 @@ def set_vertex_buffer(
             if hasattr(buffer, 'initialization_status') and hasattr(buffer.initialization_status, 'create_action'):
                 action = buffer.initialization_status.create_action(
                     buffer,
-                    range(offset, offset + vertex_data_size),
+                    Range(offset, offset + vertex_data_size),
                     MemoryInitKind.NEEDS_INITIALIZED_MEMORY
                 )
                 if action:
@@ -3497,11 +3573,15 @@ def multi_draw_indirect(
     
     # Check buffer has INDIRECT usage
     if hasattr(indirect_buffer, 'usage'):
-        # BufferUsages::INDIRECT
-        pass
+        if not (indirect_buffer.usage & BufferUsage.INDIRECT):
+            raise RenderPassErrorInner(
+                f"Buffer {getattr(indirect_buffer, 'label', '')} is missing INDIRECT usage"
+            )
     
     # Check buffer is not destroyed
-    # indirect_buffer.check_destroyed(snatch_guard)
+    snatch_guard = getattr(state.pass_state.base, 'snatch_guard', None) if hasattr(state, 'pass_state') and hasattr(state.pass_state, 'base') else None
+    if hasattr(indirect_buffer, 'check_destroyed') and snatch_guard:
+        indirect_buffer.check_destroyed(snatch_guard)
     
     # Validate offset alignment (must be 4-byte aligned)
     if offset % 4 != 0:
@@ -3526,7 +3606,7 @@ def multi_draw_indirect(
             if hasattr(indirect_buffer, 'initialization_status') and hasattr(indirect_buffer.initialization_status, 'create_action'):
                 action = indirect_buffer.initialization_status.create_action(
                     indirect_buffer,
-                    range(offset, end_offset),
+                    Range(offset, end_offset),
                     MemoryInitKind.NEEDS_INITIALIZED_MEMORY
                 )
                 if action:
@@ -3580,8 +3660,10 @@ def multi_draw_indirect(
             # Add draw to validation batcher
             # Returns (buffer_index, validated_offset)
             if indirect_draw_validation_batcher:
+                # In a full implementation, this would call the GPU-side validation batcher
+                # which would register the draw and return metadata for the indirect buffer.
                 # draw_data = indirect_draw_validation_batcher.add(
-                #     validation_resources,
+                #     device.indirect_validation.draw,
                 #     device,
                 #     indirect_buffer,
                 #     draw_offset,
@@ -3605,20 +3687,26 @@ def multi_draw_indirect(
             if current_draw_data is None:
                 current_draw_data = draw_data
             elif (current_draw_data['buffer_index'] == draw_data['buffer_index'] and
-                  draw_data['offset'] == current_draw_data['offset'] + stride * current_draw_data['count']):
+                  current_draw_data['offset'] + stride * current_draw_data['count'] == draw_data['offset']):
                 # Same buffer and consecutive - batch it
                 current_draw_data['count'] += 1
             else:
                 # Different buffer or non-consecutive - issue previous batch
-                # dst_buffer = validation_resources.get_dst_buffer(current_draw_data['buffer_index'])
-                # issue_draw(raw_encoder, family, dst_buffer, current_draw_data['offset'], current_draw_data['count'])
+                validation_resources = getattr(state.pass_state.base, 'indirect_draw_validation_resources', {})
+                dst_buffer = validation_resources.get('dst_buffers', {}).get(current_draw_data['buffer_index'])
+                
+                if dst_buffer and raw_encoder:
+                    issue_draw(raw_encoder, family, dst_buffer, current_draw_data['offset'], current_draw_data['count'])
+                
                 current_draw_data = draw_data
         
         # Issue final batch
         if current_draw_data:
-            # dst_buffer = validation_resources.get_dst_buffer(current_draw_data['buffer_index'])
-            # issue_draw(raw_encoder, family, dst_buffer, current_draw_data['offset'], current_draw_data['count'])
-            pass
+            validation_resources = getattr(state.pass_state.base, 'indirect_draw_validation_resources', {})
+            dst_buffer = validation_resources.get('dst_buffers', {}).get(current_draw_data['buffer_index'])
+            
+            if dst_buffer and raw_encoder:
+                issue_draw(raw_encoder, family, dst_buffer, current_draw_data['offset'], current_draw_data['count'])
             
     else:
         # Direct path without validation
@@ -3630,9 +3718,10 @@ def multi_draw_indirect(
                 )
         
         # Issue single batched draw call
-        # raw_buffer = indirect_buffer.try_raw(snatch_guard)
-        # issue_draw(raw_encoder, family, raw_buffer, offset, count)
-        pass
+        # In a real implementation we would get the raw internal buffer
+        raw_buffer = indirect_buffer.raw() if hasattr(indirect_buffer, 'raw') else indirect_buffer
+        if raw_encoder:
+            issue_draw(raw_encoder, family, raw_buffer, offset, count)
 
 
 def execute_bundle(
@@ -3669,10 +3758,12 @@ def execute_bundle(
     
     # Check render pass context compatibility
     # This validates that color/depth formats, sample counts, etc. match
-    if hasattr(state.info, 'context') and hasattr(bundle, 'context'):
-        # state.info.context.check_compatible(bundle.context, bundle)
-        # Would raise IncompatibleBundleTargets if mismatch
-        pass
+    if state.info and hasattr(state.info, 'context') and hasattr(bundle, 'context'):
+        if state.info.context and bundle.context:
+            try:
+                state.info.context.check_compatible(bundle.context, bundle)
+            except RenderPassErrorInner as e:
+                raise RenderPassErrorInner(f"IncompatibleBundleTargets: {e}")
     
     # Validate depth/stencil read-only compatibility
     # Bundle cannot write to depth/stencil if pass has them as read-only
@@ -3707,23 +3798,17 @@ def execute_bundle(
             for action in bundle.texture_memory_init_actions:
                 # Add to pass actions
                 state.pass_state.base.texture_memory_init_actions.append(action)
-                
-                # If there are discard fixups, they might need special handling
-                # In real wgpu-core, this is where we'd register the init action
-                # and collect fixups if the bundle needs to initialize a texture
-                # that was discarded by a previous pass.
     
     # Execute the bundle's commands
     # This replays all recorded commands from the bundle
-    if hasattr(bundle, 'execute'):
+    if hasattr(bundle, 'execute') and hasattr(state, 'pass_state') and state.pass_state:
         try:
-            # bundle.execute(
-            #     raw_encoder=state.pass_state.base.raw_encoder,
-            #     indirect_validation_resources=state.pass_state.base.indirect_draw_validation_resources,
-            #     indirect_validation_batcher=indirect_draw_validation_batcher,
-            #     snatch_guard=state.pass_state.base.snatch_guard,
-            # )
-            pass
+            bundle.execute(
+                raw=state.pass_state.base.raw_encoder if hasattr(state.pass_state, 'base') else None,
+                indirect_draw_validation_resources=getattr(state.pass_state.base, 'indirect_draw_validation_resources', {}),
+                indirect_draw_validation_batcher=indirect_draw_validation_batcher,
+                snatch_guard=getattr(state.pass_state.base, 'snatch_guard', None),
+            )
         except Exception as e:
             # Map execution errors to render pass errors
             error_type = type(e).__name__
