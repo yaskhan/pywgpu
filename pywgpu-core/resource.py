@@ -341,6 +341,14 @@ class Buffer:
             label=self.label
         )
 
+    def get_indirect_validation_bind_group(self, snatch_guard: Any = None) -> Any:
+        """Get the bind group for indirect validation of this buffer."""
+        # In a real implementation, this would return a cached bind group
+        if not hasattr(self, '_indirect_validation_bind_group'):
+            # This would be created by the device's indirect validation logic
+            self._indirect_validation_bind_group = None
+        return self._indirect_validation_bind_group
+
 
 class Texture:
     """

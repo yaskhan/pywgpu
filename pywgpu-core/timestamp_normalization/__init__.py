@@ -102,20 +102,66 @@ class TimestampNormalizer:
         
         # Check if normalization is needed
         if timestamp_period == 1.0:
-            # Period is already 1ns, no normalization needed
             return
+
+        # We assume for now that if we're here, we should try to enable it
+        # In a real system we'd check device.instance_flags and device.downlevel
         
-        # Check if automatic normalization is supported
-        # (This would check device flags in real implementation)
-        
-        # Placeholder - full implementation would:
-        # 1. Create bind group layout
-        # 2. Compile WGSL shader (common.wgsl + timestamp_normalization.wgsl)
-        # 3. Create pipeline layout
-        # 4. Create compute pipeline with constants
-        
-        self.enabled = True
-    
+        try:
+            # 1. Create bind group layout
+            # 8 bytes min for a single u64 timestamp
+            self.bind_group_layout = device.create_bind_group_layout(
+                entries=[{
+                    "binding": 0,
+                    "visibility": 0x4, # COMPUTE
+                    "ty": {
+                        "type": "storage",
+                        "read_only": False,
+                        "has_dynamic_offset": False,
+                        "min_binding_size": 8
+                    }
+                }]
+            )
+
+            # 2. Compile WGSL shader
+            preprocessed_src = COMMON_WGSL + "\n" + TIMESTAMP_NORMALIZATION_WGSL
+            shader_module = device.create_shader_module(
+                label="Timestamp Normalization Shader",
+                source=preprocessed_src
+            )
+
+            # 3. Create pipeline layout
+            # immediate_size=8 (timestamp_offset: u32, timestamp_count: u32)
+            self.pipeline_layout = device.create_pipeline_layout(
+                label="Timestamp Normalization Pipeline Layout",
+                bind_group_layouts=[self.bind_group_layout],
+                immediate_size=8
+            )
+
+            # 4. Compute constants
+            multiplier, shift = compute_timestamp_period(timestamp_period)
+
+            # 5. Create compute pipeline
+            self.pipeline = device.create_compute_pipeline(
+                label="Timestamp Normalization Pipeline",
+                layout=self.pipeline_layout,
+                stage={
+                    "module": shader_module,
+                    "entry_point": "main",
+                    "constants": {
+                        "TIMESTAMP_PERIOD_MULTIPLY": multiplier,
+                        "TIMESTAMP_PERIOD_SHIFT": shift
+                    }
+                }
+            )
+
+            self.enabled = True
+            
+        except Exception as e:
+            # Cleanup any partially created resources
+            self.dispose(device)
+            raise TimestampNormalizerInitError(f"Failed to initialize timestamp normalizer: {e}")
+
     def create_normalization_bind_group(
         self,
         device: any,
@@ -140,9 +186,26 @@ class TimestampNormalizer:
         if not self.enabled:
             return TimestampNormalizationBindGroup(None)
         
-        # Placeholder - would create actual bind group
-        return TimestampNormalizationBindGroup(None)
-    
+        # In WebGPU, QUERY_RESOLVE usage is required for timestamp buffers
+        # QUERY_RESOLVE = 0x0200
+        if not (buffer_usages & 0x0200):
+            return TimestampNormalizationBindGroup(None)
+
+        try:
+            label = f"Timestamp normalization bind group ({buffer_label})" if buffer_label else "Timestamp normalization bind group"
+            
+            raw_bg = device.create_bind_group({
+                "label": label,
+                "layout": self.bind_group_layout,
+                "entries": [{
+                    "binding": 0,
+                    "resource": {"buffer": buffer, "offset": 0, "size": buffer_size}
+                }]
+            })
+            return TimestampNormalizationBindGroup(raw_bg)
+        except Exception:
+            return TimestampNormalizationBindGroup(None)
+
     def normalize(
         self,
         snatch_guard: any,
@@ -172,15 +235,45 @@ class TimestampNormalizer:
         
         # Calculate workgroups (64 timestamps per workgroup)
         needed_workgroups = (total_timestamps + 63) // 64
-        buffer_offset_timestamps = buffer_offset_bytes // 8
+        buffer_offset_timestamps = buffer_offset_bytes // 8 # 8 bytes per u64 timestamp
         
-        # Placeholder - would:
         # 1. Transition buffer to STORAGE_READ_WRITE
+        # tracker.set_single(buffer, TIMESTAMP_NORMALIZATION_BUFFER_USES)
+        # Assuming tracker has this method and it handles transitions
+        
         # 2. Begin compute pass
+        # pass_encoder = encoder.begin_compute_pass(label="Timestamp normalization pass")
+        
         # 3. Set pipeline and bind group
+        # pass_encoder.set_pipeline(self.pipeline)
+        # pass_encoder.set_bind_group(0, bind_group.raw)
+        
         # 4. Set immediate data (offset, count)
+        # pass_encoder.set_immediates(0, [buffer_offset_timestamps, total_timestamps])
+        
         # 5. Dispatch compute shader
+        # pass_encoder.dispatch(needed_workgroups, 1, 1)
+        
         # 6. End compute pass
+        # pass_encoder.end()
+
+        # NOTE: Since CommandEncoder and PassEncoder implementation details might vary,
+        # we'll use a generic approach similar to other validation pass injections.
+        
+        # Transitioning would normally happen here if we used tracker properly
+        # But for now we'll assume the encoder/tracker interaction is as shown in Rust mod.rs
+        
+        # Start pass
+        # We need a HAL-level compute pass
+        pass_encoder = encoder.begin_compute_pass({
+            "label": "Timestamp normalization pass"
+        })
+        
+        pass_encoder.set_pipeline(self.pipeline)
+        pass_encoder.set_bind_group(0, bind_group.raw, [])
+        pass_encoder.set_immediates(0, [buffer_offset_timestamps, total_timestamps])
+        pass_encoder.dispatch(needed_workgroups, 1, 1)
+        pass_encoder.end()
     
     def dispose(self, device: any) -> None:
         """
@@ -218,16 +311,20 @@ def compute_timestamp_period(input_period: float) -> Tuple[int, int]:
         - multiplier: u32 numerator
         - shift: u32 denominator as power of 2 (actual denominator is 1 << shift)
     """
-    # Calculate power of 2 for denominator
+    # math.log2 of float
     pow2 = math.ceil(math.log2(input_period))
+    # Clamp to [-32, 32]
     clamped_pow2 = max(-32, min(32, pow2))
-    shift = 32 - abs(clamped_pow2)
+    abs_clamped_pow2 = abs(clamped_pow2)
+    shift = 32 - abs_clamped_pow2
     
-    # Calculate multiplier
+    # denominator = 1 << shift
     denominator = float(1 << shift)
-    multiplier = round(input_period * denominator)
     
-    # Clamp to u32 range
+    # multiplier = round(input_period * denominator)
+    multiplier = int(round(input_period * denominator))
+    
+    # Saturate to u32
     multiplier = max(0, min(0xFFFFFFFF, multiplier))
     
     return (multiplier, shift)

@@ -82,21 +82,104 @@ class Dispatch:
         self.device = device
         self.limits = limits
         
-        # Placeholder - full implementation would create:
-        # - Shader module with validation logic
-        # - Bind group layouts
-        # - Pipeline layout
-        # - Compute pipeline
-        # - Destination buffer
-        # - Destination bind group
+        max_workgroups = limits.get('max_compute_workgroups_per_dimension', 65535)
         
-        self.module = None
-        self.dst_bind_group_layout = None
-        self.src_bind_group_layout = None
-        self.pipeline_layout = None
-        self.pipeline = None
-        self.dst_buffer = None
-        self.dst_bind_group = None
+        # 1. Generate Shader Source
+        source = f"""
+            @group(0) @binding(0)
+            var<storage, read_write> dst: array<u32, 6>;
+            @group(1) @binding(0)
+            var<storage, read> src: array<u32>;
+            struct OffsetPc {{
+                inner: u32,
+            }}
+            var<immediate> offset: OffsetPc;
+
+            @compute @workgroup_size(1)
+            fn main() {{
+                let src_data = vec3(src[offset.inner / 4u], src[offset.inner / 4u + 1u], src[offset.inner / 4u + 2u]);
+                let max_compute_workgroups_per_dimension = {max_workgroups}u;
+                if (
+                    src_data.x > max_compute_workgroups_per_dimension ||
+                    src_data.y > max_compute_workgroups_per_dimension ||
+                    src_data.z > max_compute_workgroups_per_dimension
+                ) {{
+                    dst = array(0u, 0u, 0u, 0u, 0u, 0u);
+                }} else {{
+                    dst = array(src_data.x, src_data.y, src_data.z, src_data.x, src_data.y, src_data.z);
+                }}
+            }}
+        """
+        
+        # 2. Create Shader Module
+        self.module = device.create_shader_module(
+            label="Indirect Dispatch Validation Shader",
+            source=source
+        )
+        
+        # 3. Create Bind Group Layouts
+        # SRC_BUFFER_SIZE = 12, DST_BUFFER_SIZE = 24
+        self.dst_bind_group_layout = device.create_bind_group_layout(
+            entries=[{
+                "binding": 0,
+                "visibility": 0x4, # COMPUTE
+                "ty": {
+                    "type": "storage",
+                    "read_only": False,
+                    "has_dynamic_offset": False,
+                    "min_binding_size": 24
+                }
+            }]
+        )
+        
+        self.src_bind_group_layout = device.create_bind_group_layout(
+            entries=[{
+                "binding": 0,
+                "visibility": 0x4, # COMPUTE
+                "ty": {
+                    "type": "storage",
+                    "read_only": True,
+                    "has_dynamic_offset": True,
+                    "min_binding_size": 12
+                }
+            }]
+        )
+        
+        # 4. Create Pipeline Layout
+        self.pipeline_layout = device.create_pipeline_layout(
+            label="Indirect Dispatch Validation Pipeline Layout",
+            bind_group_layouts=[
+                self.dst_bind_group_layout,
+                self.src_bind_group_layout
+            ],
+            immediate_size=4
+        )
+        
+        # 5. Create Compute Pipeline
+        self.pipeline = device.create_compute_pipeline(
+            label="Indirect Dispatch Validation Pipeline",
+            layout=self.pipeline_layout,
+            stage={
+                "module": self.module,
+                "entry_point": "main"
+            }
+        )
+        
+        # 6. Create Destination Buffer and Bind Group
+        self.dst_buffer = device.create_buffer({
+            "label": "Indirect Dispatch Validation Dst Buffer",
+            "size": 24,
+            "usage": 0x0100 | 0x0080 # INDIRECT | STORAGE_READ_WRITE
+        })
+        
+        self.dst_bind_group = device.create_bind_group({
+            "label": "Indirect Dispatch Validation Dst BindGroup",
+            "layout": self.dst_bind_group_layout,
+            "entries": [{
+                "binding": 0,
+                "resource": {"buffer": self.dst_buffer, "offset": 0, "size": 24}
+            }]
+        })
     
     def create_src_bind_group(
         self,
@@ -126,8 +209,14 @@ class Dispatch:
         if binding_size == 0:
             return None
         
-        # Placeholder - would create actual bind group
-        return {"buffer": buffer, "size": binding_size}
+        return device.create_bind_group({
+            "label": "Indirect Dispatch Validation Src BindGroup",
+            "layout": self.src_bind_group_layout,
+            "entries": [{
+                "binding": 0,
+                "resource": {"buffer": buffer, "offset": 0, "size": binding_size}
+            }]
+        })
     
     def params(self, limits: dict, offset: int, buffer_size: int) -> DispatchParams:
         """
@@ -165,8 +254,27 @@ class Dispatch:
         Args:
             device: The HAL device.
         """
-        # Cleanup would go here
-        pass
+        if self.dst_bind_group:
+            # device.destroy_bind_group(self.dst_bind_group)
+            self.dst_bind_group = None
+        if self.dst_buffer:
+            # device.destroy_buffer(self.dst_buffer)
+            self.dst_buffer = None
+        if self.pipeline:
+            # device.destroy_compute_pipeline(self.pipeline)
+            self.pipeline = None
+        if self.pipeline_layout:
+            # device.destroy_pipeline_layout(self.pipeline_layout)
+            self.pipeline_layout = None
+        if self.src_bind_group_layout:
+            # device.destroy_bind_group_layout(self.src_bind_group_layout)
+            self.src_bind_group_layout = None
+        if self.dst_bind_group_layout:
+            # device.destroy_bind_group_layout(self.dst_bind_group_layout)
+            self.dst_bind_group_layout = None
+        if self.module:
+            # device.destroy_shader_module(self.module)
+            self.module = None
     
     @staticmethod
     def _calculate_src_buffer_binding_size(buffer_size: int, limits: dict) -> int:

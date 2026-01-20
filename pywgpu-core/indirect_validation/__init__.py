@@ -139,7 +139,7 @@ class IndirectValidation:
 
 # Export submodules
 from .dispatch import Dispatch, DispatchValidator
-from .draw import Draw, DrawValidator
+from .draw import Draw, DrawValidator, DrawResources, DrawBatcher
 from .utils import UniqueIndexScratch, BufferBarrierScratch, BufferBarriers
 
 __all__ = [
@@ -149,6 +149,8 @@ __all__ = [
     'DispatchValidator',
     'Draw',
     'DrawValidator',
+    'DrawResources',
+    'DrawBatcher',
     'UniqueIndexScratch',
     'BufferBarrierScratch',
     'BufferBarriers',

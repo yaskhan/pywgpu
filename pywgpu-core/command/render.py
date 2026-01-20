@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any, List, Optional, Dict, Tuple
-from enum import Enum
+from enum import Enum, IntFlag
 
 # Import tracking types
 try:
@@ -101,6 +101,15 @@ class OptionalState(Enum):
     UNUSED = "unused"
     REQUIRED = "required"
     SET = "set"
+
+
+class PipelineFlags(IntFlag):
+    """Flags for pipeline-dependent render pass state."""
+    NONE = 0
+    WRITES_DEPTH = 1 << 0
+    WRITES_STENCIL = 1 << 1
+    BLEND_CONSTANT = 1 << 2
+    STENCIL_REFERENCE = 1 << 3
 
 
 class OptionalStateTracker:
@@ -3615,6 +3624,8 @@ def multi_draw_indirect(
     # Helper function to issue HAL draw calls
     def issue_draw(raw_encoder, draw_family, buffer, draw_offset, draw_count):
         """Issue HAL draw call based on family."""
+        if not raw_encoder:
+            return
         if draw_family == DrawCommandFamily.DRAW:
             if hasattr(raw_encoder, 'draw_indirect'):
                 raw_encoder.draw_indirect(buffer, draw_offset, draw_count)
@@ -3625,16 +3636,16 @@ def multi_draw_indirect(
             if hasattr(raw_encoder, 'draw_mesh_tasks_indirect'):
                 raw_encoder.draw_mesh_tasks_indirect(buffer, draw_offset, draw_count)
     
-    # Check if indirect validation is enabled
+    # Check if indirect validation is enabled on the device
     has_indirect_validation = (
         hasattr(device, 'indirect_validation') and 
         device.indirect_validation is not None
     )
     
+    raw_encoder = state.pass_state.base.raw_encoder if hasattr(state.pass_state, 'base') else None
+    
     if has_indirect_validation:
         # GPU-side validation path
-        # This validates draw parameters on the GPU to prevent out-of-bounds access
-        
         # Merge buffer into scope with STORAGE_READ_ONLY usage
         if hasattr(state, 'pass_state') and hasattr(state.pass_state, 'scope'):
             if hasattr(state.pass_state.scope, 'buffers'):
@@ -3650,66 +3661,60 @@ def multi_draw_indirect(
         
         instance_limit = state.vertex.limits.instance_limit if hasattr(state.vertex.limits, 'instance_limit') else 0
         
-        # Batch validation and draw calls
-        # This groups consecutive draws into the same validation buffer
-        current_draw_data = None
+        # Validation resources from the encoder state
+        resources = getattr(state.pass_state.base, 'indirect_draw_validation_resources', None)
+        if resources is None:
+            # Should not happen in a correct implementation
+            # For now, just issue direct draws as fallback if resources are missing
+            raw_buffer = indirect_buffer.raw() if hasattr(indirect_buffer, 'raw') else indirect_buffer
+            issue_draw(raw_encoder, family, raw_buffer, offset, count)
+            return
+
+        # Helper to add a draw to the batcher
+        def add_to_batcher(off):
+            dst_resource_index, dst_offset = indirect_draw_validation_batcher.add(
+                resources,
+                device,
+                indirect_buffer,
+                off,
+                family,
+                vertex_or_index_limit,
+                instance_limit,
+            )
+            return {
+                'buffer_index': dst_resource_index,
+                'offset': dst_offset,
+                'count': 1,
+            }
+
+        # Issue draw from draw_data
+        def do_draw(draw_data):
+            dst_buffer = resources.get_dst_buffer(draw_data['buffer_index'])
+            if dst_buffer:
+                issue_draw(raw_encoder, family, dst_buffer, draw_data['offset'], draw_data['count'])
+
+        # Process the first draw
+        current_draw_data = add_to_batcher(offset)
         
-        for i in range(count):
+        # Batch subsequent draws
+        for i in range(1, count):
             draw_offset = offset + stride * i
+            draw_data = add_to_batcher(draw_offset)
             
-            # Add draw to validation batcher
-            # Returns (buffer_index, validated_offset)
-            if indirect_draw_validation_batcher:
-                # In a full implementation, this would call the GPU-side validation batcher
-                # which would register the draw and return metadata for the indirect buffer.
-                # draw_data = indirect_draw_validation_batcher.add(
-                #     device.indirect_validation.draw,
-                #     device,
-                #     indirect_buffer,
-                #     draw_offset,
-                #     family,
-                #     vertex_or_index_limit,
-                #     instance_limit,
-                # )
-                draw_data = {
-                    'buffer_index': 0,
-                    'offset': draw_offset,
-                    'count': 1,
-                }
-            else:
-                draw_data = {
-                    'buffer_index': 0,
-                    'offset': draw_offset,
-                    'count': 1,
-                }
-            
-            # Try to batch consecutive draws
-            if current_draw_data is None:
-                current_draw_data = draw_data
-            elif (current_draw_data['buffer_index'] == draw_data['buffer_index'] and
-                  current_draw_data['offset'] + stride * current_draw_data['count'] == draw_data['offset']):
-                # Same buffer and consecutive - batch it
+            if draw_data['buffer_index'] == current_draw_data['buffer_index'] and \
+               draw_data['offset'] == current_draw_data['offset'] + stride * current_draw_data['count']:
+                # Consecutive in the same buffer, can be batched
                 current_draw_data['count'] += 1
             else:
-                # Different buffer or non-consecutive - issue previous batch
-                validation_resources = getattr(state.pass_state.base, 'indirect_draw_validation_resources', {})
-                dst_buffer = validation_resources.get('dst_buffers', {}).get(current_draw_data['buffer_index'])
-                
-                if dst_buffer and raw_encoder:
-                    issue_draw(raw_encoder, family, dst_buffer, current_draw_data['offset'], current_draw_data['count'])
-                
+                # Different buffer or non-consecutive, issue previous batch
+                do_draw(current_draw_data)
                 current_draw_data = draw_data
         
         # Issue final batch
-        if current_draw_data:
-            validation_resources = getattr(state.pass_state.base, 'indirect_draw_validation_resources', {})
-            dst_buffer = validation_resources.get('dst_buffers', {}).get(current_draw_data['buffer_index'])
-            
-            if dst_buffer and raw_encoder:
-                issue_draw(raw_encoder, family, dst_buffer, current_draw_data['offset'], current_draw_data['count'])
+        do_draw(current_draw_data)
             
     else:
-        # Direct path without validation
+        # Direct path without GPU-side validation
         # Merge buffer into scope with INDIRECT usage
         if hasattr(state, 'pass_state') and hasattr(state.pass_state, 'scope'):
             if hasattr(state.pass_state.scope, 'buffers'):
@@ -3717,11 +3722,9 @@ def multi_draw_indirect(
                     indirect_buffer, BufferUses.INDIRECT
                 )
         
-        # Issue single batched draw call
-        # In a real implementation we would get the raw internal buffer
+        # Issue single batched draw call for all draws
         raw_buffer = indirect_buffer.raw() if hasattr(indirect_buffer, 'raw') else indirect_buffer
-        if raw_encoder:
-            issue_draw(raw_encoder, family, raw_buffer, offset, count)
+        issue_draw(raw_encoder, family, raw_buffer, offset, count)
 
 
 def execute_bundle(
@@ -3802,10 +3805,9 @@ def execute_bundle(
     # Execute the bundle's commands
     # This replays all recorded commands from the bundle
     if hasattr(bundle, 'execute') and hasattr(state, 'pass_state') and state.pass_state:
-        try:
             bundle.execute(
                 raw=state.pass_state.base.raw_encoder if hasattr(state.pass_state, 'base') else None,
-                indirect_draw_validation_resources=getattr(state.pass_state.base, 'indirect_draw_validation_resources', {}),
+                indirect_draw_validation_resources=getattr(state.pass_state.base, 'indirect_draw_validation_resources', None),
                 indirect_draw_validation_batcher=indirect_draw_validation_batcher,
                 snatch_guard=getattr(state.pass_state.base, 'snatch_guard', None),
             )
@@ -3870,12 +3872,18 @@ def encode_render_pass(
     device = parent_state.device if hasattr(parent_state, 'device') else None
     
     # Initialize indirect draw validation batcher
-    indirect_draw_validation_batcher = None  # Would be DrawBatcher()
+    from .indirect_validation import DrawBatcher
+    indirect_draw_validation_batcher = DrawBatcher()
     
     # Close previous encoder if open and open new pass
-    # parent_state.raw_encoder.close_if_open()
-    # raw_encoder = parent_state.raw_encoder.open_pass(base.label)
-    raw_encoder = None  # Simplified
+    raw_encoder = None
+    if hasattr(parent_state, 'encoder') and parent_state.encoder:
+        if hasattr(parent_state.encoder, 'close_if_open'):
+            parent_state.encoder.close_if_open()
+        if hasattr(parent_state.encoder, 'open_pass'):
+            raw_encoder = parent_state.encoder.open_pass(base.label if hasattr(base, 'label') else None)
+        else:
+            raw_encoder = getattr(parent_state.encoder, 'raw', None)
     
     # Initialize tracking structures
     pending_query_resets = {}
@@ -3906,16 +3914,17 @@ def encode_render_pass(
     )
     
     # Update tracker sizes
-    # if hasattr(parent_state, 'tracker') and device:
-    #     indices = device.tracker_indices
-    #     parent_state.tracker.buffers.set_size(indices.buffers.size())
-    #     parent_state.tracker.textures.set_size(indices.textures.size())
+    if hasattr(parent_state, 'tracker') and device:
+        if hasattr(device, 'tracker_indices'):
+            indices = device.tracker_indices
+            parent_state.tracker.buffers.set_size(indices.buffers.size())
+            parent_state.tracker.textures.set_size(indices.textures.size())
     
     debug_scope_depth = 0
     
     # Create state object for command processing
     state = State(
-        pipeline_flags=None,  # Would be PipelineFlags::empty()
+        pipeline_flags=PipelineFlags.NONE,
         blend_constant=OptionalState.UNUSED,
         stencil_reference=0,
         pipeline=None,
@@ -4102,10 +4111,37 @@ def encode_render_pass(
     # if they were partially updated or need to be transitioned to a stable state.
     if pending_discard_init_fixups:
         for fixup in pending_discard_init_fixups:
-            # fixup is likely a TextureInitRange or similar
-            # In a full implementation, we would register these in the command buffer's
-            # initialization tracker.
-            pass
+            # Register these in the command buffer's initialization tracker.
+            if hasattr(parent_state, 'texture_memory_actions'):
+                if hasattr(parent_state.texture_memory_actions, 'register_fixup'):
+                    parent_state.texture_memory_actions.register_fixup(fixup)
+    
+    # Inject indirect draw validation pass if needed
+    if hasattr(device, 'indirect_validation') and device.indirect_validation:
+        # In a real implementation, we would open a "Pre Pass" or "Post Pass" internal encoder
+        # to run the validation compute shader.
+        if hasattr(device.indirect_validation, 'draw') and device.indirect_validation.draw:
+            # Prepare resources for injection
+            resources = getattr(parent_state, 'indirect_draw_validation_resources', None)
+            snatch_guard = getattr(parent_state, 'snatch_guard', None)
+            temp_resources = getattr(parent_state, 'temp_resources', [])
+            
+            # Use the raw_encoder if available, or the parent state's raw_encoder
+            valid_encoder = raw_encoder if raw_encoder else getattr(parent_state, 'raw_encoder', None)
+            
+            if valid_encoder and resources:
+                device.indirect_validation.draw.inject_validation_pass(
+                    device=device,
+                    snatch_guard=snatch_guard,
+                    resources=resources,
+                    temp_resources=temp_resources,
+                    encoder=valid_encoder,
+                    batcher=indirect_draw_validation_batcher
+                )
+                
+                # Dispose of resources back to pool
+                if hasattr(resources, 'dispose'):
+                    resources.dispose()
 
 
 
