@@ -94,54 +94,165 @@ class SurfacesInDiscardState:
 
 
 @dataclass
+class TextureSurfaceDiscard:
+    """
+    Surface that was discarded by StoreOp::Discard of a preceding render pass.
+    
+    Any read access to this surface needs to be preceded by texture initialization.
+    """
+    texture: Any  # Arc<Texture>
+    mip_level: int
+    layer: int
+
+
 class CommandBufferTextureMemoryActions:
     """
-    Command buffer texture memory actions.
-
-    Attributes:
-        actions: List of actions.
+    Tracks texture memory initialization actions for a command buffer.
+    
+    This class manages:
+    - Init actions that need to be executed before the command buffer runs
+    - Discarded surfaces that reset texture init state after execution
     """
-
-    actions: List[Any] = None
-
-    def __post_init__(self):
-        if self.actions is None:
-            self.actions = []
+    
+    def __init__(self):
+        self.init_actions: List[TextureInitTrackerAction] = []
+        self.discards: List[TextureSurfaceDiscard] = []
+    
+    def drain_init_actions(self) -> List[TextureInitTrackerAction]:
+        """
+        Drain and return all pending texture init actions.
+        
+        Returns:
+            List of texture init actions.
+        """
+        actions = self.init_actions
+        self.init_actions = []
+        return actions
+    
+    def discard(self, discard: TextureSurfaceDiscard) -> None:
+        """
+        Mark a texture surface as discarded.
+        
+        Args:
+            discard: The discarded surface information.
+        """
+        self.discards.append(discard)
+    
+    def register_init_action(
+        self,
+        action: TextureInitTrackerAction,
+    ) -> List[TextureSurfaceDiscard]:
+        """
+        Register a texture initialization action.
+        
+        Returns surfaces that were previously discarded and need immediate
+        initialization. Only returns non-empty list if action kind is
+        NeedsInitializedMemory.
+        
+        Args:
+            action: The texture init action to register.
+            
+        Returns:
+            List of surfaces that need immediate clearing.
+        """
+        immediately_necessary_clears: List[TextureSurfaceDiscard] = []
+        
+        # Add the action to our list
+        # Note: In Rust, this calls texture.initialization_status.read().check_action(action)
+        # which may expand the action into multiple actions
+        self.init_actions.append(action)
+        
+        # Check if any discarded surfaces overlap with this action
+        remaining_discards = []
+        for discarded_surface in self.discards:
+            # Check if this action overlaps with the discarded surface
+            overlaps = (
+                discarded_surface.texture is action.texture and
+                action.range.layer_range.start <= discarded_surface.layer < action.range.layer_range.stop and
+                action.range.mip_range.start <= discarded_surface.mip_level < action.range.mip_range.stop
+            )
+            
+            if overlaps:
+                # If we need initialized memory, we must clear this surface immediately
+                if action.kind == MemoryInitKind.NeedsInitializedMemory:
+                    immediately_necessary_clears.append(discarded_surface)
+                    
+                    # Mark surface as implicitly initialized
+                    self.init_actions.append(TextureInitTrackerAction(
+                        texture=discarded_surface.texture,
+                        range=TextureInitRange(
+                            mip_range=range(discarded_surface.mip_level, discarded_surface.mip_level + 1),
+                            layer_range=range(discarded_surface.layer, discarded_surface.layer + 1),
+                        ),
+                        kind=MemoryInitKind.ImplicitlyInitialized,
+                    ))
+                # Don't keep this discard since it's been handled
+            else:
+                # Keep discards that don't overlap
+                remaining_discards.append(discarded_surface)
+        
+        self.discards = remaining_discards
+        return immediately_necessary_clears
+    
+    def register_implicit_init(
+        self,
+        texture: Any,
+        range: TextureInitRange,
+    ) -> None:
+        """
+        Shortcut for registering an implicit initialization action.
+        
+        This should not require any immediate resource initialization.
+        
+        Args:
+            texture: The texture to mark as initialized.
+            range: The range to initialize.
+        """
+        action = TextureInitTrackerAction(
+            texture=texture,
+            range=range,
+            kind=MemoryInitKind.ImplicitlyInitialized,
+        )
+        immediately_necessary = self.register_init_action(action)
+        assert len(immediately_necessary) == 0, "Implicit init should not require immediate clears"
 
 
 def fixup_discarded_surfaces(
-    device: Any,
-    surfaces: SurfacesInDiscardState,
+    inits: List[TextureSurfaceDiscard],
     encoder: Any,
     texture_tracker: Any,
+    device: Any,
     snatch_guard: Any,
 ) -> None:
     """
-    Fix up discarded surfaces.
-
+    Initialize discarded surfaces immediately.
+    
+    Takes discarded surfaces from register_init_action and clears them,
+    handling barriers as needed.
+    
     Args:
+        inits: List of surfaces to initialize.
+        encoder: The HAL command encoder.
+        texture_tracker: Texture usage tracker.
         device: The device.
-        surfaces: Surfaces in discard state.
-        encoder: The command encoder.
-        texture_tracker: The texture tracker.
-        snatch_guard: The snatch guard.
+        snatch_guard: Snatch guard for resource access.
     """
-    for init in surfaces.surfaces:
-        # Simplified: in Rust this calls clear_texture
-        # clear_texture(
-        #     &init.texture,
-        #     TextureInitRange {
-        #         mip_range: init.mip_level..(init.mip_level + 1),
-        #         layer_range: init.layer..(init.layer + 1),
-        #     },
-        #     encoder,
-        #     texture_tracker,
-        #     &device.alignments,
-        #     device.zero_buffer.as_ref(),
-        #     snatch_guard,
-        #     device.instance_flags,
-        # )
-        pass
+    from .clear import clear_texture
+    
+    for init in inits:
+        clear_texture(
+            init.texture,
+            TextureInitRange(
+                mip_range=range(init.mip_level, init.mip_level + 1),
+                layer_range=range(init.layer, init.layer + 1),
+            ),
+            encoder,
+            texture_tracker,
+            device.alignments,
+            device.zero_buffer,
+            snatch_guard,
+            device.instance_flags,
+        )
 
 
 def initialize_buffer_memory(
@@ -237,8 +348,9 @@ def initialize_texture_memory(
     # Now that all textures have the proper init state for before
     # cmdbuf start, we discard init states for textures it left discarded
     # after its execution.
-    # for surface_discard in texture_memory_actions.discards:
-    #     surface_discard.texture.initialization_status.discard(
-    #         surface_discard.mip_level, surface_discard.layer
-    #     )
-    pass
+    for surface_discard in texture_memory_actions.discards:
+        # Mark the surface as uninitialized in the texture's initialization status
+        # In Rust: surface_discard.texture.initialization_status.write().discard(...)
+        if hasattr(surface_discard.texture, 'initialization_status'):
+            with surface_discard.texture.initialization_status.write() as status:
+                status.discard(surface_discard.mip_level, surface_discard.layer)

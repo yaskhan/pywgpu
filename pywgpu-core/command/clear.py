@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from typing import Any, Optional, List, Union
 
 from . import errors
+from .. import wgt
 from ..track.texture import TextureUses, TextureSelector
 from ..init_tracker import (
     MemoryInitKind,

@@ -3805,6 +3805,7 @@ def execute_bundle(
     # Execute the bundle's commands
     # This replays all recorded commands from the bundle
     if hasattr(bundle, 'execute') and hasattr(state, 'pass_state') and state.pass_state:
+        try:
             bundle.execute(
                 raw=state.pass_state.base.raw_encoder if hasattr(state.pass_state, 'base') else None,
                 indirect_draw_validation_resources=getattr(state.pass_state.base, 'indirect_draw_validation_resources', None),

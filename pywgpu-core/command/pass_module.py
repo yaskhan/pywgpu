@@ -17,6 +17,30 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, List, Optional
 
+try:
+    from ..track import BufferUses, TextureUses
+except ImportError:
+    # Use fallback if not available
+    class BufferUses:
+        UNIFORM = 1 << 6
+        STORAGE_READ_ONLY = 1 << 7
+        STORAGE_READ_WRITE = 1 << 8
+    class TextureUses:
+        RESOURCE = 1 << 4
+        STORAGE_READ_ONLY = 1 << 8
+        STORAGE_READ_WRITE = 1 << 10
+
+try:
+    from ..ray_tracing import AsAction
+except ImportError:
+    AsAction = None
+
+try:
+    from ..resource import DestroyedResourceError
+except ImportError:
+    class DestroyedResourceError(Exception):
+        pass
+
 
 @dataclass
 class PassState:
@@ -183,25 +207,16 @@ def set_immediates(
     if pipeline_layout is None:
         raise MissingPipeline()
 
-    # pipeline_layout.validate_immediates_ranges(offset, end_offset_bytes)
+    # Validate that the immediate ranges are valid for this pipeline layout
+    if hasattr(pipeline_layout, 'validate_immediates_ranges'):
+        pipeline_layout.validate_immediates_ranges(offset, end_offset_bytes)
 
     callback(data_slice)
 
     state.base.raw_encoder.set_immediates(pipeline_layout.raw(), offset, data_slice)
 
 
-try:
-    from ..track import BufferUses, TextureUses
-except ImportError:
-    # Use fallback if not available
-    class BufferUses:
-        UNIFORM = 1 << 6
-        STORAGE_READ_ONLY = 1 << 7
-        STORAGE_READ_WRITE = 1 << 8
-    class TextureUses:
-        RESOURCE = 1 << 4
-        STORAGE_READ_ONLY = 1 << 8
-        STORAGE_READ_WRITE = 1 << 10
+
 
 def flush_bindings_helper(state: Any) -> None:
     """
@@ -209,59 +224,75 @@ def flush_bindings_helper(state: Any) -> None:
     
     This function:
     1. Gets the range of bind groups that need rebinding.
-    2. Iterates over them and tracks their resources in the pass scope.
-    3. Translates and issues HAL set_bind_group commands.
+    2. Iterates over them and tracks their resources (buffers, textures).
+    3. Registers memory initialization actions.
+    4. Translates and issues HAL set_bind_group commands.
     
     Args:
         state: The pass state (PassState).
+    
+    Raises:
+        DestroyedResourceError: If a resource has been destroyed.
     """
     range_ = state.binder.take_rebind_range()
     if not range_:
         return
 
     entries = state.binder.entries(range_)
-    pipeline_layout = state.binder.pipeline_layout
-    if not pipeline_layout:
-        raise MissingPipeline()
-
+    
+    # First pass: Track memory initialization for all bind groups
     for i, entry in entries:
         bind_group = entry.group
         if bind_group is None:
             continue
-
-        # 1. Track resources in the bind group
-        # Each bind group knows which resources it contains and their usages
-        for bg_entry in bind_group.entries:
-            resource = bg_entry.resource
-            # We need to find the layout entry for this binding to get the usage
-            # For now, let's assume we can determine usage from the resource type 
-            # and some hint from the BGL
-            
-            # Simple heuristic for now:
-            if hasattr(resource, 'resource_type'): # e.g. Buffer
-                usage = BufferUses.UNIFORM # Default
-                # TODO: Get actual usage from BGL entry
-                state.scope.buffers.set_single(resource, usage)
-                # Register memory init action if it's a buffer
-                # state.base.buffer_memory_init_actions.extend(...)
-            elif hasattr(resource, 'view'): # e.g. TextureView
-                usage = TextureUses.RESOURCE # Default
-                # TODO: Get actual usage from BGL entry
-                state.scope.textures.set_single(resource, usage)
-                # Register memory init action if it's a texture
-                state.base.texture_memory_actions.register_init_action(...)
-
-        # 2. Add bind group to stateless tracking (keep-alive)
-        state.scope.bind_groups.insert_single(bind_group)
-
-        # 3. Issue HAL command
-        if hasattr(state.base, 'raw_encoder') and state.base.raw_encoder:
-            state.base.raw_encoder.set_bind_group(
-                pipeline_layout.raw(),
-                i,
-                bind_group.raw(),
-                entry.dynamic_offsets,
-            )
+        
+        # Track buffer memory initialization actions
+        # In Rust: bind_group.used_buffer_ranges contains all buffer usage actions
+        if hasattr(bind_group, 'used_buffer_ranges'):
+            for action in bind_group.used_buffer_ranges:
+                # Check if initialization is needed
+                # In Rust: action.buffer.initialization_status.read().check_action(action)
+                if hasattr(action.buffer, 'initialization_status'):
+                    checked_actions = action.buffer.initialization_status.read().check_action(action)
+                    if checked_actions:
+                        state.base.buffer_memory_init_actions.extend(checked_actions)
+        
+        # Track texture memory initialization actions
+        # In Rust: bind_group.used_texture_ranges contains all texture usage actions
+        if hasattr(bind_group, 'used_texture_ranges'):
+            for action in bind_group.used_texture_ranges:
+                # Register the init action and get any surfaces that need immediate clearing
+                immediately_necessary = state.base.texture_memory_actions.register_init_action(action)
+                # Add to pending fixups that will be cleared before texture reads
+                state.pending_discard_init_fixups.extend(immediately_necessary)
+        
+        # Track acceleration structures (for ray tracing)
+        # In Rust: bind_group.used.acceleration_structures
+        if hasattr(bind_group, 'used') and hasattr(bind_group.used, 'acceleration_structures'):
+            for tlas in bind_group.used.acceleration_structures:
+                # Create AsAction::UseTlas
+                if AsAction is not None:
+                    state.base.as_actions.append(AsAction.UseTlas(tlas))
+    
+    # Second pass: Issue HAL commands
+    pipeline_layout = state.binder.pipeline_layout
+    if pipeline_layout is not None:
+        for i, entry in entries:
+            bind_group = entry.group
+            if bind_group is not None:
+                # Get raw bind group handle
+                raw_bg = bind_group.try_raw(state.base.snatch_guard)
+                if raw_bg is None:
+                    raise DestroyedResourceError(bind_group.error_ident())
+                
+                # Issue HAL set_bind_group command
+                if hasattr(state.base, 'raw_encoder') and state.base.raw_encoder:
+                    state.base.raw_encoder.set_bind_group(
+                        pipeline_layout.raw(),
+                        i,
+                        raw_bg,
+                        entry.dynamic_offsets,
+                    )
  
  
 def push_debug_group(state: Any, string_data: bytearray, length: int) -> None:

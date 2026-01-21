@@ -14,6 +14,36 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Optional
 
+try:
+    from .. import wgt
+except ImportError:
+    # Fallback if wgt is not available
+    class wgt:
+        QUERY_RESOLVE_BUFFER_ALIGNMENT = 256
+        QUERY_SIZE = 8
+        
+        class Features:
+            TIMESTAMP_QUERY_INSIDE_ENCODERS = 1 << 0
+        
+        class BufferUsages:
+            QUERY_RESOLVE = 1 << 9
+            COPY_DST = 1 << 2
+        
+        class BufferUses:
+            COPY_DST = 1 << 2
+
+try:
+    from ..resource import DestroyedResourceError
+except ImportError:
+    class DestroyedResourceError(Exception):
+        pass
+
+try:
+    from ..init_tracker import MemoryInitKind
+except ImportError:
+    class MemoryInitKind:
+        ImplicitlyInitialized = "ImplicitlyInitialized"
+
 
 @dataclass
 class QueryUseError(Exception):
@@ -186,8 +216,14 @@ def write_timestamp(
         state: The encoding state.
         query_set: The query set.
         query_index: The query index.
+    
+    Raises:
+        MissingFeatures: If TIMESTAMP_QUERY_INSIDE_ENCODERS feature is not enabled.
     """
-    # state.device.require_features("TIMESTAMP_QUERY_INSIDE_ENCODERS")
+    # Require TIMESTAMP_QUERY_INSIDE_ENCODERS feature
+    if hasattr(state.device, 'require_features'):
+        state.device.require_features(wgt.Features.TIMESTAMP_QUERY_INSIDE_ENCODERS)
+    
     query_set.same_device(state.device)
     query_set.validate_and_write_timestamp(state.raw_encoder, query_index, None)
     state.tracker.query_sets.insert_single(query_set)
@@ -211,26 +247,98 @@ def resolve_query_set(
         query_count: The query count.
         dst_buffer: The destination buffer.
         destination_offset: The destination offset.
+    
+    Raises:
+        ValueError: If buffer offset alignment is incorrect.
+        QueryUseError: If query range is out of bounds.
+        BufferOverrunError: If buffer is too small.
     """
-    # Basic validation
-    if destination_offset % 8 != 0:  # wgt::QUERY_RESOLVE_BUFFER_ALIGNMENT
-        raise ValueError("Buffer offset alignment error")
+    # Validate buffer offset alignment
+    if destination_offset % wgt.QUERY_RESOLVE_BUFFER_ALIGNMENT != 0:
+        raise ValueError(
+            f"Buffer offset {destination_offset} is not aligned to "
+            f"QUERY_RESOLVE_BUFFER_ALIGNMENT ({wgt.QUERY_RESOLVE_BUFFER_ALIGNMENT})"
+        )
 
     query_set.same_device(state.device)
     dst_buffer.same_device(state.device)
     dst_buffer.check_destroyed(state.snatch_guard)
 
-    # Simplified tracking and transition for now
-    state.tracker.buffers.set_single(dst_buffer, "COPY_DST")
+    # Track buffer usage and get transition
+    dst_pending = state.tracker.buffers.set_single(dst_buffer, wgt.BufferUses.COPY_DST)
+    if dst_pending:
+        dst_barrier = dst_pending.into_hal(dst_buffer, state.snatch_guard)
+        if dst_barrier and hasattr(state.raw_encoder, 'transition_buffers'):
+            state.raw_encoder.transition_buffers([dst_barrier])
 
-    # dst_buffer.check_usage("QUERY_RESOLVE")
+    # Check buffer has QUERY_RESOLVE usage
+    if hasattr(dst_buffer, 'check_usage'):
+        dst_buffer.check_usage(wgt.BufferUsages.QUERY_RESOLVE)
 
-    # ... more validation logic from Rust could go here ...
+    # Validate query range
+    end_query = start_query + query_count
+    if end_query > query_set.desc.count:
+        raise QueryUseError(
+            f"Resolving queries {start_query}..{end_query} would overrun "
+            f"the query set of size {query_set.desc.count}"
+        )
 
-    state.raw_encoder.copy_query_results(
-        query_set.raw(),
-        start_query,
-        query_count,
-        dst_buffer.raw(),
-        destination_offset,
-    )
+    # Calculate stride and bytes used
+    # Elements per query depends on query type
+    if hasattr(query_set.desc, 'ty'):
+        query_type = query_set.desc.ty
+        if query_type == 'Occlusion':
+            elements_per_query = 1
+        elif query_type == 'Timestamp':
+            elements_per_query = 1
+        elif hasattr(query_type, '__name__') and 'PipelineStatistics' in query_type.__name__:
+            # Count bits in pipeline statistics flags
+            elements_per_query = bin(query_type).count('1') if isinstance(query_type, int) else 1
+        else:
+            elements_per_query = 1
+    else:
+        elements_per_query = 1
+    
+    stride = elements_per_query * wgt.QUERY_SIZE
+    bytes_used = stride * query_count
+
+    # Validate buffer size
+    buffer_start_offset = destination_offset
+    buffer_end_offset = buffer_start_offset + bytes_used
+    
+    if buffer_end_offset > dst_buffer.size:
+        raise ValueError(
+            f"Resolving queries {start_query}..{end_query} ({stride} byte queries) "
+            f"will overrun the destination buffer of size {dst_buffer.size} "
+            f"using offsets {buffer_start_offset}..{buffer_end_offset} ({bytes_used} bytes used)"
+        )
+
+    # Track memory initialization
+    # The buffer region will be implicitly initialized by the query resolve
+    if hasattr(dst_buffer, 'initialization_status'):
+        init_actions = dst_buffer.initialization_status.read().create_action(
+            dst_buffer,
+            range(buffer_start_offset, buffer_end_offset),
+            MemoryInitKind.ImplicitlyInitialized,
+        )
+        if init_actions:
+            state.buffer_memory_init_actions.extend(init_actions)
+
+    # Get raw buffer handle
+    raw_dst_buffer = dst_buffer.try_raw(state.snatch_guard)
+    if raw_dst_buffer is None:
+        raise DestroyedResourceError(dst_buffer.error_ident())
+
+    # Issue HAL command
+    if hasattr(state.raw_encoder, 'copy_query_results'):
+        state.raw_encoder.copy_query_results(
+            query_set.raw(),
+            start_query,
+            query_count,
+            raw_dst_buffer,
+            destination_offset,
+            stride,
+        )
+    
+    # Track query set usage
+    state.tracker.query_sets.insert_single(query_set)
