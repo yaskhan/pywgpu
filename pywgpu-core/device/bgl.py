@@ -7,6 +7,7 @@ class BindGroupLayoutEntry:
     """
     Bind group layout entry.
     """
+
     binding: int
     visibility: int
     buffer: Optional[Any] = None
@@ -20,6 +21,7 @@ class EntryMap:
     """
     Map of binding index to entry.
     """
+
     def __init__(self) -> None:
         self.inner: Dict[int, BindGroupLayoutEntry] = {}
 

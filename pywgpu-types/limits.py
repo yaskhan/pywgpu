@@ -1,9 +1,11 @@
 from pydantic import BaseModel
 
+
 class Limits(BaseModel):
     """
     Resource limits for a device.
     """
+
     max_texture_dimension_1d: int = 8192
     max_texture_dimension_2d: int = 8192
     max_texture_dimension_3d: int = 2048
@@ -37,11 +39,11 @@ class Limits(BaseModel):
     max_compute_workgroups_per_dimension: int = 65535
 
     @classmethod
-    def default(cls) -> 'Limits':
+    def default(cls) -> "Limits":
         return cls()
-    
+
     @classmethod
-    def downlevel_defaults(cls) -> 'Limits':
+    def downlevel_defaults(cls) -> "Limits":
         """Limits guaranteed on all downlevel capabilities."""
         return cls(
             max_texture_dimension_1d=2048,

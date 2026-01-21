@@ -27,7 +27,7 @@ from .lib import (
     SurfaceCapabilities,
 )
 
-T = TypeVar('T')
+T = TypeVar("T")
 
 # Re-export protocols with original names for compatibility
 Instance = InstanceProtocol
@@ -39,19 +39,19 @@ Queue = QueueProtocol
 CommandEncoder = CommandEncoderProtocol
 
 __all__ = [
-    'Instance',
-    'Adapter',
-    'Device',
-    'Surface',
-    'Api',
-    'Queue',
-    'CommandEncoder',
-    'BufferDescriptor',
-    'TextureDescriptor',
-    'TextureViewDescriptor',
-    'SamplerDescriptor',
-    'BindGroupLayoutDescriptor',
-    'InstanceDescriptor',
-    'SurfaceConfiguration',
-    'SurfaceCapabilities',
+    "Instance",
+    "Adapter",
+    "Device",
+    "Surface",
+    "Api",
+    "Queue",
+    "CommandEncoder",
+    "BufferDescriptor",
+    "TextureDescriptor",
+    "TextureViewDescriptor",
+    "SamplerDescriptor",
+    "BindGroupLayoutDescriptor",
+    "InstanceDescriptor",
+    "SurfaceConfiguration",
+    "SurfaceCapabilities",
 ]

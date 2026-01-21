@@ -7,6 +7,7 @@ class FunctionTracer:
     """
     Traces function usage to determine which are used.
     """
+
     def __init__(
         self,
         function: Any,
@@ -88,6 +89,7 @@ class FunctionCompactor:
     """
     Compacts functions.
     """
+
     def __init__(self) -> None:
         self.expressions = HandleMap()
 

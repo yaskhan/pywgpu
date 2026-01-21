@@ -1,9 +1,11 @@
 U32_MAX = 0xFFFFFFFF
 
+
 class NonMaxU32:
     """
     An unsigned 32-bit value known not to be u32::MAX.
     """
+
     def __init__(self, n: int):
         if n == U32_MAX:
             raise ValueError("NonMaxU32 cannot be u32::MAX")

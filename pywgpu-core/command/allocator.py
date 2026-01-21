@@ -20,12 +20,12 @@ from . import lock
 class CommandAllocator:
     """
     A pool of free command encoders, owned by a device.
-    
+
     Each encoder in this list is in the "closed" state.
-    
+
     Since a raw command encoder is itself a pool for allocating command
     buffers, this is a pool of pools.
-    
+
     Attributes:
         free_encoders: Mutex-protected list of free encoders.
     """
@@ -41,17 +41,17 @@ class CommandAllocator:
     ) -> Any:
         """
         Return a fresh command encoder in the "closed" state.
-        
+
         If we have free encoders in the pool, take one of those. Otherwise,
         create a new one on the device.
-        
+
         Args:
             device: The device to create encoders on.
             queue: The queue for the encoder.
-        
+
         Returns:
             A command encoder.
-        
+
         Raises:
             DeviceError: If encoder creation fails.
         """
@@ -61,12 +61,13 @@ class CommandAllocator:
             else:
                 # Create a new encoder using the imported CommandEncoder
                 from .encoder import CommandEncoder
+
                 return CommandEncoder(device)
 
     def release_encoder(self, encoder: Any) -> None:
         """
         Add an encoder back to the free pool.
-        
+
         Args:
             encoder: The encoder to release.
         """

@@ -4,8 +4,10 @@
 
 from threading import Lock
 
+
 class Mutex:
     """Simple wrapper around a lock."""
+
     def __init__(self):
         self._lock = Lock()
 

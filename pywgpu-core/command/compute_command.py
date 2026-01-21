@@ -16,10 +16,10 @@ from typing import Any, List, Optional
 class ComputeCommand:
     """
     Compute command for encoding.
-    
+
     This enum represents different types of compute commands that can be
     recorded into a compute pass.
-    
+
     Attributes:
         set_bind_group: Set a bind group.
         set_pipeline: Set a compute pipeline.
@@ -51,7 +51,7 @@ class ComputeCommand:
 class SetBindGroup:
     """
     Command to set a bind group.
-    
+
     Attributes:
         index: The bind group index.
         num_dynamic_offsets: Number of dynamic offsets.
@@ -67,7 +67,7 @@ class SetBindGroup:
 class SetPipeline:
     """
     Command to set a compute pipeline.
-    
+
     Attributes:
         pipeline: The compute pipeline.
     """
@@ -79,7 +79,7 @@ class SetPipeline:
 class SetImmediate:
     """
     Command to set immediate data.
-    
+
     Attributes:
         offset: Byte offset within immediate data storage.
         size_bytes: Number of bytes to write.
@@ -95,7 +95,7 @@ class SetImmediate:
 class Dispatch:
     """
     Command to dispatch workgroups.
-    
+
     Attributes:
         workgroups: Workgroup counts for X, Y, Z.
     """
@@ -107,7 +107,7 @@ class Dispatch:
 class DispatchIndirect:
     """
     Command to dispatch workgroups indirectly.
-    
+
     Attributes:
         buffer: The buffer containing dispatch parameters.
         offset: Offset into the buffer.
@@ -121,7 +121,7 @@ class DispatchIndirect:
 class PushDebugGroup:
     """
     Command to push a debug group.
-    
+
     Attributes:
         color: Color for the debug group.
         len: Length of the string data.
@@ -134,6 +134,7 @@ class PushDebugGroup:
 @dataclass
 class PopDebugGroup:
     """Command to pop a debug group."""
+
     pass
 
 
@@ -141,7 +142,7 @@ class PopDebugGroup:
 class InsertDebugMarker:
     """
     Command to insert a debug marker.
-    
+
     Attributes:
         color: Color for the marker.
         len: Length of the string data.
@@ -155,7 +156,7 @@ class InsertDebugMarker:
 class WriteTimestamp:
     """
     Command to write a timestamp.
-    
+
     Attributes:
         query_set: The query set to write to.
         query_index: The query index.
@@ -169,7 +170,7 @@ class WriteTimestamp:
 class BeginPipelineStatisticsQuery:
     """
     Command to begin a pipeline statistics query.
-    
+
     Attributes:
         query_set: The query set to use.
         query_index: The query index.
@@ -182,4 +183,5 @@ class BeginPipelineStatisticsQuery:
 @dataclass
 class EndPipelineStatisticsQuery:
     """Command to end a pipeline statistics query."""
+
     pass

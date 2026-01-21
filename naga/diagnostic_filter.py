@@ -1,11 +1,13 @@
 from enum import Enum
 from typing import Optional, Dict, List
 
+
 class Severity(Enum):
     OFF = "off"
     INFO = "info"
     WARNING = "warning"
     ERROR = "error"
+
 
 class FilterableTriggeringRule(Enum):
     DERIVATIVE_UNIFORMITY = "derivative_uniformity"
@@ -14,10 +16,12 @@ class FilterableTriggeringRule(Enum):
     UNUSED_IMPORT = "unused_import"
     UNUSED_VARIABLE = "unused_variable"
 
+
 class DiagnosticFilterNode:
     """
     Filter for diagnostics.
     """
+
     def __init__(self, parent: Optional["DiagnosticFilterNode"] = None):
         self.parent = parent
         self.children: List["DiagnosticFilterNode"] = []
@@ -29,4 +33,3 @@ class DiagnosticFilterNode:
         if self.parent:
             return self.parent.search(rule)
         return None
-

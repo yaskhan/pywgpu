@@ -82,9 +82,7 @@ class Validator:
         if self.capabilities & Capabilities.SUBGROUP_VERTEX_STAGE:
             self.subgroup_stages |= ShaderStages.VERTEX
         if self.capabilities & Capabilities.SUBGROUP:
-            self.subgroup_stages |= (
-                ShaderStages.FRAGMENT | ShaderStages.COMPUTE_LIKE
-            )
+            self.subgroup_stages |= ShaderStages.FRAGMENT | ShaderStages.COMPUTE_LIKE
 
         # Internal validator state
         self._type_flags: list[TypeFlags] = []
@@ -405,9 +403,7 @@ class Validator:
                         f"Composite constant contains negative component handle {component}"
                     )
 
-    def _validate_global_variables(
-        self, module: Module, mod_info: ModuleInfo
-    ) -> None:
+    def _validate_global_variables(self, module: Module, mod_info: ModuleInfo) -> None:
         """Validate all global variables in the module.
 
         Args:

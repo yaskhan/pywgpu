@@ -19,7 +19,7 @@ from typing import Any, Optional
 class QueryUseError(Exception):
     """
     Error when query is used incorrectly.
-    
+
     Attributes:
         message: The error message.
     """
@@ -34,7 +34,7 @@ class QueryUseError(Exception):
 class TimestampWritesError(Exception):
     """
     Error related to timestamp writes.
-    
+
     Attributes:
         message: The error message.
     """
@@ -49,7 +49,7 @@ class TimestampWritesError(Exception):
 class PassTimestampWrites:
     """
     Timestamp writes for a pass.
-    
+
     Attributes:
         query_set: The query set to write to.
         beginning_of_pass_write_index: Index for beginning of pass write.
@@ -68,12 +68,12 @@ def validate_and_begin_pipeline_statistics_query(
 ) -> None:
     """
     Validate and begin a pipeline statistics query.
-    
+
     Args:
         state: The pass state.
         query_set: The query set.
         query_index: The query index.
-    
+
     Raises:
         QueryUseError: If query is used incorrectly.
     """
@@ -93,23 +93,23 @@ def validate_and_begin_pipeline_statistics_query(
         raise QueryUseError(
             f"Query {query_index} started while {old_idx} is still active"
         )
-    
+
     state.active_query = (query_set, query_index)
 
     # If we don't have a reset state tracker which can defer resets, we must reset now.
     if needs_reset:
         state.raw_encoder.reset_queries(query_set.raw(), query_index, 1)
-    
+
     state.raw_encoder.begin_query(query_set.raw(), query_index)
 
 
 def end_pipeline_statistics_query(state: Any) -> None:
     """
     End a pipeline statistics query.
-    
+
     Args:
         state: The pass state.
-    
+
     Raises:
         QueryUseError: If query is used incorrectly.
     """
@@ -128,12 +128,12 @@ def validate_and_begin_occlusion_query(
 ) -> None:
     """
     Validate and begin an occlusion query.
-    
+
     Args:
         state: The pass state.
         query_set: The query set.
         query_index: The query index.
-    
+
     Raises:
         QueryUseError: If query is used incorrectly.
     """
@@ -147,22 +147,22 @@ def validate_and_begin_occlusion_query(
         raise QueryUseError(
             f"Query {query_index} started while {old_idx} is still active"
         )
-    
+
     state.active_query = (query_set, query_index)
 
     if needs_reset:
         state.raw_encoder.reset_queries(query_set.raw(), query_index, 1)
-    
+
     state.raw_encoder.begin_query(query_set.raw(), query_index)
 
 
 def end_occlusion_query(state: Any) -> None:
     """
     End an occlusion query.
-    
+
     Args:
         state: The pass state.
-    
+
     Raises:
         QueryUseError: If query is used incorrectly.
     """
@@ -181,7 +181,7 @@ def write_timestamp(
 ) -> None:
     """
     Write a timestamp.
-    
+
     Args:
         state: The encoding state.
         query_set: The query set.
@@ -203,7 +203,7 @@ def resolve_query_set(
 ) -> None:
     """
     Resolve a query set.
-    
+
     Args:
         state: The encoding state.
         query_set: The query set.
@@ -213,7 +213,7 @@ def resolve_query_set(
         destination_offset: The destination offset.
     """
     # Basic validation
-    if destination_offset % 8 != 0: # wgt::QUERY_RESOLVE_BUFFER_ALIGNMENT
+    if destination_offset % 8 != 0:  # wgt::QUERY_RESOLVE_BUFFER_ALIGNMENT
         raise ValueError("Buffer offset alignment error")
 
     query_set.same_device(state.device)
@@ -222,11 +222,11 @@ def resolve_query_set(
 
     # Simplified tracking and transition for now
     state.tracker.buffers.set_single(dst_buffer, "COPY_DST")
-    
+
     # dst_buffer.check_usage("QUERY_RESOLVE")
-    
+
     # ... more validation logic from Rust could go here ...
-    
+
     state.raw_encoder.copy_query_results(
         query_set.raw(),
         start_query,

@@ -2,6 +2,7 @@ from enum import Enum
 from typing import Optional, List
 from pydantic import BaseModel
 
+
 class VertexFormat(Enum):
     UINT8X2 = "uint8x2"
     UINT8X4 = "uint8x4"
@@ -36,14 +37,17 @@ class VertexFormat(Enum):
     FLOAT64 = "float64"
     FLOAT64X2 = "float64x2"
 
+
 class VertexStepMode(Enum):
     VERTEX = "vertex"
     INSTANCE = "instance"
+
 
 class VertexAttribute(BaseModel):
     format: VertexFormat
     offset: int
     shader_location: int
+
 
 class VertexBufferLayout(BaseModel):
     array_stride: int

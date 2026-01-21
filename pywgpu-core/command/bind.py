@@ -22,7 +22,7 @@ from . import errors
 class BinderError(Exception):
     """
     Error related to bind group binding.
-    
+
     Attributes:
         message: The error message.
     """
@@ -37,7 +37,7 @@ class BinderError(Exception):
 class LateBufferBinding:
     """
     Late buffer binding information.
-    
+
     Attributes:
         binding_index: The binding index.
         shader_expect_size: Expected size from shader.
@@ -53,7 +53,7 @@ class LateBufferBinding:
 class EntryPayload:
     """
     Payload for a bind group entry.
-    
+
     Attributes:
         group: The bind group.
         dynamic_offsets: Dynamic offsets for the bind group.
@@ -83,10 +83,10 @@ class EntryPayload:
 class Binder:
     """
     Manages bind group bindings and compatibility checking.
-    
+
     The binder tracks bind group bindings and ensures compatibility with
     the current pipeline layout. It also validates late buffer binding sizes.
-    
+
     Attributes:
         pipeline_layout: The current pipeline layout.
         manager: Compatibility manager for bind group layouts.
@@ -115,13 +115,13 @@ class Binder:
     ) -> bool:
         """
         Change the pipeline layout.
-        
+
         Returns True if the layout was actually changed.
-        
+
         Args:
             new: The new pipeline layout.
             late_sized_buffer_groups: Late sized buffer groups.
-        
+
         Returns:
             True if the layout changed, False otherwise.
         """
@@ -171,7 +171,7 @@ class Binder:
     ) -> None:
         """
         Assign a bind group to a slot.
-        
+
         Args:
             index: The slot index.
             bind_group: The bind group to assign.
@@ -192,7 +192,9 @@ class Binder:
             late_binding.bound_size = late_info.size.get()
 
         # Add new entries
-        if len(bind_group.late_buffer_binding_infos) > len(payload.late_buffer_bindings):
+        if len(bind_group.late_buffer_binding_infos) > len(
+            payload.late_buffer_bindings
+        ):
             for late_info in bind_group.late_buffer_binding_infos[
                 len(payload.late_buffer_bindings) :
             ]:
@@ -209,7 +211,7 @@ class Binder:
     def take_rebind_range(self) -> range:
         """
         Get the range of entries that needs to be rebound.
-        
+
         Returns:
             The range of entries.
         """
@@ -218,10 +220,10 @@ class Binder:
     def entries(self, range_: range) -> Iterator[tuple[int, EntryPayload]]:
         """
         Get entries for a range of indices.
-        
+
         Args:
             range_: The range of indices.
-            
+
         Returns:
             Iterator of (index, payload) pairs.
         """
@@ -231,7 +233,7 @@ class Binder:
     def list_active(self) -> List[Any]:
         """
         List active bind groups.
-        
+
         Returns:
             List of active bind groups.
         """
@@ -244,7 +246,7 @@ class Binder:
     def list_valid(self) -> List[tuple[int, EntryPayload]]:
         """
         List valid bind group entries.
-        
+
         Returns:
             List of (index, payload) pairs.
         """
@@ -257,10 +259,10 @@ class Binder:
     def check_compatibility(self, pipeline: Any) -> None:
         """
         Check compatibility with a pipeline.
-        
+
         Args:
             pipeline: The pipeline to check against.
-        
+
         Raises:
             BinderError: If incompatible.
         """
@@ -269,7 +271,7 @@ class Binder:
     def check_late_buffer_bindings(self) -> None:
         """
         Check late buffer bindings.
-        
+
         Raises:
             LateMinBufferBindingSizeMismatch: If binding size is too small.
         """
@@ -291,7 +293,7 @@ class Binder:
 class BoundBindGroupLayouts:
     """
     Manages bound bind group layouts.
-    
+
     Attributes:
         entries: List of entries.
         rebind_start: Start index for rebind.
@@ -347,9 +349,7 @@ class BoundBindGroupLayouts:
 
     def list_active(self) -> List[int]:
         """List active entries."""
-        return [
-            i for i, entry in enumerate(self.entries) if entry.is_active()
-        ]
+        return [i for i, entry in enumerate(self.entries) if entry.is_active()]
 
     def get_invalid(self) -> None:
         """Check for invalid entries."""
@@ -361,7 +361,7 @@ class BoundBindGroupLayouts:
 class Entry:
     """
     Entry for bind group layout.
-    
+
     Attributes:
         assigned: Assigned bind group layout.
         expected: Expected bind group layout.
@@ -399,7 +399,7 @@ class Entry:
 class BindGroupStateChange:
     """
     Tracks bind group state changes.
-    
+
     Attributes:
         current: Current bind group indices.
     """

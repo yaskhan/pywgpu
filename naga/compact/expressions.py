@@ -6,6 +6,7 @@ class ExpressionTracer:
     """
     Traces expressions to determine which are used.
     """
+
     def __init__(
         self,
         constants: Any,
@@ -169,6 +170,7 @@ class ExpressionCompactor:
     """
     Compacts expressions.
     """
+
     def __init__(self) -> None:
         self.expressions_used = HandleSet()
 

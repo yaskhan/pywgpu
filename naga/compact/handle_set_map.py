@@ -1,12 +1,13 @@
 from typing import Generic, TypeVar, Dict, Optional, List, Set, Iterator, Any
 from dataclasses import dataclass
 
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 @dataclass
 class Handle(Generic[T]):
     """Generic handle for arena items."""
+
     index: int
     generation: int = 0
 
@@ -23,6 +24,7 @@ class HandleSet(Generic[T]):
     """
     Set of handles for tracking used items.
     """
+
     def __init__(self) -> None:
         self.set: Set[Handle[T]] = set()
 
@@ -52,6 +54,7 @@ class HandleMap(Generic[T]):
     """
     Map old handles to new handles.
     """
+
     def __init__(self) -> None:
         self.map: Dict[Handle[T], Handle[T]] = {}
 
@@ -85,7 +88,7 @@ class HandleMap(Generic[T]):
         return handle in self.map
 
     @classmethod
-    def from_set(cls, handle_set: HandleSet[T]) -> 'HandleMap[T]':
+    def from_set(cls, handle_set: HandleSet[T]) -> "HandleMap[T]":
         """Create a HandleMap from a HandleSet."""
         handle_map = cls()
         for handle in handle_set.set:

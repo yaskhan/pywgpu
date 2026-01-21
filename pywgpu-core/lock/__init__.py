@@ -14,15 +14,22 @@ By default, we use the vanilla module's locks for simplicity.
 """
 
 from .rank import Rank, LockRank
-from .vanilla import Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard, RankData
+from .vanilla import (
+    Mutex,
+    MutexGuard,
+    RwLock,
+    RwLockReadGuard,
+    RwLockWriteGuard,
+    RankData,
+)
 
 __all__ = [
-    'Rank',
-    'LockRank',
-    'Mutex',
-    'MutexGuard',
-    'RwLock',
-    'RwLockReadGuard',
-    'RwLockWriteGuard',
-    'RankData',
+    "Rank",
+    "LockRank",
+    "Mutex",
+    "MutexGuard",
+    "RwLock",
+    "RwLockReadGuard",
+    "RwLockWriteGuard",
+    "RankData",
 ]

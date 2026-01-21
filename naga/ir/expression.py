@@ -1,10 +1,12 @@
 from enum import Enum
 from typing import Any
 
+
 class Expression(Enum):
     """
     IR Expression enum.
     """
+
     LITERAL = "literal"
     CONSTANT = "constant"
     ZERO_VALUE = "zero-value"

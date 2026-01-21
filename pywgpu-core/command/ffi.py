@@ -23,7 +23,7 @@ T = TypeVar("T")
 class ReferenceType:
     """
     Trait for types that can reference wgpu objects.
-    
+
     This trait defines the types used to reference different wgpu objects.
     """
 
@@ -44,7 +44,7 @@ class ReferenceType:
 class IdReferences(ReferenceType):
     """
     Reference wgpu objects via numeric IDs.
-    
+
     This type references objects by their numeric IDs assigned by the
     IdentityManager.
     """
@@ -66,7 +66,7 @@ class IdReferences(ReferenceType):
 class PointerReferences(ReferenceType):
     """
     Reference wgpu objects via pointer values.
-    
+
     This type references objects by the integer value of their pointers.
     This is used for trace recording and playback.
     """
@@ -88,7 +88,7 @@ class PointerReferences(ReferenceType):
 class ArcReferences(ReferenceType):
     """
     Reference wgpu objects via Arc references.
-    
+
     This type references objects by Arc references, which is the most
     common way to reference objects in wgpu-core.
     """
@@ -111,10 +111,10 @@ class ArcReferences(ReferenceType):
 class Command(Generic[T]):
     """
     Command for encoding.
-    
+
     This enum represents different types of commands that can be recorded
     into a command encoder.
-    
+
     Attributes:
         copy_buffer_to_buffer: Copy data between buffers.
         copy_buffer_to_texture: Copy data from buffer to texture.
@@ -153,4 +153,5 @@ class Command(Generic[T]):
 @dataclass
 class ArcCommand(Command[ArcReferences]):
     """Command with Arc references."""
+
     pass

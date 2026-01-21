@@ -7,6 +7,7 @@ class StatementTracer:
     """
     Traces statements to determine which expressions are used.
     """
+
     def __init__(self, function_tracer: FunctionTracer) -> None:
         self.function_tracer = function_tracer
 
@@ -116,6 +117,7 @@ class StatementCompactor:
     """
     Compacts statements.
     """
+
     def __init__(self) -> None:
         pass
 

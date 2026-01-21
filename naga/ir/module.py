@@ -3,11 +3,19 @@ from .function import Function
 from .type import Type
 from .constant import Constant
 
+
 class EntryPoint:
     """
     IR Entry point definition.
     """
-    def __init__(self, name: str, stage: str, function: Function, early_depth_test: Optional[Any] = None) -> None:
+
+    def __init__(
+        self,
+        name: str,
+        stage: str,
+        function: Function,
+        early_depth_test: Optional[Any] = None,
+    ) -> None:
         self.name = name
         self.stage = stage
         self.function = function
@@ -15,10 +23,12 @@ class EntryPoint:
         self.workgroup_size = [1, 1, 1]
         self.group_to_binding_map = {}
 
+
 class Module:
     """
     Naga Intermediate Representation (IR) module.
     """
+
     def __init__(self) -> None:
         self.types: List[Type] = []
         self.constants: List[Constant] = []
@@ -40,13 +50,21 @@ class Module:
         self.constants.append(const)
         return len(self.constants) - 1
 
-    def add_function(self, name: Optional[str], result: Optional[Any], body: Any) -> Function:
+    def add_function(
+        self, name: Optional[str], result: Optional[Any], body: Any
+    ) -> Function:
         """Add a function to the module."""
         func = Function(name, result, body)
         self.functions.append(func)
         return func
 
-    def add_entry_point(self, name: str, stage: str, function: Function, early_depth_test: Optional[Any] = None) -> EntryPoint:
+    def add_entry_point(
+        self,
+        name: str,
+        stage: str,
+        function: Function,
+        early_depth_test: Optional[Any] = None,
+    ) -> EntryPoint:
         """Add an entry point to the module."""
         entry = EntryPoint(name, stage, function, early_depth_test)
         self.entry_points.append(entry)

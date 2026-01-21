@@ -5,6 +5,7 @@ Additional composite types and helper types for the IR.
 from enum import Enum
 from typing import Any, Optional, Union, List
 
+
 # Shader stage enum (matches original Rust)
 class ShaderStage(Enum):
     VERTEX = "vertex"
@@ -12,6 +13,7 @@ class ShaderStage(Enum):
     COMPUTE = "compute"
     TASK = "task"
     MESH = "mesh"
+
 
 # Address space enum (matches original Rust)
 class AddressSpace(Enum):
@@ -24,11 +26,12 @@ class AddressSpace(Enum):
     IMMEDIATE = "immediate"
     TASK_PAYLOAD = "task-payload"
 
+
 # Built-in variables enum
 class BuiltIn(Enum):
     POSITION = "position"
     VIEW_INDEX = "view-index"
-    
+
     # Vertex shader
     BASE_INSTANCE = "base-instance"
     BASE_VERTEX = "base-vertex"
@@ -38,7 +41,7 @@ class BuiltIn(Enum):
     POINT_SIZE = "point-size"
     VERTEX_INDEX = "vertex-index"
     DRAW_ID = "draw-id"
-    
+
     # Fragment shader
     FRAG_DEPTH = "frag-depth"
     POINT_COORD = "point-coord"
@@ -46,7 +49,7 @@ class BuiltIn(Enum):
     PRIMITIVE_INDEX = "primitive-index"
     SAMPLE_INDEX = "sample-index"
     SAMPLE_MASK = "sample-mask"
-    
+
     # Compute shader
     GLOBAL_INVOCATION_ID = "global-invocation-id"
     LOCAL_INVOCATION_ID = "local-invocation-id"
@@ -55,12 +58,14 @@ class BuiltIn(Enum):
     WORKGROUP_SIZE = "workgroup-size"
     NUM_WORKGROUPS = "num-workgroups"
 
+
 # Interpolation qualifier
 class Interpolation(Enum):
     PERSPECTIVE = "perspective"
     LINEAR = "linear"
     FLAT = "flat"
     PER_VERTEX = "per-vertex"
+
 
 # Sampling qualifier
 class Sampling(Enum):
@@ -69,6 +74,7 @@ class Sampling(Enum):
     SAMPLE = "sample"
     FIRST = "first"
     EITHER = "either"
+
 
 # Storage format
 class StorageFormat(Enum):
@@ -83,6 +89,7 @@ class StorageFormat(Enum):
     R32_SINT = "r32sint"
     R32_FLOAT = "r32float"
 
+
 # Expression evaluation time
 class EvaluationTime(Enum):
     EARLY = "early"  # Literals, constants
@@ -91,7 +98,13 @@ class EvaluationTime(Enum):
     CALL_RESULT = "call-result"  # Call result expressions
     EMIT_STATEMENT = "emit-statement"  # Emit statement
 
+
 __all__ = [
-    'ShaderStage', 'AddressSpace', 'BuiltIn', 'Interpolation', 'Sampling',
-    'StorageFormat', 'EvaluationTime'
+    "ShaderStage",
+    "AddressSpace",
+    "BuiltIn",
+    "Interpolation",
+    "Sampling",
+    "StorageFormat",
+    "EvaluationTime",
 ]

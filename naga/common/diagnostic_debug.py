@@ -1,9 +1,11 @@
 from typing import Any, Tuple
 
+
 class DiagnosticDebug:
     """
     A wrapper for displaying Naga IR terms in debugging output.
     """
+
     def __init__(self, value: Any):
         self.value = value
 
@@ -16,15 +18,16 @@ class DiagnosticDebug:
         else:
             return repr(self.value)
 
+
 def for_debug(value: Any) -> DiagnosticDebug:
     """
     Format this type using core::fmt::Debug.
     """
     return DiagnosticDebug(value)
 
+
 def for_debug_with_types(value: Any, types: Any) -> DiagnosticDebug:
     """
     Format this type using core::fmt::Debug, with a type arena.
     """
     return DiagnosticDebug((value, types))
-

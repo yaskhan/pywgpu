@@ -16,6 +16,7 @@ class Instance:
 
     Manages HAL instances and backends.
     """
+
     def __init__(self, name: str, descriptor: InstanceDescriptor) -> None:
         self.name = name
         self.descriptor = descriptor

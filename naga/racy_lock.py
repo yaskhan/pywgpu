@@ -3,10 +3,12 @@ import threading
 
 T = TypeVar("T")
 
+
 class RacyLock(Generic[T]):
     """
     A thread-safe, lazy-initialization mechanism.
     """
+
     def __init__(self):
         self._lock = threading.Lock()
         self._value: T | None = None

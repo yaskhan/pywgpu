@@ -22,10 +22,10 @@ T = TypeVar("T")
 class WeakVec(Generic[T]):
     """
     An optimized container for weak references of T.
-    
+
     This container minimizes reallocations by dropping older elements that
     no longer have strong references to them.
-    
+
     Attributes:
         inner: The inner list of weak references.
     """
@@ -37,10 +37,10 @@ class WeakVec(Generic[T]):
     def push(self, value: ReferenceType[T]) -> None:
         """
         Push a new element to this collection.
-        
+
         If the inner list needs to be reallocated, we will first drop
         older elements that no longer have strong references to them.
-        
+
         Args:
             value: The weak reference to push.
         """
@@ -49,12 +49,12 @@ class WeakVec(Generic[T]):
             for i in range(len(self.inner) - 1, -1, -1):
                 if self.inner[i]() is None:
                     self.inner.pop(i)
-            
+
             # Make sure our capacity is twice the number of live elements.
             # Leaving some spare capacity ensures that we won't re-scan immediately.
-            self.inner = self.inner[:len(self.inner)]
+            self.inner = self.inner[: len(self.inner)]
             self.inner.reserve_exact(len(self.inner))
-        
+
         self.inner.append(value)
 
     def __iter__(self) -> Iterator[ReferenceType[T]]:
@@ -69,7 +69,7 @@ class WeakVec(Generic[T]):
 class WeakVecIter(Generic[T]):
     """
     Iterator for WeakVec.
-    
+
     Attributes:
         inner: The inner iterator.
     """

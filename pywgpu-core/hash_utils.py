@@ -20,11 +20,11 @@ V = TypeVar("V")
 class FastHashMap(dict[K, V]):
     """
     HashMap using a fast, non-cryptographic hash algorithm.
-    
+
     This is a dictionary subclass optimized for performance in wgpu-core.
     It uses a fast hash algorithm (FxHash) for better performance than
     the standard Python hash.
-    
+
     Note: In Python, this is just a regular dict since Python's dict
     already uses a fast hash algorithm. This class is provided for
     API compatibility with the Rust implementation.
@@ -38,11 +38,11 @@ class FastHashMap(dict[K, V]):
 class FastHashSet(set[K]):
     """
     HashSet using a fast, non-cryptographic hash algorithm.
-    
+
     This is a set subclass optimized for performance in wgpu-core.
     It uses a fast hash algorithm (FxHash) for better performance than
     the standard Python hash.
-    
+
     Note: In Python, this is just a regular set since Python's set
     already uses a fast hash algorithm. This class is provided for
     API compatibility with the Rust implementation.
@@ -56,11 +56,11 @@ class FastHashSet(set[K]):
 class FastIndexMap(dict[K, V]):
     """
     IndexMap using a fast, non-cryptographic hash algorithm.
-    
+
     This is a dictionary subclass that maintains insertion order while
     providing fast lookups. It uses a fast hash algorithm (FxHash) for
     better performance than the standard Python hash.
-    
+
     Note: In Python, this is just a regular dict since Python's dict
     maintains insertion order (since Python 3.7). This class is provided
     for API compatibility with the Rust implementation.

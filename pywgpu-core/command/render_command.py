@@ -15,10 +15,10 @@ from typing import Any, Optional
 class RenderCommand:
     """
     Render command for encoding.
-    
+
     This enum represents different types of render commands that can be
     recorded into a render pass.
-    
+
     Attributes:
         set_bind_group: Set a bind group.
         set_pipeline: Set a render pipeline.
@@ -74,7 +74,7 @@ class RenderCommand:
 class SetBindGroup:
     """
     Command to set a bind group.
-    
+
     Attributes:
         index: The bind group index.
         num_dynamic_offsets: Number of dynamic offsets.
@@ -90,7 +90,7 @@ class SetBindGroup:
 class SetPipeline:
     """
     Command to set a render pipeline.
-    
+
     Attributes:
         pipeline: The render pipeline.
     """
@@ -102,7 +102,7 @@ class SetPipeline:
 class SetIndexBuffer:
     """
     Command to set an index buffer.
-    
+
     Attributes:
         buffer: The buffer to set.
         index_format: The index format.
@@ -120,7 +120,7 @@ class SetIndexBuffer:
 class SetVertexBuffer:
     """
     Command to set a vertex buffer.
-    
+
     Attributes:
         slot: The vertex buffer slot.
         buffer: The buffer to set.
@@ -138,7 +138,7 @@ class SetVertexBuffer:
 class SetImmediate:
     """
     Command to set immediate data.
-    
+
     Attributes:
         offset: Byte offset within immediate data storage.
         size_bytes: Number of bytes to write.
@@ -154,7 +154,7 @@ class SetImmediate:
 class Draw:
     """
     Command to draw geometry.
-    
+
     Attributes:
         vertex_count: Number of vertices to draw.
         instance_count: Number of instances to draw.
@@ -172,7 +172,7 @@ class Draw:
 class DrawIndexed:
     """
     Command to draw indexed geometry.
-    
+
     Attributes:
         index_count: Number of indices to draw.
         instance_count: Number of instances to draw.
@@ -192,7 +192,7 @@ class DrawIndexed:
 class DrawMeshTasks:
     """
     Command to draw mesh tasks.
-    
+
     Attributes:
         group_count_x: Workgroup count in X dimension.
         group_count_y: Workgroup count in Y dimension.
@@ -208,7 +208,7 @@ class DrawMeshTasks:
 class DrawIndirect:
     """
     Command to draw geometry indirectly.
-    
+
     Attributes:
         buffer: The buffer containing draw parameters.
         offset: Offset into the buffer.
@@ -230,7 +230,7 @@ class DrawIndirect:
 class MultiDrawIndirectCount:
     """
     Command to draw geometry indirectly with count.
-    
+
     Attributes:
         buffer: The buffer containing draw parameters.
         offset: Offset into the buffer.
@@ -252,7 +252,7 @@ class MultiDrawIndirectCount:
 class PushDebugGroup:
     """
     Command to push a debug group.
-    
+
     Attributes:
         color: Color for the debug group.
         len: Length of the string data.
@@ -265,6 +265,7 @@ class PushDebugGroup:
 @dataclass
 class PopDebugGroup:
     """Command to pop a debug group."""
+
     pass
 
 
@@ -272,7 +273,7 @@ class PopDebugGroup:
 class InsertDebugMarker:
     """
     Command to insert a debug marker.
-    
+
     Attributes:
         color: Color for the marker.
         len: Length of the string data.
@@ -286,7 +287,7 @@ class InsertDebugMarker:
 class WriteTimestamp:
     """
     Command to write a timestamp.
-    
+
     Attributes:
         query_set: The query set to write to.
         query_index: The query index.
@@ -300,7 +301,7 @@ class WriteTimestamp:
 class BeginOcclusionQuery:
     """
     Command to begin an occlusion query.
-    
+
     Attributes:
         query_index: The query index.
     """
@@ -311,6 +312,7 @@ class BeginOcclusionQuery:
 @dataclass
 class EndOcclusionQuery:
     """Command to end an occlusion query."""
+
     pass
 
 
@@ -318,7 +320,7 @@ class EndOcclusionQuery:
 class BeginPipelineStatisticsQuery:
     """
     Command to begin a pipeline statistics query.
-    
+
     Attributes:
         query_set: The query set to use.
         query_index: The query index.
@@ -331,6 +333,7 @@ class BeginPipelineStatisticsQuery:
 @dataclass
 class EndPipelineStatisticsQuery:
     """Command to end a pipeline statistics query."""
+
     pass
 
 
@@ -338,7 +341,7 @@ class EndPipelineStatisticsQuery:
 class ExecuteBundle:
     """
     Command to execute a render bundle.
-    
+
     Attributes:
         bundle: The render bundle to execute.
     """
@@ -350,7 +353,7 @@ class ExecuteBundle:
 class SetBlendConstant:
     """
     Command to set blend constant.
-    
+
     Attributes:
         color: The blend constant color.
     """
@@ -362,7 +365,7 @@ class SetBlendConstant:
 class SetStencilReference:
     """
     Command to set stencil reference.
-    
+
     Attributes:
         reference: The stencil reference value.
     """
@@ -374,7 +377,7 @@ class SetStencilReference:
 class SetViewport:
     """
     Command to set viewport.
-    
+
     Attributes:
         x: X coordinate.
         y: Y coordinate.
@@ -396,7 +399,7 @@ class SetViewport:
 class SetScissor:
     """
     Command to set scissor.
-    
+
     Attributes:
         x: X coordinate.
         y: Y coordinate.

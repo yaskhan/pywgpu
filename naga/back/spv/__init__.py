@@ -15,6 +15,7 @@ from ...error import ShaderError
 
 class Capability(IntFlag):
     """SPIR-V capability flags."""
+
     Matrix = 1
     Shader = 256
     Geometry = 512
@@ -60,6 +61,7 @@ class Capability(IntFlag):
 
 class AddressingModel(IntEnum):
     """SPIR-V addressing model."""
+
     Logical = 0
     Physical32 = 1
     Physical64 = 2
@@ -68,6 +70,7 @@ class AddressingModel(IntEnum):
 
 class MemoryModel(IntEnum):
     """SPIR-V memory model."""
+
     Simple = 0
     Glsl450 = 1
     Vulkan = 2
@@ -76,6 +79,7 @@ class MemoryModel(IntEnum):
 
 class ExecutionModel(IntEnum):
     """SPIR-V execution model."""
+
     Vertex = 0
     TessellationControl = 1
     TessellationEvaluation = 2
@@ -95,6 +99,7 @@ class ExecutionModel(IntEnum):
 
 class SpvStorageClass(IntEnum):
     """SPIR-V storage class."""
+
     UniformConstant = 0
     Input = 1
     Uniform = 2
@@ -117,6 +122,7 @@ class SpvStorageClass(IntEnum):
 
 class SpvOp(IntEnum):
     """Basic SPIR-V opcodes."""
+
     OpNop = 0
     OpUndef = 1
     OpSourceContinued = 2
@@ -221,12 +227,15 @@ class SpvOp(IntEnum):
 
 class Options:
     """SPIR-V writer options."""
-    
-    def __init__(self, addressing_model: AddressingModel = AddressingModel.Logical,
-                 memory_model: MemoryModel = MemoryModel.Vulkan):
+
+    def __init__(
+        self,
+        addressing_model: AddressingModel = AddressingModel.Logical,
+        memory_model: MemoryModel = MemoryModel.Vulkan,
+    ):
         """
         Initialize SPIR-V writer options.
-        
+
         Args:
             addressing_model: SPIR-V addressing model
             memory_model: SPIR-V memory model
@@ -239,11 +248,11 @@ class Options:
 
 class Instruction:
     """Represents a SPIR-V instruction."""
-    
+
     def __init__(self, opcode: SpvOp, operands: List[int] = None):
         self.opcode = opcode
         self.operands = operands or []
-    
+
     def to_words(self) -> List[int]:
         """Convert instruction to SPIR-V words."""
         word_count = len(self.operands) + 1
@@ -255,20 +264,20 @@ class Instruction:
 
 class SpvType:
     """Represents a SPIR-V type."""
-    
+
     def __init__(self, kind: str, name: str, parameters: List[Any] = None):
         self.kind = kind
         self.name = name
         self.parameters = parameters or []
         self.id = None
-    
+
     def __str__(self):
         return f"Type({self.kind})"
 
 
 class SpvVariable:
     """Represents a SPIR-V variable."""
-    
+
     def __init__(self, name: str, type_id: int, storage_class: SpvStorageClass):
         self.name = name
         self.type_id = type_id
@@ -279,14 +288,14 @@ class SpvVariable:
 class Writer:
     """
     Writer for converting Naga IR modules to SPIR-V binary format.
-    
+
     Maintains internal state to output a Module into SPIR-V format.
     """
-    
+
     def __init__(self, module: Any, info: Any, options: Options):
         """
         Initialize the SPIR-V writer.
-        
+
         Args:
             module: The Naga IR module
             info: Module validation information
@@ -295,23 +304,23 @@ class Writer:
         self.module = module
         self.info = info
         self.options = options
-        
+
         # Internal state
         self.types: Dict[str, SpvType] = {}
         self.variables: Dict[str, SpvVariable] = {}
         self.instructions: List[Instruction] = []
         self.next_id = 1
-        
+
         # Type mapping cache
         self.type_cache: Dict[str, int] = {}
-    
+
     def write(self) -> bytes:
         """
         Write the complete module to SPIR-V binary.
-        
+
         Returns:
             SPIR-V binary data
-            
+
         Raises:
             ShaderError: If writing fails
         """
@@ -321,20 +330,20 @@ class Writer:
             self._generate_types()
             self._generate_variables()
             self._generate_instructions()
-            
+
             return self._create_spirv_binary()
-            
+
         except Exception as e:
             raise ShaderError(f"SPIR-V writing failed: {e}") from e
-    
+
     def _initialize_basic_types(self) -> None:
         """Initialize basic SPIR-V types."""
         # Void type
         self.types["void"] = SpvType("void", "void")
-        
+
         # Boolean type
         self.types["bool"] = SpvType("bool", "bool")
-        
+
         # Integer types
         self.types["i32"] = SpvType("int", "i32", [32])
         self.types["u32"] = SpvType("int", "u32", [32])
@@ -344,27 +353,27 @@ class Writer:
         self.types["u8"] = SpvType("int", "u8", [8])
         self.types["i64"] = SpvType("int", "i64", [64])
         self.types["u64"] = SpvType("int", "u64", [64])
-        
+
         # Floating point types
         self.types["f32"] = SpvType("float", "f32", [32])
         self.types["f64"] = SpvType("float", "f64", [64])
         self.types["f16"] = SpvType("float", "f16", [16])
-    
+
     def _analyze_module(self) -> None:
         """Analyze module to determine required types and capabilities."""
         # Placeholder implementation
         # Would analyze module types, functions, etc.
         pass
-    
+
     def _generate_types(self) -> None:
         """Generate SPIR-V type definitions."""
         for type_name, spv_type in self.types.items():
             self._emit_type_definition(spv_type)
-    
+
     def _emit_type_definition(self, spv_type: SpvType) -> None:
         """Emit a type definition instruction."""
         operands = []
-        
+
         if spv_type.kind == "int":
             operands.append(0)  # Signedness (0 = unsigned, 1 = signed)
             operands.extend(spv_type.parameters)
@@ -384,7 +393,7 @@ class Writer:
         elif spv_type.kind == "function":
             operands.append(spv_type.parameters[0])  # Return type ID
             operands.extend(spv_type.parameters[1:])  # Parameter type IDs
-        
+
         opcode_map = {
             "void": SpvOp.OpTypeVoid,
             "bool": SpvOp.OpTypeBool,
@@ -396,35 +405,35 @@ class Writer:
             "pointer": SpvOp.OpTypePointer,
             "function": SpvOp.OpTypeFunction,
         }
-        
+
         opcode = opcode_map.get(spv_type.kind, SpvOp.OpTypeVoid)
         instruction = Instruction(opcode, operands)
         instruction.id = self._allocate_id()
         spv_type.id = instruction.id
-        
+
         self.instructions.append(instruction)
-    
+
     def _generate_variables(self) -> None:
         """Generate SPIR-V variable declarations."""
         for var_name, spv_var in self.variables.items():
             self._emit_variable_declaration(spv_var)
-    
+
     def _emit_variable_declaration(self, spv_var: SpvVariable) -> None:
         """Emit a variable declaration instruction."""
         operands = [spv_var.storage_class.value]
-        
+
         instruction = Instruction(SpvOp.OpVariable, operands)
         instruction.id = self._allocate_id()
         spv_var.id = instruction.id
-        
+
         self.instructions.append(instruction)
-    
+
     def _generate_instructions(self) -> None:
         """Generate function and instruction definitions."""
         # Placeholder implementation
         # Would generate actual function bodies, expressions, etc.
         pass
-    
+
     def _create_spirv_binary(self) -> bytes:
         """Create the final SPIR-V binary."""
         # Header: Magic number, Version, Generator, Bound, Schema
@@ -432,49 +441,53 @@ class Writer:
             0x07230203,  # SPIR-V magic number
             0x00010000,  # Version 1.0
             0x00000000,  # Generator (Naga)
-            self.next_id, # Maximum ID bound
-            0,           # Schema
+            self.next_id,  # Maximum ID bound
+            0,  # Schema
         ]
-        
+
         # Convert instructions to words
         words = header.copy()
         for instruction in self.instructions:
             words.extend(instruction.to_words())
-        
+
         # Convert to bytes
-        return b''.join(word.to_bytes(4, 'little') for word in words)
-    
+        return b"".join(word.to_bytes(4, "little") for word in words)
+
     def _allocate_id(self) -> int:
         """Allocate a new SPIR-V ID."""
         current_id = self.next_id
         self.next_id += 1
         return current_id
-    
+
     def _get_type_id(self, type_name: str) -> int:
         """Get or create a type ID for the given type name."""
         if type_name in self.type_cache:
             return self.type_cache[type_name]
-        
+
         if type_name not in self.types:
             # Create missing types as needed
             if type_name.startswith("vec"):
                 # Vector type
                 comp_count = int(type_name[3:])
                 comp_type = "f32" if "f" in type_name else "i32"
-                self.types[type_name] = SpvType("vector", type_name, [self._get_type_id(comp_type), comp_count])
+                self.types[type_name] = SpvType(
+                    "vector", type_name, [self._get_type_id(comp_type), comp_count]
+                )
             elif type_name.startswith("mat"):
                 # Matrix type
                 col_count = int(type_name[3])
                 comp_type = "f32" if "f" in type_name else "i32"
-                self.types[type_name] = SpvType("matrix", type_name, [self._get_type_id(comp_type), col_count])
+                self.types[type_name] = SpvType(
+                    "matrix", type_name, [self._get_type_id(comp_type), col_count]
+                )
             else:
                 # Fallback to generic type
                 self.types[type_name] = SpvType("struct", type_name, [])
-        
+
         spv_type = self.types[type_name]
         if spv_type.id is None:
             self._emit_type_definition(spv_type)
-        
+
         self.type_cache[type_name] = spv_type.id
         return spv_type.id
 
@@ -482,12 +495,12 @@ class Writer:
 def write_binary(module: Any, info: Any, options: Options) -> bytes:
     """
     Write a module to SPIR-V binary.
-    
+
     Args:
         module: The Naga IR module
-        info: Module validation info  
+        info: Module validation info
         options: SPIR-V writer options
-        
+
     Returns:
         Generated SPIR-V binary data
     """

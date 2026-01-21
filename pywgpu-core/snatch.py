@@ -23,11 +23,11 @@ T = TypeVar("T")
 class SnatchGuard:
     """
     A guard that provides read access to snatchable data.
-    
+
     This guard is used to access resources that can be snatched. It
     holds a read lock on the snatchable lock, ensuring that the
     resource cannot be snatched while the guard is active.
-    
+
     Attributes:
         _guard: The underlying read guard.
     """
@@ -40,20 +40,20 @@ class SnatchGuard:
     def forget(guard: SnatchGuard) -> RankData:
         """
         Forget the guard, leaving the lock in a locked state.
-        
+
         This is equivalent to std::mem::forget, but preserves the
         information about the lock rank.
-        
+
         Args:
             guard: The guard to forget.
-        
+
         Returns:
             The rank data for the lock.
         """
         # Extract rank data from the guard's lock
-        if hasattr(guard._guard, 'rank_data'):
+        if hasattr(guard._guard, "rank_data"):
             return guard._guard.rank_data
-        
+
         # Fallback: create empty rank data
         return RankData()
 
@@ -61,10 +61,10 @@ class SnatchGuard:
 class ExclusiveSnatchGuard:
     """
     A guard that allows snatching the snatchable data.
-    
+
     This guard is used to snatch resources. It holds a write lock on
     the snatchable lock, providing exclusive access to the resource.
-    
+
     Attributes:
         _guard: The underlying write guard.
     """
@@ -77,11 +77,11 @@ class ExclusiveSnatchGuard:
 class Snatchable(Generic[T]):
     """
     A value that is mostly immutable but can be "snatched" if needed.
-    
+
     This class provides a mechanism for resources that can be destroyed
     early while still being accessed. The value can be read with a
     SnatchGuard and snatched with an ExclusiveSnatchGuard.
-    
+
     Attributes:
         value: The underlying value, stored in an UnsafeCell.
     """
@@ -93,10 +93,10 @@ class Snatchable(Generic[T]):
     def get(self, guard: SnatchGuard) -> Optional[T]:
         """
         Get read access to the value.
-        
+
         Args:
             guard: The snatch guard.
-        
+
         Returns:
             The value, or None if it has been snatched.
         """
@@ -105,10 +105,10 @@ class Snatchable(Generic[T]):
     def snatch(self, guard: ExclusiveSnatchGuard) -> Optional[T]:
         """
         Take the value.
-        
+
         Args:
             guard: The exclusive snatch guard.
-        
+
         Returns:
             The value that was snatched, or None if already snatched.
         """
@@ -119,10 +119,10 @@ class Snatchable(Generic[T]):
     def take(self) -> Optional[T]:
         """
         Take the value without a guard.
-        
+
         This can only be used with exclusive access to self, so it does
         not require locking. Typically useful in a drop implementation.
-        
+
         Returns:
             The value that was taken, or None if already taken.
         """
@@ -134,10 +134,10 @@ class Snatchable(Generic[T]):
 class SnatchLock:
     """
     A device-global lock for all snatchable data.
-    
+
     This lock ensures thread-safe access to snatchable resources. All
     snatchable resources on a device share this lock.
-    
+
     Attributes:
         lock: The underlying RwLock.
     """
@@ -145,10 +145,10 @@ class SnatchLock:
     def __init__(self, rank: Any) -> None:
         """
         Create a new snatch lock.
-        
+
         Args:
             rank: The lock rank.
-        
+
         Note: This is unsafe because the rank must be correct to avoid
         deadlocks. The only place this should be called is when creating
         a device.
@@ -158,7 +158,7 @@ class SnatchLock:
     def read(self) -> SnatchGuard:
         """
         Request read access to snatchable resources.
-        
+
         Returns:
             A snatch guard.
         """
@@ -167,9 +167,9 @@ class SnatchLock:
     def write(self) -> ExclusiveSnatchGuard:
         """
         Request write access to snatchable resources.
-        
+
         This should only be called when a resource needs to be snatched.
-        
+
         Returns:
             An exclusive snatch guard.
         """
@@ -178,16 +178,16 @@ class SnatchLock:
     def force_unlock_read(self, data: RankData) -> None:
         """
         Force unlock a read guard.
-        
+
         This is unsafe and should only be used in very specific cases,
         like when a resource needs to be snatched in a panic handler.
-        
+
         Args:
             data: The rank data for the lock.
         """
         # Force unlock the underlying RwLock
         # This is dangerous and should only be used in exceptional cases
-        if hasattr(self.lock, 'force_unlock_read'):
+        if hasattr(self.lock, "force_unlock_read"):
             self.lock.force_unlock_read(data)
         else:
             # Fallback: try to manually unlock

@@ -6,15 +6,16 @@ if TYPE_CHECKING:
     from .queue import Queue
     from .surface import Surface
 
+
 class Adapter:
     """
     Handle to a physical graphics and/or compute device.
-    
-    An Adapter represents a specific GPU (discrete or integrated) or a 
-    software renderer. It is used to query capabilities and request a 
+
+    An Adapter represents a specific GPU (discrete or integrated) or a
+    software renderer. It is used to query capabilities and request a
     logical :class:`Device`.
     """
-    
+
     def __init__(self, inner: Any) -> None:
         """
         Internal constructor. Use Instance.request_adapter to create an Adapter.
@@ -22,9 +23,8 @@ class Adapter:
         self._inner = inner
 
     async def request_device(
-        self,
-        descriptor: Optional[DeviceDescriptor] = None
-    ) -> Tuple['Device', 'Queue']:
+        self, descriptor: Optional[DeviceDescriptor] = None
+    ) -> Tuple["Device", "Queue"]:
         """
         Requests a connection to a physical device (a logical device).
 
@@ -42,7 +42,7 @@ class Adapter:
         from .queue import Queue
 
         # Delegate to the inner implementation
-        if hasattr(self._inner, 'request_device'):
+        if hasattr(self._inner, "request_device"):
             device_inner, queue_inner = await self._inner.request_device(descriptor)
             return Device(device_inner), Queue(queue_inner)
         else:
@@ -51,11 +51,11 @@ class Adapter:
     def features(self) -> Any:
         """
         Returns the features that this adapter supports.
-        
+
         Returns:
             A set-like object containing supported :class:`FeatureName`.
         """
-        if hasattr(self._inner, 'features'):
+        if hasattr(self._inner, "features"):
             return self._inner.features()
         else:
             raise NotImplementedError("Backend does not support features")
@@ -63,11 +63,11 @@ class Adapter:
     def limits(self) -> Any:
         """
         Returns the limits that this adapter supports.
-        
+
         Returns:
             A :class:`Limits` object containing hardware constraints.
         """
-        if hasattr(self._inner, 'limits'):
+        if hasattr(self._inner, "limits"):
             return self._inner.limits()
         else:
             raise NotImplementedError("Backend does not support limits")
@@ -75,16 +75,16 @@ class Adapter:
     def get_info(self) -> Any:
         """
         Returns information about the adapter.
-        
+
         Returns:
             An :class:`AdapterInfo` object containing name, vendor, etc.
         """
-        if hasattr(self._inner, 'get_info'):
+        if hasattr(self._inner, "get_info"):
             return self._inner.get_info()
         else:
             raise NotImplementedError("Backend does not support get_info")
 
-    def is_surface_supported(self, surface: 'Surface') -> bool:
+    def is_surface_supported(self, surface: "Surface") -> bool:
         """
         Returns whether the given surface is supported by this adapter.
 
@@ -94,7 +94,7 @@ class Adapter:
         Returns:
             True if the adapter can present to the surface.
         """
-        if hasattr(self._inner, 'is_surface_supported'):
+        if hasattr(self._inner, "is_surface_supported"):
             return self._inner.is_surface_supported(surface._inner)
         else:
             raise NotImplementedError("Backend does not support is_surface_supported")
@@ -102,31 +102,35 @@ class Adapter:
     def get_downlevel_capabilities(self) -> Any:
         """
         Returns the downlevel capabilities of this adapter.
-        
+
         This is useful for compatibility with older hardware.
         """
-        if hasattr(self._inner, 'get_downlevel_capabilities'):
+        if hasattr(self._inner, "get_downlevel_capabilities"):
             return self._inner.get_downlevel_capabilities()
         else:
-            raise NotImplementedError("Backend does not support get_downlevel_capabilities")
+            raise NotImplementedError(
+                "Backend does not support get_downlevel_capabilities"
+            )
 
     def get_texture_format_features(self, format: str) -> Any:
         """
         Returns the features supported by a specific texture format on this adapter.
-        
+
         Args:
             format: The texture format to query.
         """
-        if hasattr(self._inner, 'get_texture_format_features'):
+        if hasattr(self._inner, "get_texture_format_features"):
             return self._inner.get_texture_format_features(format)
         else:
-            raise NotImplementedError("Backend does not support get_texture_format_features")
+            raise NotImplementedError(
+                "Backend does not support get_texture_format_features"
+            )
 
     def get_cooperative_matrix_properties(self) -> List[Any]:
         """
         Returns the supported cooperative matrix configurations for this adapter.
         """
-        if hasattr(self._inner, 'get_cooperative_matrix_properties'):
+        if hasattr(self._inner, "get_cooperative_matrix_properties"):
             return self._inner.get_cooperative_matrix_properties()
         else:
             return []

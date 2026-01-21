@@ -19,7 +19,7 @@ from typing import Any, Optional
 class DrawError(Exception):
     """
     Error validating a draw call.
-    
+
     Attributes:
         message: The error message.
     """
@@ -34,7 +34,7 @@ class DrawError(Exception):
 class RenderCommandError(Exception):
     """
     Error encountered when encoding a render command.
-    
+
     Attributes:
         message: The error message.
     """
@@ -49,7 +49,7 @@ class RenderCommandError(Exception):
 class Rect:
     """
     Rectangle structure.
-    
+
     Attributes:
         x: X coordinate.
         y: Y coordinate.
@@ -67,7 +67,7 @@ class Rect:
 class Draw:
     """
     Command to draw geometry.
-    
+
     Attributes:
         vertex_count: Number of vertices to draw.
         instance_count: Number of instances to draw.
@@ -85,7 +85,7 @@ class Draw:
 class DrawIndexed:
     """
     Command to draw indexed geometry.
-    
+
     Attributes:
         index_count: Number of indices to draw.
         instance_count: Number of instances to draw.
@@ -105,7 +105,7 @@ class DrawIndexed:
 class DrawIndirect:
     """
     Command to draw geometry indirectly.
-    
+
     Attributes:
         buffer: The buffer containing draw parameters.
         offset: Offset into the buffer.
@@ -127,7 +127,7 @@ class DrawIndirect:
 class MultiDrawIndirectCount:
     """
     Command to draw geometry indirectly with count.
-    
+
     Attributes:
         buffer: The buffer containing draw parameters.
         offset: Offset into the buffer.
@@ -149,7 +149,7 @@ class MultiDrawIndirectCount:
 class SetBlendConstant:
     """
     Command to set blend constant.
-    
+
     Attributes:
         color: The blend constant color.
     """
@@ -161,7 +161,7 @@ class SetBlendConstant:
 class SetStencilReference:
     """
     Command to set stencil reference.
-    
+
     Attributes:
         reference: The stencil reference value.
     """
@@ -173,7 +173,7 @@ class SetStencilReference:
 class SetViewport:
     """
     Command to set viewport.
-    
+
     Attributes:
         x: X coordinate.
         y: Y coordinate.
@@ -195,7 +195,7 @@ class SetViewport:
 class SetScissor:
     """
     Command to set scissor.
-    
+
     Attributes:
         x: X coordinate.
         y: Y coordinate.
@@ -213,7 +213,7 @@ class SetScissor:
 class DrawMeshTasks:
     """
     Command to draw mesh tasks.
-    
+
     Attributes:
         group_count_x: Workgroup count in X dimension.
         group_count_y: Workgroup count in Y dimension.

@@ -2,8 +2,10 @@ from __future__ import annotations
 from typing import List, Optional, Any, Union
 from naga.ir.type import Type, TypeInner, VectorSize
 
+
 class Alignment:
     """Helper for calculating type alignments."""
+
     ONE: int = 1
     TWO: int = 2
     FOUR: int = 4
@@ -20,7 +22,7 @@ class Alignment:
     def from_width(width: int) -> int:
         """Create an alignment from a width."""
         if not Alignment.is_power_of_two(width):
-            return width # Should ideally handle error
+            return width  # Should ideally handle error
         return width
 
     @staticmethod
@@ -29,8 +31,10 @@ class Alignment:
         mask = alignment - 1
         return (n + mask) & ~mask
 
+
 class TypeLayout:
     """Size and alignment information for a type."""
+
     def __init__(self, size: int, alignment: int):
         self.size: int = size
         self.alignment: int = alignment
@@ -39,26 +43,28 @@ class TypeLayout:
         """Produce the stride as if this type is a base of an array."""
         return Alignment.round_up(self.alignment, self.size)
 
+
 class Layouter:
     """
     Naga layout logic.
     """
+
     def __init__(self) -> None:
         self.layouts: List[TypeLayout] = []
 
     def update(self, module: Any) -> None:
         """
         Extend this Layouter with layouts for any new entries in module.types.
-        
+
         Args:
             module: The Naga IR module to update layouts for.
         """
         for i in range(len(self.layouts), len(module.types)):
             ty = module.types[i]
             inner = ty.inner
-            
+
             size = self._try_size(ty, module)
-            
+
             alignment = 1
             if inner == TypeInner.SCALAR or inner == TypeInner.ATOMIC:
                 scalar = getattr(ty, "_scalar", None) or getattr(ty, "_atomic", None)
@@ -94,10 +100,12 @@ class Layouter:
                 if struct:
                     for member in struct.members:
                         if member.ty < i:
-                            alignment = max(alignment, self.layouts[member.ty].alignment)
+                            alignment = max(
+                                alignment, self.layouts[member.ty].alignment
+                            )
             else:
                 alignment = 1
-                
+
             self.layouts.append(TypeLayout(size, alignment))
 
     def _try_size(self, ty: Type, module: Any) -> int:

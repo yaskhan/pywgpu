@@ -1,14 +1,16 @@
 from __future__ import annotations
 from typing import Generic, TypeVar, List, Optional, Iterator, Set
 
-T = TypeVar('T')
+T = TypeVar("T")
+
 
 class ResourceMetadata(Generic[T]):
     """
     Metadata for tracked resources.
-    
+
     Tracks which resources are owned and their associated reference objects.
     """
+
     def __init__(self) -> None:
         self.owned: Set[int] = set()
         self.resources: List[Optional[T]] = []
@@ -64,13 +66,19 @@ class ResourceMetadata(Generic[T]):
             self.owned.remove(index)
             self.resources[index] = None
 
+
 class ResourceMetadataProvider(Generic[T]):
     """
     A source of resource metadata.
-    
+
     Provides a way to abstract over single resources vs another metadata tracker.
     """
-    def __init__(self, resource: Optional[T] = None, metadata: Optional[ResourceMetadata[T]] = None):
+
+    def __init__(
+        self,
+        resource: Optional[T] = None,
+        metadata: Optional[ResourceMetadata[T]] = None,
+    ):
         self.resource = resource
         self.metadata = metadata
 

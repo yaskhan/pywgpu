@@ -1,21 +1,23 @@
 from typing import List, Any, Iterator, Optional, Tuple
 from ..span import Span
 
+
 class Block:
     """
     A basic block of statements.
     """
+
     def __init__(self) -> None:
-        self.body: List[Any] = [] # List[Statement]
+        self.body: List[Any] = []  # List[Statement]
         self.span_info: List[Span] = []
 
     @classmethod
-    def new(cls) -> 'Block':
+    def new(cls) -> "Block":
         """Create a new empty block."""
         return cls()
 
     @classmethod
-    def from_vec(cls, body: List[Any]) -> 'Block':
+    def from_vec(cls, body: List[Any]) -> "Block":
         """Create a block from a vector of statements."""
         block = cls()
         block.body = body
@@ -23,7 +25,7 @@ class Block:
         return block
 
     @classmethod
-    def with_capacity(cls, capacity: int) -> 'Block':
+    def with_capacity(cls, capacity: int) -> "Block":
         """Create a block with a pre-allocated capacity."""
         _ = capacity
         block = cls()
@@ -47,12 +49,12 @@ class Block:
             statement, span = item
             self.push(statement, span)
 
-    def extend_block(self, other: 'Block') -> None:
+    def extend_block(self, other: "Block") -> None:
         """Extend this block with another block's contents."""
         self.span_info.extend(other.span_info)
         self.body.extend(other.body)
 
-    def append_block(self, other: 'Block') -> None:
+    def append_block(self, other: "Block") -> None:
         """Append another block to this block."""
         self.span_info.extend(other.span_info)
         self.body.extend(other.body)
@@ -62,7 +64,7 @@ class Block:
         del self.span_info[start:end]
         del self.body[start:end]
 
-    def splice(self, start: int, end: int, other: 'Block') -> None:
+    def splice(self, start: int, end: int, other: "Block") -> None:
         """Splice another block into this block at the given range."""
         self.span_info[start:end] = other.span_info
         self.body[start:end] = other.body

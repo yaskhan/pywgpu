@@ -26,10 +26,10 @@ from . import hash_utils
 class Marker:
     """
     Marker trait used to determine which types uniquely identify a resource.
-    
+
     For example, Device<A> will have the same type of identifier as Device<B>
     because Device<T> for any T defines the same marker type.
-    
+
     This trait is implemented by empty enum types that serve as type parameters
     for Id<T>.
     """
@@ -40,131 +40,157 @@ class Marker:
 # Define marker types for each resource
 class AdapterMarker(Marker):
     """Marker for Adapter resources."""
+
     pass
 
 
 class SurfaceMarker(Marker):
     """Marker for Surface resources."""
+
     pass
 
 
 class DeviceMarker(Marker):
     """Marker for Device resources."""
+
     pass
 
 
 class QueueMarker(Marker):
     """Marker for Queue resources."""
+
     pass
 
 
 class BufferMarker(Marker):
     """Marker for Buffer resources."""
+
     pass
 
 
 class StagingBufferMarker(Marker):
     """Marker for StagingBuffer resources."""
+
     pass
 
 
 class TextureViewMarker(Marker):
     """Marker for TextureView resources."""
+
     pass
 
 
 class TextureMarker(Marker):
     """Marker for Texture resources."""
+
     pass
 
 
 class ExternalTextureMarker(Marker):
     """Marker for ExternalTexture resources."""
+
     pass
 
 
 class SamplerMarker(Marker):
     """Marker for Sampler resources."""
+
     pass
 
 
 class BindGroupLayoutMarker(Marker):
     """Marker for BindGroupLayout resources."""
+
     pass
 
 
 class PipelineLayoutMarker(Marker):
     """Marker for PipelineLayout resources."""
+
     pass
 
 
 class BindGroupMarker(Marker):
     """Marker for BindGroup resources."""
+
     pass
 
 
 class ShaderModuleMarker(Marker):
     """Marker for ShaderModule resources."""
+
     pass
 
 
 class RenderPipelineMarker(Marker):
     """Marker for RenderPipeline resources."""
+
     pass
 
 
 class ComputePipelineMarker(Marker):
     """Marker for ComputePipeline resources."""
+
     pass
 
 
 class PipelineCacheMarker(Marker):
     """Marker for PipelineCache resources."""
+
     pass
 
 
 class CommandEncoderMarker(Marker):
     """Marker for CommandEncoder resources."""
+
     pass
 
 
 class CommandBufferMarker(Marker):
     """Marker for CommandBuffer resources."""
+
     pass
 
 
 class RenderPassEncoderMarker(Marker):
     """Marker for RenderPassEncoder resources."""
+
     pass
 
 
 class ComputePassEncoderMarker(Marker):
     """Marker for ComputePassEncoder resources."""
+
     pass
 
 
 class RenderBundleEncoderMarker(Marker):
     """Marker for RenderBundleEncoder resources."""
+
     pass
 
 
 class RenderBundleMarker(Marker):
     """Marker for RenderBundle resources."""
+
     pass
 
 
 class QuerySetMarker(Marker):
     """Marker for QuerySet resources."""
+
     pass
 
 
 class BlasMarker(Marker):
     """Marker for Blas resources."""
+
     pass
 
 
 class TlasMarker(Marker):
     """Marker for Tlas resources."""
+
     pass
 
 
@@ -201,16 +227,16 @@ TlasId = Id[TlasMarker]
 class Id(Generic[Marker]):
     """
     An identifier for a wgpu object.
-    
+
     An Id<T> value identifies a value stored in a Global's Hub.
-    
+
     The Id contains:
     - An index: Used to locate the resource in storage
     - An epoch: Used to detect stale IDs
     - A backend: Used to identify which backend the resource belongs to
-    
+
     Ids are small (8 bytes), copyable, hashable, and thread-safe.
-    
+
     Attributes:
         _raw: The raw underlying representation of the identifier.
     """
@@ -221,14 +247,14 @@ class Id(Generic[Marker]):
     def zip(cls, index: int, epoch: int) -> Id[Marker]:
         """
         Zip together an identifier and return its raw underlying representation.
-        
+
         Args:
             index: The index component of the ID.
             epoch: The epoch component of the ID.
-        
+
         Returns:
             A new Id.
-        
+
         Raises:
             ValueError: If both ID components are zero.
         """
@@ -240,7 +266,7 @@ class Id(Generic[Marker]):
     def unzip(self) -> tuple[int, int]:
         """
         Unzip a raw identifier into its components.
-        
+
         Returns:
             A tuple of (index, epoch).
         """
@@ -268,9 +294,9 @@ class Id(Generic[Marker]):
 class PointerId(Generic[Marker]):
     """
     Identify an object by the pointer returned by Arc::as_ptr.
-    
+
     This is used for tracing. See IDs and tracing in the hub module.
-    
+
     Attributes:
         pointer: The pointer value.
     """

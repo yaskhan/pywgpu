@@ -2,6 +2,7 @@ from typing import List, Optional, Any
 from pydantic import BaseModel
 from enum import Enum
 
+
 class PresentMode(Enum):
     AUTO_VSCYNC = 0
     AUTO_NO_VSYNC = 1
@@ -10,12 +11,14 @@ class PresentMode(Enum):
     IMMEDIATE = 4
     MAILBOX = 5
 
+
 class CompositeAlphaMode(Enum):
     AUTO = 0
     OPAQUE = 1
     PRE_MULTIPLIED = 2
     POST_MULTIPLIED = 3
     INHERIT = 4
+
 
 class SurfaceConfiguration(BaseModel):
     usage: int
@@ -26,10 +29,12 @@ class SurfaceConfiguration(BaseModel):
     alpha_mode: CompositeAlphaMode = CompositeAlphaMode.AUTO
     view_formats: List[str] = []
 
+
 class SurfaceCapabilities(BaseModel):
     formats: List[str]
     present_modes: List[PresentMode]
     alpha_modes: List[CompositeAlphaMode]
+
 
 class SurfaceStatus(Enum):
     SUCCESS = 0

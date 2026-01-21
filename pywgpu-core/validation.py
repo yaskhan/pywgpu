@@ -23,7 +23,7 @@ from . import errors
 class BindingError(Exception):
     """
     Error related to binding validation.
-    
+
     Attributes:
         message: The error message.
     """
@@ -38,7 +38,7 @@ class BindingError(Exception):
 class FilteringError(Exception):
     """
     Error related to texture filtering.
-    
+
     Attributes:
         message: The error message.
     """
@@ -53,7 +53,7 @@ class FilteringError(Exception):
 class InputError(Exception):
     """
     Error related to shader input validation.
-    
+
     Attributes:
         message: The error message.
     """
@@ -68,9 +68,9 @@ class InputError(Exception):
 class StageError(Exception):
     """
     Error related to shader stage validation.
-    
+
     This error is raised when validating a programmable stage of a pipeline.
-    
+
     Attributes:
         message: The error message.
     """
@@ -85,7 +85,7 @@ class StageError(Exception):
 class NumericDimension:
     """
     Numeric dimension for type validation.
-    
+
     Attributes:
         dim: The dimension type.
     """
@@ -100,7 +100,7 @@ class NumericDimension:
 class NumericType:
     """
     Numeric type for validation.
-    
+
     Attributes:
         dim: The dimension of the type.
         scalar: The scalar type.
@@ -132,7 +132,7 @@ class NumericType:
 class InterfaceVar:
     """
     Interface variable for validation.
-    
+
     Attributes:
         ty: The type of the variable.
         interpolation: Optional interpolation mode.
@@ -153,7 +153,7 @@ class InterfaceVar:
 class Varying:
     """
     Varying for validation.
-    
+
     Attributes:
         location: The location of the varying.
         iv: The interface variable.
@@ -169,7 +169,7 @@ class Varying:
 class EntryPoint:
     """
     Entry point for validation.
-    
+
     Attributes:
         inputs: List of input varyings.
         outputs: List of output varyings.
@@ -193,7 +193,7 @@ class EntryPoint:
 class Interface:
     """
     Shader interface for validation.
-    
+
     Attributes:
         limits: Device limits for validation.
         resources: Arena of resources.
@@ -238,10 +238,10 @@ def map_storage_format_from_naga(format: Any) -> Any:
 class ShaderModule:
     """
     A compiled shader module for validation.
-    
+
     This class represents a shader module that has been compiled and
     is ready for validation.
-    
+
     Attributes:
         interface: Optional interface for validation.
         label: A human-readable label for debugging.
@@ -259,14 +259,14 @@ class ShaderModule:
     ) -> str:
         """
         Finalize the entry point name.
-        
+
         Args:
             stage: The shader stage.
             entry_point: The entry point name.
-        
+
         Returns:
             The finalized entry point name.
-        
+
         Raises:
             StageError: If no entry point is found.
         """

@@ -1,10 +1,12 @@
 from typing import Set
 from .wgsl import RESERVED as WGSL_RESERVED
 
+
 class Keywords:
     """
     Keyword management.
     """
+
     def __init__(self) -> None:
         self.reserved: Set[str] = set()
 

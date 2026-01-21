@@ -6,6 +6,7 @@ from enum import Enum
 
 logger = logging.getLogger(__name__)
 
+
 class DataKind(str, Enum):
     BIN = "bin"
     WGSL = "wgsl"
@@ -16,10 +17,12 @@ class DataKind(str, Enum):
     MSL = "msl"
     GLSL = "glsl"
 
+
 class Data:
     """
     Trace data reference.
     """
+
     def __init__(self, value: Union[str, Dict[str, Any]]):
         self.value = value
 
@@ -38,10 +41,12 @@ class Data:
     def to_dict(self):
         return self.value
 
+
 class Trace:
     """
     Base class for trace recording.
     """
+
     def make_binary(self, kind: DataKind, data: bytes) -> Data:
         raise NotImplementedError()
 
@@ -51,19 +56,21 @@ class Trace:
     def add(self, action: Dict[str, Any]) -> None:
         raise NotImplementedError()
 
+
 class DiskTrace(Trace):
     """
     Records trace to a directory on disk.
     """
+
     def __init__(self, path: str):
         self.path = path
         if not os.path.exists(path):
             os.makedirs(path)
-        
+
         self.trace_file_path = os.path.join(path, "trace.json")
         self.data_id = 0
         self.actions = []
-        
+
         # Initialize the trace file with an empty list if it doesn't exist
         if not os.path.exists(self.trace_file_path):
             with open(self.trace_file_path, "w") as f:
@@ -96,10 +103,12 @@ class DiskTrace(Trace):
         except Exception as e:
             logger.warning(f"Failed to record trace action: {e}")
 
+
 class MemoryTrace(Trace):
     """
     Records trace to memory.
     """
+
     def __init__(self):
         self.actions_list = []
 
@@ -115,6 +124,7 @@ class MemoryTrace(Trace):
     def actions(self) -> List[Dict[str, Any]]:
         return self.actions_list
 
+
 def to_trace_id(obj: Any) -> Union[int, str]:
     """
     Convert a resource object to a trace identifier.
@@ -127,45 +137,66 @@ def to_trace_id(obj: Any) -> Union[int, str]:
     # Fallback to python id() or string label if available
     return str(id(obj))
 
+
 # Helper to create specific actions
 def action_init(desc: Dict[str, Any], backend: str) -> Dict[str, Any]:
     return {"action": "Init", "desc": desc, "backend": backend}
 
+
 def action_create_buffer(id: Any, desc: Dict[str, Any]) -> Dict[str, Any]:
     return {"action": "CreateBuffer", "id": into_trace(id), "desc": desc}
+
 
 def action_create_texture(id: Any, desc: Dict[str, Any]) -> Dict[str, Any]:
     return {"action": "CreateTexture", "id": into_trace(id), "desc": desc}
 
+
 def action_create_bind_group_layout(id: Any, desc: Dict[str, Any]) -> Dict[str, Any]:
     return {"action": "CreateBindGroupLayout", "id": into_trace(id), "desc": desc}
+
 
 def action_create_pipeline_layout(id: Any, desc: Dict[str, Any]) -> Dict[str, Any]:
     return {"action": "CreatePipelineLayout", "id": into_trace(id), "desc": desc}
 
+
 def action_create_bind_group(id: Any, desc: Dict[str, Any]) -> Dict[str, Any]:
     return {"action": "CreateBindGroup", "id": into_trace(id), "desc": desc}
 
-def action_create_shader_module(id: Any, desc: Dict[str, Any], data: Data) -> Dict[str, Any]:
-    return {"action": "CreateShaderModule", "id": into_trace(id), "desc": desc, "data": data.to_dict()}
+
+def action_create_shader_module(
+    id: Any, desc: Dict[str, Any], data: Data
+) -> Dict[str, Any]:
+    return {
+        "action": "CreateShaderModule",
+        "id": into_trace(id),
+        "desc": desc,
+        "data": data.to_dict(),
+    }
+
 
 def action_create_compute_pipeline(id: Any, desc: Dict[str, Any]) -> Dict[str, Any]:
     return {"action": "CreateComputePipeline", "id": into_trace(id), "desc": desc}
 
+
 def action_create_render_pipeline(id: Any, desc: Dict[str, Any]) -> Dict[str, Any]:
     return {"action": "CreateGeneralRenderPipeline", "id": into_trace(id), "desc": desc}
+
 
 def action_submit(index: int, commands: List[Dict[str, Any]]) -> Dict[str, Any]:
     return {"action": "Submit", "index": index, "commands": commands}
 
-def action_write_buffer(id: Any, data: Data, range_start: int, range_end: int, queued: bool) -> Dict[str, Any]:
+
+def action_write_buffer(
+    id: Any, data: Data, range_start: int, range_end: int, queued: bool
+) -> Dict[str, Any]:
     return {
-        "action": "WriteBuffer", 
-        "id": into_trace(id), 
-        "data": data.to_dict(), 
-        "range": [range_start, range_end], 
-        "queued": queued
+        "action": "WriteBuffer",
+        "id": into_trace(id),
+        "data": data.to_dict(),
+        "range": [range_start, range_end],
+        "queued": queued,
     }
+
 
 # Helper to serialize various objects to trace-friendly formats
 def into_trace(obj: Any) -> Any:
@@ -182,12 +213,13 @@ def into_trace(obj: Any) -> Any:
     # If it's a resource object (has a 'raw' or 'id' attribute typically)
     return to_trace_id(obj)
 
+
 __all__ = [
-    'DataKind',
-    'Data',
-    'Trace',
-    'DiskTrace',
-    'MemoryTrace',
-    'to_trace_id',
-    'into_trace',
+    "DataKind",
+    "Data",
+    "Trace",
+    "DiskTrace",
+    "MemoryTrace",
+    "to_trace_id",
+    "into_trace",
 ]

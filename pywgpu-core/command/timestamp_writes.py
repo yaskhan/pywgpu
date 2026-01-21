@@ -19,7 +19,7 @@ from typing import Any, Optional
 class PassTimestampWrites:
     """
     Timestamp writes for a pass.
-    
+
     Attributes:
         query_set: The query set to write to.
         beginning_of_pass_write_index: Index for beginning of pass write.
@@ -35,7 +35,7 @@ class PassTimestampWrites:
 class TimestampWritesError(Exception):
     """
     Error related to timestamp writes.
-    
+
     Attributes:
         message: The error message.
     """
@@ -50,7 +50,7 @@ class TimestampWritesError(Exception):
 class ArcPassTimestampWrites:
     """
     Timestamp writes for a pass with Arc references.
-    
+
     Attributes:
         query_set: The query set to write to.
         beginning_of_pass_write_index: Index for beginning of pass write.

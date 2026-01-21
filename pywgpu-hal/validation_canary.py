@@ -23,30 +23,30 @@ import threading
 
 class ValidationCanary:
     """Flag for internal testing.
-    
+
     Stores validation error messages in a thread-safe manner.
     """
-    
+
     def __init__(self):
         self._inner: List[str] = []
         self._lock = threading.Lock()
-    
+
     def add(self, msg: str) -> None:
         """Add a validation error message.
-        
+
         Args:
             msg: The validation error message to store.
-        
+
         Note:
             This is for internal use only.
         """
         with self._lock:
             self._inner.append(msg)
-    
+
     def get_and_reset(self) -> List[str]:
         """Returns any API validation errors that have occurred in this process
         since the last call to this function.
-        
+
         Returns:
             List of validation error messages. The list is cleared after retrieval.
         """
@@ -58,4 +58,3 @@ class ValidationCanary:
 
 # Global validation canary instance
 VALIDATION_CANARY = ValidationCanary()
-

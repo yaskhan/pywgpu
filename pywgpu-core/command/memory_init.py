@@ -21,7 +21,7 @@ from typing import Any, List, Optional
 class BufferInitTrackerAction:
     """
     Action for buffer memory initialization.
-    
+
     Attributes:
         buffer: The buffer.
         range: Range of memory to initialize.
@@ -37,7 +37,7 @@ class BufferInitTrackerAction:
 class TextureInitTrackerAction:
     """
     Action for texture memory initialization.
-    
+
     Attributes:
         texture: The texture.
         range: Range of memory to initialize.
@@ -53,7 +53,7 @@ class TextureInitTrackerAction:
 class MemoryInitKind:
     """
     Kind of memory initialization.
-    
+
     Attributes:
         needs_initialized_memory: Needs initialized memory.
         implicitly_initialized: Implicitly initialized.
@@ -67,7 +67,7 @@ class MemoryInitKind:
 class TextureInitRange:
     """
     Range for texture initialization.
-    
+
     Attributes:
         mip_range: Mip level range.
         layer_range: Layer range.
@@ -81,7 +81,7 @@ class TextureInitRange:
 class SurfacesInDiscardState:
     """
     Surfaces in discard state.
-    
+
     Attributes:
         surfaces: List of surfaces.
     """
@@ -97,7 +97,7 @@ class SurfacesInDiscardState:
 class CommandBufferTextureMemoryActions:
     """
     Command buffer texture memory actions.
-    
+
     Attributes:
         actions: List of actions.
     """
@@ -118,7 +118,7 @@ def fixup_discarded_surfaces(
 ) -> None:
     """
     Fix up discarded surfaces.
-    
+
     Args:
         device: The device.
         surfaces: Surfaces in discard state.
@@ -152,7 +152,7 @@ def initialize_buffer_memory(
 ) -> None:
     """
     Initialize buffer memory.
-    
+
     Args:
         encoder: The command encoder.
         buffer_memory_init_actions: Buffer memory initialization actions.
@@ -160,8 +160,8 @@ def initialize_buffer_memory(
         snatch_guard: The snatch guard.
     """
     # Gather init ranges for each buffer so we can collapse them.
-    uninitialized_ranges_per_buffer = {} # buffer_idx -> (buffer, ranges)
-    
+    uninitialized_ranges_per_buffer = {}  # buffer_idx -> (buffer, ranges)
+
     # Porting logic from Rust:
     for action in buffer_memory_init_actions:
         with action.buffer.initialization_status.write() as status:
@@ -169,13 +169,16 @@ def initialize_buffer_memory(
             end = action.range.end
             if end % 4 != 0:
                 end += 4 - (end % 4)
-            
+
             uninitialized_ranges = status.drain(action.range.start, end)
-            
+
             if action.kind == "NeedsInitializedMemory":
                 idx = action.buffer.tracker_index()
                 if idx not in uninitialized_ranges_per_buffer:
-                    uninitialized_ranges_per_buffer[idx] = (action.buffer, list(uninitialized_ranges))
+                    uninitialized_ranges_per_buffer[idx] = (
+                        action.buffer,
+                        list(uninitialized_ranges),
+                    )
                 else:
                     uninitialized_ranges_per_buffer[idx][1].extend(uninitialized_ranges)
 
@@ -183,13 +186,13 @@ def initialize_buffer_memory(
         ranges.sort(key=lambda r: r.start)
         # Collapse touching ranges (porting logic)
         for i in range(len(ranges) - 1, 0, -1):
-            if ranges[i].start == ranges[i-1].end:
-                ranges[i-1].end = ranges[i].end
+            if ranges[i].start == ranges[i - 1].end:
+                ranges[i - 1].end = ranges[i].end
                 ranges.pop(i)
 
         transition = device_tracker.buffers.set_single(buffer, "COPY_DST")
         raw_buf = buffer.try_raw(snatch_guard)
-        
+
         encoder.transition_buffers([transition] if transition else [])
 
         for range_ in ranges:
@@ -205,7 +208,7 @@ def initialize_texture_memory(
 ) -> None:
     """
     Initialize texture memory.
-    
+
     Args:
         encoder: The command encoder.
         texture_memory_actions: Texture memory actions.
@@ -214,12 +217,12 @@ def initialize_texture_memory(
         snatch_guard: The snatch guard.
     """
     from .clear import clear_texture
-    
+
     for action in texture_memory_actions.actions:
         # Simplified logic from Rust:
         # In Rust, it checks if initialization is really needed.
         # Here we just call clear_texture which handles the logic.
-        
+
         clear_texture(
             action.texture,
             action.range,

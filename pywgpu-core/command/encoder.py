@@ -3,21 +3,26 @@ from typing import Any, List, Optional
 from .render import RenderPass, RenderPassDescriptor
 from .compute import ComputePass, ComputePassDescriptor
 
+
 @dataclass
 class CommandBuffer:
     """
     A finished command buffer.
     """
+
     device: Any
     label: str
     commands: List[Any]
 
+
 from ..track import Tracker
+
 
 class CommandEncoder:
     """
     A command encoder for recording GPU commands.
     """
+
     def __init__(self, device: Any, label: str = ""):
         self.device = device
         self.label = label
@@ -25,15 +30,15 @@ class CommandEncoder:
         self._commands: List[Any] = []
         self.tracker = Tracker()
         self.buffer_memory_init_actions: List[Any] = []
-        self.texture_memory_actions: Any = None # CommandBufferTextureMemoryActions()
+        self.texture_memory_actions: Any = None  # CommandBufferTextureMemoryActions()
 
     def begin_render_pass(self, desc: RenderPassDescriptor) -> RenderPass:
         """
         Begin a render pass.
-        
+
         Args:
             desc: The descriptor for the render pass.
-        
+
         Returns:
             The started render pass.
         """
@@ -45,10 +50,10 @@ class CommandEncoder:
     def begin_compute_pass(self, desc: ComputePassDescriptor) -> ComputePass:
         """
         Begin a compute pass.
-        
+
         Args:
             desc: The descriptor for the compute pass.
-        
+
         Returns:
             The started compute pass.
         """
@@ -78,7 +83,7 @@ class CommandEncoder:
     ) -> None:
         """
         Copy data between buffers.
-        
+
         Args:
             src: The source buffer.
             src_offset: The offset in the source buffer.
@@ -89,15 +94,16 @@ class CommandEncoder:
         if self._status != "Recording":
             raise RuntimeError(f"Cannot record command in status: {self._status}")
         from .transfer import copy_buffer_to_buffer
+
         copy_buffer_to_buffer(self, src, src_offset, dst, dst_offset, size)
 
     def finish(self, label: str = "") -> CommandBuffer:
         """
         Finish recording and return a CommandBuffer.
-        
+
         Args:
             label: Optional label for the command buffer.
-        
+
         Returns:
             The finished command buffer.
         """
@@ -108,12 +114,10 @@ class CommandEncoder:
         # In Rust, this is where encode_commands is called if it wasn't already.
         # It also handles memory initialization.
         from .memory_init import initialize_buffer_memory, initialize_texture_memory
-        
+
         # initialize_buffer_memory(...)
         # initialize_texture_memory(...)
 
         return CommandBuffer(
-            device=self.device,
-            label=label or self.label,
-            commands=self._commands
+            device=self.device, label=label or self.label, commands=self._commands
         )

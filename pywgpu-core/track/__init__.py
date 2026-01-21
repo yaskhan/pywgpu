@@ -11,6 +11,7 @@ from .stateless import StatelessTracker
 @dataclass
 class StateTransition:
     """Represents a transition from one usage state to another."""
+
     from_state: Any
     to_state: Any
 
@@ -18,12 +19,14 @@ class StateTransition:
 @dataclass
 class PendingTransition:
     """Represents a pending resource transition."""
+
     id: int
     selector: Any
     usage: StateTransition
 
 
 from .tracker import Tracker
+
 
 class ResourceUsageCompatibilityError(Exception):
     """Raised when resource usage is incompatible."""

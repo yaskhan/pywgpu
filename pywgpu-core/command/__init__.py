@@ -52,24 +52,30 @@ from . import transition_resources
 # `wgpu-core/src/command/mod.rs` file. More implementation is needed to achieve
 # feature parity.
 
+
 class EncoderStateError(Exception):
     """Base class for encoder state errors."""
+
 
 class Invalid(EncoderStateError):
     def __str__(self):
         return "Encoder is invalid"
 
+
 class Ended(EncoderStateError):
     def __str__(self):
         return "Encoding must not have ended"
+
 
 class Locked(EncoderStateError):
     def __str__(self):
         return "Encoder is locked by a previously created render/compute pass."
 
+
 class Unlocked(EncoderStateError):
     def __str__(self):
         return "Encoder is not currently locked."
+
 
 class Submitted(EncoderStateError):
     def __str__(self):
@@ -79,25 +85,32 @@ class Submitted(EncoderStateError):
 class CommandEncoderError(Exception):
     """Base class for command encoder errors."""
 
+
 class DebugGroupError(Exception):
     """Base class for debug group errors."""
+
 
 class InvalidPop(DebugGroupError):
     def __str__(self):
         return "Cannot pop debug group, because number of pushed debug groups is zero"
 
+
 class MissingPop(DebugGroupError):
     def __str__(self):
         return "A debug group was not popped before the encoder was finished"
 
+
 class TimestampWritesError(Exception):
     """Base class for timestamp writes errors."""
+
 
 class IndicesEqual(TimestampWritesError):
     def __init__(self, idx: int):
         self.idx = idx
+
     def __str__(self):
         return f"begin and end indices of pass timestamp writes are both set to {self.idx}, which is not allowed"
+
 
 class IndicesMissing(TimestampWritesError):
     def __str__(self):
@@ -105,9 +118,10 @@ class IndicesMissing(TimestampWritesError):
 
 
 class PassStateError(Exception):
-    def __init__(self, scope: 'PassErrorScope', inner: Exception):
+    def __init__(self, scope: "PassErrorScope", inner: Exception):
         self.scope = scope
         self.inner = inner
+
     def __str__(self):
         return f"{self.scope}: {self.inner}"
 
@@ -157,16 +171,19 @@ class EncodingApi(enum.Enum):
     Undecided = 2
     InternalUse = 3
 
-    def set(self, api: 'EncodingApi'):
+    def set(self, api: "EncodingApi"):
         if self == EncodingApi.Undecided:
             return api
         elif self != api:
-            raise Exception("Mixing the wgpu encoding API with the raw encoding API is not permitted")
+            raise Exception(
+                "Mixing the wgpu encoding API with the raw encoding API is not permitted"
+            )
         return self
 
 
 class CommandEncoderStatus:
     """Represents the state of a command encoder."""
+
     def __init__(self):
         self._state = Recording(CommandBufferMutable.new())
         self._lock = threading.Lock()
@@ -199,7 +216,7 @@ class CommandEncoderStatus:
             else:
                 raise Exception("Unexpected encoder state")
 
-    def finish(self) -> 'CommandBufferMutable':
+    def finish(self) -> "CommandBufferMutable":
         with self._lock:
             if isinstance(self._state, Recording):
                 mutable = self._state.mutable
@@ -218,13 +235,13 @@ class CommandEncoderStatus:
         with self._lock:
             self._state = Error(EncoderErrorState(err))
 
-    def get_mutable(self) -> 'CommandBufferMutable':
+    def get_mutable(self) -> "CommandBufferMutable":
         """Returns the mutable command buffer data if in a valid state."""
         with self._lock:
             if isinstance(self._state, (Recording, Locked)):
                 return self._state.mutable
             elif isinstance(self._state, Finished):
-                 raise Ended()
+                raise Ended()
             elif isinstance(self._state, Error):
                 raise Invalid()
             else:
@@ -245,13 +262,15 @@ class CommandEncoder:
         # In a real implementation, data would be a Mutex-wrapped CommandEncoderStatus
         self.data = CommandEncoderStatus()
 
-    def finish(self, descriptor: Dict) -> 'CommandBuffer':
+    def finish(self, descriptor: Dict) -> "CommandBuffer":
         """Finishes recording and creates a command buffer."""
         try:
             finished_status = self.data.finish()
             # In a real implementation, you would encode commands here.
             # For now, we assume it's successful if finish() doesn't raise.
-            return CommandBuffer(self.device, descriptor.get("label", ""), finished_status)
+            return CommandBuffer(
+                self.device, descriptor.get("label", ""), finished_status
+            )
         except Exception as e:
             # Handle deferred errors
             print(f"Error finishing command encoder '{self.label}': {e}")
@@ -259,14 +278,17 @@ class CommandEncoder:
 
     # Other methods like push_debug_group, etc. would go here
 
+
 class CommandBuffer:
     def __init__(self, device: Any, label: str, data: CommandEncoderStatus):
         self.device = device
         self.label = label
-        self.data = data # This would be a Mutex-wrapped CommandEncoderStatus
+        self.data = data  # This would be a Mutex-wrapped CommandEncoderStatus
+
 
 class InnerCommandEncoder:
     """A raw command encoder and the command buffers built from it."""
+
     def __init__(self, device: Any, label: str):
         self.raw = None  # Placeholder for hal::DynCommandEncoder
         self.list: List[Any] = []  # Placeholder for hal::DynCommandBuffer
@@ -275,24 +297,28 @@ class InnerCommandEncoder:
         self.api = EncodingApi.Undecided
         self.label = label
 
+
 class CommandBufferMutable:
     """The mutable state of a CommandBuffer."""
+
     def __init__(self):
         self.encoder: Optional[InnerCommandEncoder] = None
-        self.trackers: Dict = {} # Placeholder for Tracker
+        self.trackers: Dict = {}  # Placeholder for Tracker
         self.buffer_memory_init_actions: List[Any] = []
-        self.texture_memory_actions: Dict = {} # Placeholder
+        self.texture_memory_actions: Dict = {}  # Placeholder
         self.as_actions: List[Any] = []
         self.temp_resources: List[Any] = []
-        self.indirect_draw_validation_resources: Dict = {} # Placeholder
+        self.indirect_draw_validation_resources: Dict = {}  # Placeholder
         self.commands: List[Any] = []
 
     @classmethod
-    def new(cls) -> 'CommandBufferMutable':
+    def new(cls) -> "CommandBufferMutable":
         return cls()
+
 
 class BasePass:
     """A stream of commands for a render or compute pass."""
+
     def __init__(self, label: Optional[str] = None):
         self.label = label
         self.error: Optional[Exception] = None
@@ -301,29 +327,73 @@ class BasePass:
         self.string_data: bytearray = bytearray()
         self.immediates_data: List[int] = []
 
+
 class BakedCommands:
     """The 'built' counterpart to CommandBufferMutable."""
+
     def __init__(self, mutable: CommandBufferMutable):
         self.encoder = mutable.encoder
         self.trackers = mutable.trackers
         self.temp_resources = mutable.temp_resources
-        self.indirect_draw_validation_resources = mutable.indirect_draw_validation_resources
+        self.indirect_draw_validation_resources = (
+            mutable.indirect_draw_validation_resources
+        )
         self.buffer_memory_init_actions = mutable.buffer_memory_init_actions
         self.texture_memory_actions = mutable.texture_memory_actions
 
+
 # The __all__ list should be updated to export the new symbols
 __all__ = [
-    "allocator", "bind", "bundle", "clear", "compute", "compute_command",
-    "draw", "encoder", "encoder_command", "ffi", "memory_init", "pass_",
-    "query", "ray_tracing", "render", "render_command", "timestamp_writes",
-    "transfer", "transition_resources",
-
+    "allocator",
+    "bind",
+    "bundle",
+    "clear",
+    "compute",
+    "compute_command",
+    "draw",
+    "encoder",
+    "encoder_command",
+    "ffi",
+    "memory_init",
+    "pass_",
+    "query",
+    "ray_tracing",
+    "render",
+    "render_command",
+    "timestamp_writes",
+    "transfer",
+    "transition_resources",
     # Translated symbols
-    "EncoderStateError", "Invalid", "Ended", "Locked", "Unlocked", "Submitted",
-    "CommandEncoderError", "DebugGroupError", "InvalidPop", "MissingPop",
-    "TimestampWritesError", "IndicesEqual", "IndicesMissing", "PassStateError",
-    "DrawKind", "DrawCommandFamily", "PassErrorScope", "EncodingApi",
-    "CommandEncoderStatus", "Recording", "Locked", "Consumed", "Finished", "Error", "Transitioning",
-    "EncoderErrorState", "CommandEncoder", "CommandBuffer", "InnerCommandEncoder",
-"CommandBufferMutable", "BasePass", "BakedCommands"
+    "EncoderStateError",
+    "Invalid",
+    "Ended",
+    "Locked",
+    "Unlocked",
+    "Submitted",
+    "CommandEncoderError",
+    "DebugGroupError",
+    "InvalidPop",
+    "MissingPop",
+    "TimestampWritesError",
+    "IndicesEqual",
+    "IndicesMissing",
+    "PassStateError",
+    "DrawKind",
+    "DrawCommandFamily",
+    "PassErrorScope",
+    "EncodingApi",
+    "CommandEncoderStatus",
+    "Recording",
+    "Locked",
+    "Consumed",
+    "Finished",
+    "Error",
+    "Transitioning",
+    "EncoderErrorState",
+    "CommandEncoder",
+    "CommandBuffer",
+    "InnerCommandEncoder",
+    "CommandBufferMutable",
+    "BasePass",
+    "BakedCommands",
 ]

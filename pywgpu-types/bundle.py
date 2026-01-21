@@ -1,8 +1,10 @@
 from typing import Optional, List
 from pydantic import BaseModel
 
+
 class RenderBundleDescriptor(BaseModel):
     label: Optional[str] = None
+
 
 class RenderBundleEncoderDescriptor(BaseModel):
     label: Optional[str] = None

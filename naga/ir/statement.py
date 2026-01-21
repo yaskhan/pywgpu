@@ -1,10 +1,12 @@
 from enum import Enum
 from typing import Optional, Any
 
+
 class Statement(Enum):
     """
     IR Statement enum.
     """
+
     BLOCK = "block"
     IF = "if"
     SWITCH = "switch"

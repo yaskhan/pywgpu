@@ -1,9 +1,11 @@
 from enum import IntFlag
 
+
 class Features(IntFlag):
     """
     Features that can be requested on a device.
     """
+
     EMPTY = 0
     # WebGPU features
     DEPTH_CLIP_CONTROL = 1 << 0
@@ -19,7 +21,7 @@ class Features(IntFlag):
     FLOAT32_FILTERABLE = 1 << 10
     CLIP_DISTANCES = 1 << 11
     DUAL_SOURCE_BLENDING = 1 << 12
-    
+
     # native features
     PUSH_CONSTANTS = 1 << 16
     TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES = 1 << 17
@@ -49,7 +51,7 @@ class Features(IntFlag):
     RAY_HIT_VERTEX_RETURN = 1 << 41
     MESH_SHADER = 1 << 42
     COOPERATIVE_MATRIX = 1 << 43
-    
+
     # Experimental aliases for compatibility
     EXPERIMENTAL_RAY_QUERY = RAY_QUERY
     EXPERIMENTAL_RAY_HIT_VERTEX_RETURN = RAY_HIT_VERTEX_RETURN

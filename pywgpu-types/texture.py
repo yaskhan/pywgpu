@@ -3,6 +3,7 @@ from typing import Optional, List
 from pydantic import BaseModel
 from .features import Features
 
+
 class TextureUsage(IntFlag):
     COPY_SRC = 1 << 0
     COPY_DST = 1 << 1
@@ -12,15 +13,18 @@ class TextureUsage(IntFlag):
     # Native features
     STORAGE_ATOMIC = 1 << 16
 
+
 class TextureDimension(Enum):
     D1 = "1d"
     D2 = "2d"
     D3 = "3d"
 
+
 class TextureAspect(Enum):
     ALL = "all"
     STENCIL_ONLY = "stencil-only"
     DEPTH_ONLY = "depth-only"
+
 
 class TextureFormat(Enum):
     # 8-bit formats
@@ -116,6 +120,7 @@ class TextureFormat(Enum):
     ASTC_8X6_UNORM_SRGB = "astc-8x6-unorm-srgb"
     ASTC_8X8_UNORM = "astc-8x8-unorm"
 
+
 class TextureViewDimension(Enum):
     D1 = "1d"
     D2 = "2d"
@@ -124,8 +129,8 @@ class TextureViewDimension(Enum):
     CUBE_ARRAY = "cube-array"
     D3 = "3d"
 
+
 class StorageTextureAccess(Enum):
     WRITE_ONLY = "write-only"
     READ_ONLY = "read-only"
     READ_WRITE = "read-write"
-

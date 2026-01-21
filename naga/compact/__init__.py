@@ -8,6 +8,7 @@ from .types import TypeCompactor, TypeTracer
 
 class KeepUnused:
     """Configuration option for compaction."""
+
     NO = False
     YES = True
 
@@ -16,6 +17,7 @@ class ModuleTracer:
     """
     Traces module usage to determine which items are used.
     """
+
     def __init__(self, module: Any) -> None:
         self.module = module
         self.functions_used = HandleSet()
@@ -48,7 +50,9 @@ class ModuleTracer:
                 if mesh_info.max_vertices_override:
                     self.global_expressions_used.insert(mesh_info.max_vertices_override)
                 if mesh_info.max_primitives_override:
-                    self.global_expressions_used.insert(mesh_info.max_primitives_override)
+                    self.global_expressions_used.insert(
+                        mesh_info.max_primitives_override
+                    )
 
             # Trace u32 type for task/mesh shaders
             if entry_point.stage in ["Task", "Mesh"]:
@@ -151,6 +155,7 @@ class ModuleMap:
     """
     Maps old handles to new handles for a module.
     """
+
     def __init__(self) -> None:
         self.functions = HandleMap()
         self.types = HandleMap()
@@ -167,9 +172,15 @@ class ModuleMap:
             self.types.adjust(special.ray_intersection)
         if hasattr(special, "ray_vertex_return") and special.ray_vertex_return:
             self.types.adjust(special.ray_vertex_return)
-        if hasattr(special, "external_texture_params") and special.external_texture_params:
+        if (
+            hasattr(special, "external_texture_params")
+            and special.external_texture_params
+        ):
             self.types.adjust(special.external_texture_params)
-        if hasattr(special, "external_texture_transfer_function") and special.external_texture_transfer_function:
+        if (
+            hasattr(special, "external_texture_transfer_function")
+            and special.external_texture_transfer_function
+        ):
             self.types.adjust(special.external_texture_transfer_function)
 
         if hasattr(special, "predeclared_types"):
@@ -186,6 +197,7 @@ class FunctionMap:
     """
     Maps old handles to new handles for a function.
     """
+
     def __init__(self) -> None:
         self.expressions = HandleMap()
 
@@ -199,6 +211,7 @@ class Compact:
     """
     Module compaction logic.
     """
+
     def __init__(self) -> None:
         self.module_tracer = None
         self.module_map = None

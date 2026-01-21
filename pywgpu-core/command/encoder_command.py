@@ -15,10 +15,10 @@ from typing import Any, List, Optional
 class Command:
     """
     Command for encoding.
-    
+
     This enum represents different types of commands that can be recorded
     into a command encoder.
-    
+
     Attributes:
         copy_buffer_to_buffer: Copy data between buffers.
         copy_buffer_to_texture: Copy data from buffer to texture.
@@ -58,7 +58,7 @@ class Command:
 class CopyBufferToBuffer:
     """
     Command to copy data between buffers.
-    
+
     Attributes:
         src: Source buffer.
         src_offset: Offset in source buffer.
@@ -78,7 +78,7 @@ class CopyBufferToBuffer:
 class CopyBufferToTexture:
     """
     Command to copy data from buffer to texture.
-    
+
     Attributes:
         src: Source buffer info.
         dst: Destination texture info.
@@ -94,7 +94,7 @@ class CopyBufferToTexture:
 class CopyTextureToBuffer:
     """
     Command to copy data from texture to buffer.
-    
+
     Attributes:
         src: Source texture info.
         dst: Destination buffer info.
@@ -110,7 +110,7 @@ class CopyTextureToBuffer:
 class CopyTextureToTexture:
     """
     Command to copy data between textures.
-    
+
     Attributes:
         src: Source texture info.
         dst: Destination texture info.
@@ -126,7 +126,7 @@ class CopyTextureToTexture:
 class ClearBuffer:
     """
     Command to clear a buffer.
-    
+
     Attributes:
         dst: Destination buffer.
         offset: Offset into buffer.
@@ -142,7 +142,7 @@ class ClearBuffer:
 class ClearTexture:
     """
     Command to clear a texture.
-    
+
     Attributes:
         dst: Destination texture.
         subresource_range: Subresource range to clear.
@@ -156,7 +156,7 @@ class ClearTexture:
 class WriteTimestamp:
     """
     Command to write a timestamp.
-    
+
     Attributes:
         query_set: Query set to write to.
         query_index: Query index.
@@ -170,7 +170,7 @@ class WriteTimestamp:
 class ResolveQuerySet:
     """
     Command to resolve a query set.
-    
+
     Attributes:
         query_set: Query set to resolve.
         start_query: Start query index.
@@ -190,7 +190,7 @@ class ResolveQuerySet:
 class PushDebugGroup:
     """
     Command to push a debug group.
-    
+
     Attributes:
         label: Debug group label.
     """
@@ -201,6 +201,7 @@ class PushDebugGroup:
 @dataclass
 class PopDebugGroup:
     """Command to pop a debug group."""
+
     pass
 
 
@@ -208,7 +209,7 @@ class PopDebugGroup:
 class InsertDebugMarker:
     """
     Command to insert a debug marker.
-    
+
     Attributes:
         label: Debug marker label.
     """
@@ -220,7 +221,7 @@ class InsertDebugMarker:
 class RunComputePass:
     """
     Command to run a compute pass.
-    
+
     Attributes:
         pass_data: Compute pass data.
         timestamp_writes: Timestamp writes for the pass.
@@ -234,7 +235,7 @@ class RunComputePass:
 class RunRenderPass:
     """
     Command to run a render pass.
-    
+
     Attributes:
         pass_data: Render pass data.
         color_attachments: Color attachments.
@@ -256,7 +257,7 @@ class RunRenderPass:
 class BuildAccelerationStructures:
     """
     Command to build acceleration structures.
-    
+
     Attributes:
         blas: Bottom-level acceleration structures to build.
         tlas: Top-level acceleration structures to build.
@@ -270,7 +271,7 @@ class BuildAccelerationStructures:
 class TransitionResources:
     """
     Command to transition resources.
-    
+
     Attributes:
         buffer_transitions: Buffer transitions.
         texture_transitions: Texture transitions.

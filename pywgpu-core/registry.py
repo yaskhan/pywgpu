@@ -30,7 +30,7 @@ T = TypeVar("T", bound=StorageItem)
 class RegistryReport:
     """
     Report containing statistics about a registry.
-    
+
     Attributes:
         num_allocated: Number of IDs allocated.
         num_kept_from_user: Number of resources kept from user.
@@ -52,11 +52,11 @@ class RegistryReport:
 class FutureId(Generic[T]):
     """
     A future ID that can be assigned to a resource.
-    
+
     This class represents an ID that will be assigned to a resource
     when it is created. It provides a method to assign the resource
     to the ID.
-    
+
     Attributes:
         id: The ID to assign.
         data: The storage to assign to.
@@ -68,10 +68,10 @@ class FutureId(Generic[T]):
     def assign(self, value: T) -> Id[T.Marker]:
         """
         Assign a resource to this ID.
-        
+
         Args:
             value: The resource to assign.
-        
+
         Returns:
             The assigned ID.
         """
@@ -83,10 +83,10 @@ class FutureId(Generic[T]):
 class Registry(Generic[T]):
     """
     Registry for resources of a specific type.
-    
+
     The registry is the primary holder of each resource type. It manages
     the allocation of IDs and the storage of resources.
-    
+
     Attributes:
         identity: Identity manager for allocating IDs.
         storage: Storage for resources.
@@ -100,10 +100,10 @@ class Registry(Generic[T]):
     def prepare(self, id_in: Optional[Id[T.Marker]]) -> FutureId[T]:
         """
         Prepare an ID for a resource.
-        
+
         Args:
             id_in: Optional ID to use. If None, a new ID is allocated.
-        
+
         Returns:
             A FutureId that can be used to assign the resource.
         """
@@ -111,13 +111,13 @@ class Registry(Generic[T]):
             id_to_use = self.identity.mark_as_used(id_in)
         else:
             id_to_use = self.identity.process()
-        
+
         return FutureId(id=id_to_use, data=self.storage)
 
     def read(self) -> Storage[T]:
         """
         Get read access to the storage.
-        
+
         Returns:
             The storage.
         """
@@ -126,10 +126,10 @@ class Registry(Generic[T]):
     def remove(self, id: Id[T.Marker]) -> T:
         """
         Remove a resource from the registry.
-        
+
         Args:
             id: The ID of the resource to remove.
-        
+
         Returns:
             The removed resource.
         """
@@ -140,7 +140,7 @@ class Registry(Generic[T]):
     def generate_report(self) -> RegistryReport:
         """
         Generate a report of the registry's state.
-        
+
         Returns:
             A report containing statistics about the registry.
         """
@@ -159,13 +159,13 @@ class Registry(Generic[T]):
     def get(self, id: Id[T.Marker]) -> T:
         """
         Get a resource by ID.
-        
+
         Args:
             id: The ID of the resource.
-        
+
         Returns:
             The resource.
-        
+
         Raises:
             Exception: If the resource doesn't exist or ID mismatch.
         """

@@ -25,7 +25,7 @@ from .lock import Mutex
 @dataclass
 class IdSource:
     """Source of IDs for the identity manager."""
-    
+
     EXTERNAL = "External"
     ALLOCATED = "Allocated"
     NONE = "None"
@@ -35,33 +35,33 @@ class IdSource:
 class IdentityValues(Generic[Marker]):
     """
     A simple structure to allocate Id identifiers.
-    
+
     Calling alloc returns a fresh, never-before-seen id. Calling release
     marks an id as dead; it will never be returned again by alloc.
-    
+
     IdentityValues returns Ids whose index values are suitable for use as
     indices into a Vec<T> that holds those ids' referents:
-    
+
     - Every live id has a distinct index value. Every live id's index
       selects a distinct element in the vector.
-    
+
     - IdentityValues prefers low index numbers. If you size your vector to
       accommodate the indices produced here, the vector's length will reflect
       the highwater mark of actual occupancy.
-    
+
     - IdentityValues reuses the index values of freed ids before returning
       ids with new index values. Freed vector entries get reused.
-    
+
     - The non-reuse property is achieved by storing an `epoch` alongside the
       index in an `Id`. Index values are reused, but only with a different
       epoch.
-    
+
     IdentityValues can also be used to track the count of IDs allocated by
     some external allocator. Combining internal and external allocation is not
     allowed; calling both alloc and mark_as_used on the same
     IdentityValues will result in a panic. The external mode is used when
     playing back a trace of wgpu operations.
-    
+
     Attributes:
         free: List of free (index, epoch) pairs.
         next_index: The next index to allocate.
@@ -77,15 +77,17 @@ class IdentityValues(Generic[Marker]):
     def alloc(self) -> Id[Marker]:
         """
         Allocate a fresh, never-before-seen ID.
-        
+
         Returns:
             A new ID.
-        
+
         Raises:
             RuntimeError: If mark_as_used has previously been called on this IdentityValues.
         """
         if self.id_source == IdSource.EXTERNAL:
-            raise RuntimeError("Mix of internally allocated and externally provided IDs")
+            raise RuntimeError(
+                "Mix of internally allocated and externally provided IDs"
+            )
         self.id_source = IdSource.ALLOCATED
 
         self.count += 1
@@ -101,18 +103,20 @@ class IdentityValues(Generic[Marker]):
     def mark_as_used(self, id: Id[Marker]) -> Id[Marker]:
         """
         Increment the count of used IDs.
-        
+
         Args:
             id: The ID to mark as used.
-        
+
         Returns:
             The same ID.
-        
+
         Raises:
             RuntimeError: If alloc has previously been called on this IdentityValues.
         """
         if self.id_source == IdSource.ALLOCATED:
-            raise RuntimeError("Mix of internally allocated and externally provided IDs")
+            raise RuntimeError(
+                "Mix of internally allocated and externally provided IDs"
+            )
         self.id_source = IdSource.EXTERNAL
 
         self.count += 1
@@ -121,9 +125,9 @@ class IdentityValues(Generic[Marker]):
     def release(self, id: Id[Marker]) -> None:
         """
         Free an ID and/or decrement the count of used IDs.
-        
+
         Freed IDs will never be returned from alloc again.
-        
+
         Args:
             id: The ID to release.
         """
@@ -135,7 +139,7 @@ class IdentityValues(Generic[Marker]):
     def count(self) -> int:
         """
         Get the number of allocated IDs.
-        
+
         Returns:
             The count of allocated IDs.
         """
@@ -145,11 +149,11 @@ class IdentityValues(Generic[Marker]):
 class IdentityManager(Generic[Marker]):
     """
     Manager for identity values.
-    
+
     This class manages the allocation and tracking of IDs for a specific
     resource type. It ensures that each resource has a unique identifier
     and can detect when an ID is reused for a different resource.
-    
+
     Attributes:
         values: Mutex-protected identity values.
     """
@@ -168,7 +172,7 @@ class IdentityManager(Generic[Marker]):
     def process(self) -> Id[Marker]:
         """
         Allocate a new ID.
-        
+
         Returns:
             A new ID.
         """
@@ -177,10 +181,10 @@ class IdentityManager(Generic[Marker]):
     def mark_as_used(self, id: Id[Marker]) -> Id[Marker]:
         """
         Mark an ID as used.
-        
+
         Args:
             id: The ID to mark as used.
-        
+
         Returns:
             The same ID.
         """
@@ -189,7 +193,7 @@ class IdentityManager(Generic[Marker]):
     def free(self, id: Id[Marker]) -> None:
         """
         Free an ID.
-        
+
         Args:
             id: The ID to free.
         """

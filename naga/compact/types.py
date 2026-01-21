@@ -6,6 +6,7 @@ class TypeTracer:
     """
     Traces types to determine which are used.
     """
+
     def __init__(
         self,
         overrides: Any,
@@ -23,9 +24,18 @@ class TypeTracer:
         type_inner = type(ty.inner).__name__
 
         # Types that do not contain handles
-        if type_inner in ["Scalar", "Vector", "Matrix", "CooperativeMatrix",
-                          "Atomic", "ValuePointer", "Image", "Sampler",
-                          "AccelerationStructure", "RayQuery"]:
+        if type_inner in [
+            "Scalar",
+            "Vector",
+            "Matrix",
+            "CooperativeMatrix",
+            "Atomic",
+            "ValuePointer",
+            "Image",
+            "Sampler",
+            "AccelerationStructure",
+            "RayQuery",
+        ]:
             pass
 
         # Types that contain handles
@@ -63,6 +73,7 @@ class TypeCompactor:
     """
     Compacts types.
     """
+
     def __init__(self) -> None:
         pass
 

@@ -28,7 +28,7 @@ T = TypeVar("T", bound=StorageItem)
 class Element(Generic[T]):
     """
     An entry in a storage table.
-    
+
     Attributes:
         occupied: The resource and its epoch, if occupied.
         vacant: Whether the entry is vacant.
@@ -44,10 +44,10 @@ class Element(Generic[T]):
 class StorageItem(ResourceType):
     """
     Trait for items that can be stored in storage.
-    
+
     This trait is implemented by resources that can be stored in the
     storage system. It provides the marker type for the resource.
-    
+
     Attributes:
         Marker: The marker type for the resource.
     """
@@ -58,11 +58,11 @@ class StorageItem(ResourceType):
 class Storage(Generic[T]):
     """
     A table of T values indexed by ID.
-    
+
     Storage implements efficient lookups by ID and manages the lifecycle
     of resources. It is represented as a vector indexed by the IDs' index
     values.
-    
+
     Attributes:
         map: The vector of elements.
         kind: The type name for error messages.
@@ -76,57 +76,55 @@ class Storage(Generic[T]):
     def insert(self, id: Id[T.Marker], value: T) -> None:
         """
         Insert a value into storage.
-        
+
         Args:
             id: The ID to insert at.
             value: The value to insert.
         """
         index, epoch = id.unzip()
         index = int(index)
-        
+
         # Resize the map if necessary
         if index >= len(self.map):
             self.map.extend([Element() for _ in range(index - len(self.map) + 1)])
-        
+
         # Check if the slot is already occupied
         existing = self.map[index]
         if existing.occupied is not None:
             _, storage_epoch = existing.occupied
             if epoch == storage_epoch:
-                raise RuntimeError(
-                    f"Index {index} of {self.kind} is already occupied"
-                )
-        
+                raise RuntimeError(f"Index {index} of {self.kind} is already occupied")
+
         # Insert the value
         self.map[index] = Element(occupied=(value, epoch))
 
     def remove(self, id: Id[T.Marker]) -> T:
         """
         Remove a value from storage.
-        
+
         Args:
             id: The ID to remove.
-        
+
         Returns:
             The removed value.
-        
+
         Raises:
             RuntimeError: If the ID doesn't exist or epoch mismatch.
         """
         index, epoch = id.unzip()
         index = int(index)
-        
+
         if index >= len(self.map):
             raise RuntimeError(f"{self.kind}[{id}] does not exist")
-        
+
         element = self.map[index]
         if element.occupied is None:
             raise RuntimeError(f"Cannot remove a vacant resource")
-        
+
         value, storage_epoch = element.occupied
         if epoch != storage_epoch:
             raise RuntimeError(f"ID epoch mismatch")
-        
+
         # Remove the value
         self.map[index] = Element()
         return value
@@ -134,7 +132,7 @@ class Storage(Generic[T]):
     def iter(self) -> list[tuple[Id[T.Marker], T]]:
         """
         Iterate over all stored resources.
-        
+
         Returns:
             A list of (ID, resource) pairs.
         """
@@ -149,30 +147,30 @@ class Storage(Generic[T]):
     def get(self, id: Id[T.Marker]) -> T:
         """
         Get a resource by ID.
-        
+
         Args:
             id: The ID of the resource.
-        
+
         Returns:
             The resource.
-        
+
         Raises:
             RuntimeError: If the resource doesn't exist or ID mismatch.
         """
         index, epoch = id.unzip()
         index = int(index)
-        
+
         if index >= len(self.map):
             raise RuntimeError(f"{self.kind}[{id}] does not exist")
-        
+
         element = self.map[index]
         if element.occupied is None:
             raise RuntimeError(f"{self.kind}[{id}] does not exist")
-        
+
         value, storage_epoch = element.occupied
         if epoch != storage_epoch:
             raise RuntimeError(f"{self.kind}[{id}] is no longer alive")
-        
+
         return value
 
     def element_size(self) -> int:

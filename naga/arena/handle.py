@@ -1,11 +1,13 @@
 from typing import Generic, TypeVar, Any
 
-T = TypeVar('T')
+T = TypeVar("T")
+
 
 class Handle(Generic[T]):
     """
     A strongly typed handle to an item in an Arena.
     """
+
     def __init__(self, index: int) -> None:
         self.index = index
 
@@ -20,5 +22,5 @@ class Handle(Generic[T]):
     def __repr__(self) -> str:
         return f"Handle({self.index})"
 
-    def __lt__(self, other: 'Handle[T]') -> bool:
+    def __lt__(self, other: "Handle[T]") -> bool:
         return self.index < other.index

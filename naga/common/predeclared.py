@@ -1,15 +1,18 @@
 from typing import Any, Optional
 from enum import Enum
 
+
 class PredeclaredTypeKind(Enum):
     VEC = "vec"
     MAT = "mat"
     SAMPLER = "sampler"
 
+
 class PredeclaredType:
     """
     Helper for handling predeclared types in IR.
     """
+
     def __init__(self, kind: PredeclaredTypeKind, size: int, format: Any):
         self.kind = kind
         self.size = size

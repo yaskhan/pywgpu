@@ -25,10 +25,10 @@ HalType = TypeVar("HalType")
 class SimpleResourceGuard(Generic[T, HalType]):
     """
     A guard which holds alive a wgpu-core resource and dereferences to the HAL type.
-    
+
     This guard ensures that the resource remains alive while the HAL type is being
     accessed. It uses a callback to derive the HAL type from the resource.
-    
+
     Attributes:
         _guard: The resource being held alive.
         _ptr: Pointer to the HAL resource.
@@ -37,11 +37,11 @@ class SimpleResourceGuard(Generic[T, HalType]):
     def __init__(self, guard: T, callback: Any) -> None:
         """
         Create a new guard from a resource, using a callback to derive the HAL type.
-        
+
         Args:
             guard: The resource to hold alive.
             callback: A callable that derives the HAL type from the resource.
-        
+
         Returns:
             None if the resource is not of the expected HAL type.
         """
@@ -53,7 +53,7 @@ class SimpleResourceGuard(Generic[T, HalType]):
     def __deref__(self) -> HalType:
         """
         Dereference to the HAL type.
-        
+
         Returns:
             The HAL resource.
         """
@@ -63,11 +63,11 @@ class SimpleResourceGuard(Generic[T, HalType]):
 class SnatchableResourceGuard(Generic[T, HalType]):
     """
     A guard which holds alive a snatchable wgpu-core resource and dereferences to the HAL type.
-    
+
     This guard is used for resources that can be "snatched" (destroyed early) while
     still being accessed. It holds the snatchable lock while the HAL type is being
     accessed.
-    
+
     Attributes:
         resource: The snatchable resource.
         snatch_lock_rank_data: Data for the snatchable lock.
@@ -77,10 +77,10 @@ class SnatchableResourceGuard(Generic[T, HalType]):
     def __init__(self, resource: T) -> None:
         """
         Create a new guard from a snatchable resource.
-        
+
         Args:
             resource: The resource to hold alive.
-        
+
         Returns:
             None if the resource is not of the expected HAL type or has been destroyed.
         """
@@ -109,7 +109,7 @@ class SnatchableResourceGuard(Generic[T, HalType]):
     def __deref__(self) -> HalType:
         """
         Dereference to the HAL type.
-        
+
         Returns:
             The HAL resource.
         """
@@ -133,9 +133,9 @@ class SnatchableResourceGuard(Generic[T, HalType]):
 class FenceGuard(Generic[HalType]):
     """
     A guard which holds alive a device and the device's fence lock, dereferencing to the HAL type.
-    
+
     This guard is used for accessing the device's fence while holding the fence lock.
-    
+
     Attributes:
         device: The device being held alive.
         fence_lock_rank_data: Data for the fence lock.
@@ -145,10 +145,10 @@ class FenceGuard(Generic[HalType]):
     def __init__(self, device: Any) -> None:
         """
         Create a new guard over a device's fence.
-        
+
         Args:
             device: The device to hold alive.
-        
+
         Returns:
             None if the device's fence is not of the expected HAL type.
         """
@@ -174,7 +174,7 @@ class FenceGuard(Generic[HalType]):
     def __deref__(self) -> HalType:
         """
         Dereference to the HAL type.
-        
+
         Returns:
             The HAL fence.
         """
