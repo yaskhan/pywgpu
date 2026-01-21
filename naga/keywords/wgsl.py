@@ -1,4 +1,6 @@
 from typing import Set
+from naga.proc import KeywordSet
+from naga.racy_lock import RacyLock
 
 RESERVED: Set[str] = {
     # Type-defining Keywords
@@ -223,3 +225,5 @@ RESERVED: Set[str] = {
     "writeonly",
     "yield",
 }
+
+RESERVED_SET: RacyLock[KeywordSet] = RacyLock(lambda: KeywordSet.from_iter(RESERVED))

@@ -9,15 +9,22 @@ class RacyLock(Generic[T]):
     A thread-safe, lazy-initialization mechanism.
     """
 
-    def __init__(self):
+    def __init__(self, init: Callable[[], T]):
+        self._init = init
         self._lock = threading.Lock()
         self._value: T | None = None
 
-    def get_or_init(self, initializer: Callable[[], T]) -> T:
+    def get(self) -> T:
+        """
+        Loads the internal value, initializing it if required.
+        """
         if self._value is not None:
             return self._value
 
         with self._lock:
             if self._value is None:
-                self._value = initializer()
+                self._value = self._init()
             return self._value
+
+    def __call__(self) -> T:
+        return self.get()
