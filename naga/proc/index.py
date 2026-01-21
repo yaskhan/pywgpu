@@ -84,8 +84,13 @@ class BoundsCheckPolicies:
         Determine which policy applies to base.
         
         base is the "base" expression (the expression being indexed) of an Access
-        and AccessIndex expression. This is either a pointer, a value, being directly
+        and AccessIndex expression. This is either a pointer, a value being directly
         indexed, or a binding array.
+        
+        The policy is chosen based on the type of the base expression:
+        - BindingArray: uses binding_array policy
+        - Storage/Uniform pointer: uses buffer policy
+        - Other (vectors, matrices, local values): uses index policy
         
         Args:
             base: Handle to the base expression
@@ -95,8 +100,26 @@ class BoundsCheckPolicies:
         Returns:
             The applicable bounds check policy
         """
-        # Placeholder - would need to analyze the base expression
-        # to determine if it's a buffer access or other type
+        from naga import TypeInnerType, AddressSpace
+        
+        # Get the type of the base expression
+        ty_resolution = info[base].ty
+        ty_inner = ty_resolution.inner_with(types)
+        
+        # Check if it's a binding array
+        if ty_inner.type == TypeInnerType.BINDING_ARRAY:
+            return self.binding_array
+        
+        # Check the pointer space
+        pointer_space = ty_inner.pointer_space()
+        
+        if pointer_space is not None:
+            # Storage or Uniform address space uses buffer policy
+            if pointer_space in (AddressSpace.STORAGE, AddressSpace.UNIFORM):
+                return self.buffer
+        
+        # Everything else (other address spaces, or accessing vectors/matrices
+        # by value where no pointer is involved) uses index policy
         return self.index
 
 

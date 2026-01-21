@@ -257,8 +257,32 @@ class MathFunctionEvaluator:
     @staticmethod
     def _abs(eval: ConstantEvaluator, arg: Handle[Expression], span: Span) -> Handle[Expression]:
         """Absolute value."""
-        # TODO: Implement with component_wise_scalar
-        raise NotImplementedError("Abs not implemented")
+        from .component_wise import component_wise_scalar, Scalar
+        
+        def handler(args: Scalar) -> Scalar:
+            match args:
+                case Scalar.AbstractFloat(values=[e]):
+                    return Scalar.AbstractFloat([abs(e)])
+                case Scalar.F32(values=[e]):
+                    return Scalar.F32([abs(e)])
+                case Scalar.F16(values=[e]):
+                    return Scalar.F16([abs(e)])
+                case Scalar.AbstractInt(values=[e]):
+                    # wrapping_abs for integers
+                    return Scalar.AbstractInt([abs(e)])
+                case Scalar.I32(values=[e]):
+                    return Scalar.I32([abs(e)])
+                case Scalar.U32(values=[e]):
+                    return Scalar.U32([e])  # Already positive
+                case Scalar.I64(values=[e]):
+                    return Scalar.I64([abs(e)])
+                case Scalar.U64(values=[e]):
+                    return Scalar.U64([e])  # Already positive
+                case _:
+                    from .constant_evaluator import ConstantEvaluatorError
+                    raise ConstantEvaluatorError("InvalidMathArg", {})
+        
+        return component_wise_scalar(eval, span, [arg], handler)
 
     @staticmethod
     def _min(
@@ -268,8 +292,31 @@ class MathFunctionEvaluator:
         span: Span,
     ) -> Handle[Expression]:
         """Minimum of two values."""
-        # TODO: Implement with component_wise_scalar
-        raise NotImplementedError("Min not implemented")
+        from .component_wise import component_wise_scalar, Scalar
+        
+        def handler(args: Scalar) -> Scalar:
+            match args:
+                case Scalar.AbstractFloat(values=[e1, e2]):
+                    return Scalar.AbstractFloat([min(e1, e2)])
+                case Scalar.F32(values=[e1, e2]):
+                    return Scalar.F32([min(e1, e2)])
+                case Scalar.F16(values=[e1, e2]):
+                    return Scalar.F16([min(e1, e2)])
+                case Scalar.AbstractInt(values=[e1, e2]):
+                    return Scalar.AbstractInt([min(e1, e2)])
+                case Scalar.I32(values=[e1, e2]):
+                    return Scalar.I32([min(e1, e2)])
+                case Scalar.U32(values=[e1, e2]):
+                    return Scalar.U32([min(e1, e2)])
+                case Scalar.I64(values=[e1, e2]):
+                    return Scalar.I64([min(e1, e2)])
+                case Scalar.U64(values=[e1, e2]):
+                    return Scalar.U64([min(e1, e2)])
+                case _:
+                    from .constant_evaluator import ConstantEvaluatorError
+                    raise ConstantEvaluatorError("InvalidMathArg", {})
+        
+        return component_wise_scalar(eval, span, [arg, arg1], handler)
 
     @staticmethod
     def _max(
@@ -279,8 +326,31 @@ class MathFunctionEvaluator:
         span: Span,
     ) -> Handle[Expression]:
         """Maximum of two values."""
-        # TODO: Implement with component_wise_scalar
-        raise NotImplementedError("Max not implemented")
+        from .component_wise import component_wise_scalar, Scalar
+        
+        def handler(args: Scalar) -> Scalar:
+            match args:
+                case Scalar.AbstractFloat(values=[e1, e2]):
+                    return Scalar.AbstractFloat([max(e1, e2)])
+                case Scalar.F32(values=[e1, e2]):
+                    return Scalar.F32([max(e1, e2)])
+                case Scalar.F16(values=[e1, e2]):
+                    return Scalar.F16([max(e1, e2)])
+                case Scalar.AbstractInt(values=[e1, e2]):
+                    return Scalar.AbstractInt([max(e1, e2)])
+                case Scalar.I32(values=[e1, e2]):
+                    return Scalar.I32([max(e1, e2)])
+                case Scalar.U32(values=[e1, e2]):
+                    return Scalar.U32([max(e1, e2)])
+                case Scalar.I64(values=[e1, e2]):
+                    return Scalar.I64([max(e1, e2)])
+                case Scalar.U64(values=[e1, e2]):
+                    return Scalar.U64([max(e1, e2)])
+                case _:
+                    from .constant_evaluator import ConstantEvaluatorError
+                    raise ConstantEvaluatorError("InvalidMathArg", {})
+        
+        return component_wise_scalar(eval, span, [arg, arg1], handler)
 
     @staticmethod
     def _clamp(
@@ -291,8 +361,31 @@ class MathFunctionEvaluator:
         span: Span,
     ) -> Handle[Expression]:
         """Clamp value between low and high."""
-        # TODO: Implement with component_wise_scalar
-        raise NotImplementedError("Clamp not implemented")
+        from .component_wise import component_wise_scalar, Scalar
+        
+        def handler(args: Scalar) -> Scalar:
+            match args:
+                case Scalar.AbstractFloat(values=[e, low, high]):
+                    return Scalar.AbstractFloat([max(low, min(e, high))])
+                case Scalar.F32(values=[e, low, high]):
+                    return Scalar.F32([max(low, min(e, high))])
+                case Scalar.F16(values=[e, low, high]):
+                    return Scalar.F16([max(low, min(e, high))])
+                case Scalar.AbstractInt(values=[e, low, high]):
+                    return Scalar.AbstractInt([max(low, min(e, high))])
+                case Scalar.I32(values=[e, low, high]):
+                    return Scalar.I32([max(low, min(e, high))])
+                case Scalar.U32(values=[e, low, high]):
+                    return Scalar.U32([max(low, min(e, high))])
+                case Scalar.I64(values=[e, low, high]):
+                    return Scalar.I64([max(low, min(e, high))])
+                case Scalar.U64(values=[e, low, high]):
+                    return Scalar.U64([max(low, min(e, high))])
+                case _:
+                    from .constant_evaluator import ConstantEvaluatorError
+                    raise ConstantEvaluatorError("InvalidMathArg", {})
+        
+        return component_wise_scalar(eval, span, [arg, arg1, arg2], handler)
 
     @staticmethod
     def _saturate(
@@ -301,8 +394,21 @@ class MathFunctionEvaluator:
         span: Span,
     ) -> Handle[Expression]:
         """Saturate value between 0 and 1."""
-        # TODO: Implement with component_wise_float
-        raise NotImplementedError("Saturate not implemented")
+        from .component_wise import component_wise_float, Float
+        
+        def handler(args: Float) -> Float:
+            match args:
+                case Float.Abstract(values=[e]):
+                    return Float.Abstract([max(0.0, min(e, 1.0))])
+                case Float.F32(values=[e]):
+                    return Float.F32([max(0.0, min(e, 1.0))])
+                case Float.F16(values=[e]):
+                    return Float.F16([max(0.0, min(e, 1.0))])
+                case _:
+                    from .constant_evaluator import ConstantEvaluatorError
+                    raise ConstantEvaluatorError("InvalidMathArg", {})
+        
+        return component_wise_float(eval, span, [arg], handler)
 
     # ========================================================================
     # Trigonometry
@@ -311,38 +417,116 @@ class MathFunctionEvaluator:
     @staticmethod
     def _cos(eval: ConstantEvaluator, arg: Handle[Expression], span: Span) -> Handle[Expression]:
         """Cosine."""
-        # TODO: Implement with component_wise_float
-        raise NotImplementedError("Cos not implemented")
+        from .component_wise import component_wise_float, Float
+        
+        def handler(args: Float) -> Float:
+            match args:
+                case Float.Abstract(values=[e]):
+                    return Float.Abstract([math.cos(e)])
+                case Float.F32(values=[e]):
+                    return Float.F32([math.cos(e)])
+                case Float.F16(values=[e]):
+                    return Float.F16([math.cos(e)])
+                case _:
+                    from .constant_evaluator import ConstantEvaluatorError
+                    raise ConstantEvaluatorError("InvalidMathArg", {})
+        
+        return component_wise_float(eval, span, [arg], handler)
 
     @staticmethod
     def _sin(eval: ConstantEvaluator, arg: Handle[Expression], span: Span) -> Handle[Expression]:
         """Sine."""
-        # TODO: Implement with component_wise_float
-        raise NotImplementedError("Sin not implemented")
+        from .component_wise import component_wise_float, Float
+        
+        def handler(args: Float) -> Float:
+            match args:
+                case Float.Abstract(values=[e]):
+                    return Float.Abstract([math.sin(e)])
+                case Float.F32(values=[e]):
+                    return Float.F32([math.sin(e)])
+                case Float.F16(values=[e]):
+                    return Float.F16([math.sin(e)])
+                case _:
+                    from .constant_evaluator import ConstantEvaluatorError
+                    raise ConstantEvaluatorError("InvalidMathArg", {})
+        
+        return component_wise_float(eval, span, [arg], handler)
 
     @staticmethod
     def _tan(eval: ConstantEvaluator, arg: Handle[Expression], span: Span) -> Handle[Expression]:
         """Tangent."""
-        # TODO: Implement with component_wise_float
-        raise NotImplementedError("Tan not implemented")
+        from .component_wise import component_wise_float, Float
+        
+        def handler(args: Float) -> Float:
+            match args:
+                case Float.Abstract(values=[e]):
+                    return Float.Abstract([math.tan(e)])
+                case Float.F32(values=[e]):
+                    return Float.F32([math.tan(e)])
+                case Float.F16(values=[e]):
+                    return Float.F16([math.tan(e)])
+                case _:
+                    from .constant_evaluator import ConstantEvaluatorError
+                    raise ConstantEvaluatorError("InvalidMathArg", {})
+        
+        return component_wise_float(eval, span, [arg], handler)
 
     @staticmethod
     def _acos(eval: ConstantEvaluator, arg: Handle[Expression], span: Span) -> Handle[Expression]:
         """Arc cosine."""
-        # TODO: Implement with component_wise_float
-        raise NotImplementedError("Acos not implemented")
+        from .component_wise import component_wise_float, Float
+        
+        def handler(args: Float) -> Float:
+            match args:
+                case Float.Abstract(values=[e]):
+                    return Float.Abstract([math.acos(e)])
+                case Float.F32(values=[e]):
+                    return Float.F32([math.acos(e)])
+                case Float.F16(values=[e]):
+                    return Float.F16([math.acos(e)])
+                case _:
+                    from .constant_evaluator import ConstantEvaluatorError
+                    raise ConstantEvaluatorError("InvalidMathArg", {})
+        
+        return component_wise_float(eval, span, [arg], handler)
 
     @staticmethod
     def _asin(eval: ConstantEvaluator, arg: Handle[Expression], span: Span) -> Handle[Expression]:
         """Arc sine."""
-        # TODO: Implement with component_wise_float
-        raise NotImplementedError("Asin not implemented")
+        from .component_wise import component_wise_float, Float
+        
+        def handler(args: Float) -> Float:
+            match args:
+                case Float.Abstract(values=[e]):
+                    return Float.Abstract([math.asin(e)])
+                case Float.F32(values=[e]):
+                    return Float.F32([math.asin(e)])
+                case Float.F16(values=[e]):
+                    return Float.F16([math.asin(e)])
+                case _:
+                    from .constant_evaluator import ConstantEvaluatorError
+                    raise ConstantEvaluatorError("InvalidMathArg", {})
+        
+        return component_wise_float(eval, span, [arg], handler)
 
     @staticmethod
     def _atan(eval: ConstantEvaluator, arg: Handle[Expression], span: Span) -> Handle[Expression]:
         """Arc tangent."""
-        # TODO: Implement with component_wise_float
-        raise NotImplementedError("Atan not implemented")
+        from .component_wise import component_wise_float, Float
+        
+        def handler(args: Float) -> Float:
+            match args:
+                case Float.Abstract(values=[e]):
+                    return Float.Abstract([math.atan(e)])
+                case Float.F32(values=[e]):
+                    return Float.F32([math.atan(e)])
+                case Float.F16(values=[e]):
+                    return Float.F16([math.atan(e)])
+                case _:
+                    from .constant_evaluator import ConstantEvaluatorError
+                    raise ConstantEvaluatorError("InvalidMathArg", {})
+        
+        return component_wise_float(eval, span, [arg], handler)
 
     @staticmethod
     def _atan2(
@@ -352,56 +536,173 @@ class MathFunctionEvaluator:
         span: Span,
     ) -> Handle[Expression]:
         """Arc tangent of y/x."""
-        # TODO: Implement with component_wise_float
-        raise NotImplementedError("Atan2 not implemented")
+        from .component_wise import component_wise_float, Float
+        
+        def handler(args: Float) -> Float:
+            match args:
+                case Float.Abstract(values=[y, x]):
+                    return Float.Abstract([math.atan2(y, x)])
+                case Float.F32(values=[y, x]):
+                    return Float.F32([math.atan2(y, x)])
+                case Float.F16(values=[y, x]):
+                    return Float.F16([math.atan2(y, x)])
+                case _:
+                    from .constant_evaluator import ConstantEvaluatorError
+                    raise ConstantEvaluatorError("InvalidMathArg", {})
+        
+        return component_wise_float(eval, span, [arg, arg1], handler)
 
     @staticmethod
     def _sinh(eval: ConstantEvaluator, arg: Handle[Expression], span: Span) -> Handle[Expression]:
         """Hyperbolic sine."""
-        # TODO: Implement with component_wise_float
-        raise NotImplementedError("Sinh not implemented")
+        from .component_wise import component_wise_float, Float
+        
+        def handler(args: Float) -> Float:
+            match args:
+                case Float.Abstract(values=[e]):
+                    return Float.Abstract([math.sinh(e)])
+                case Float.F32(values=[e]):
+                    return Float.F32([math.sinh(e)])
+                case Float.F16(values=[e]):
+                    return Float.F16([math.sinh(e)])
+                case _:
+                    from .constant_evaluator import ConstantEvaluatorError
+                    raise ConstantEvaluatorError("InvalidMathArg", {})
+        
+        return component_wise_float(eval, span, [arg], handler)
 
     @staticmethod
     def _cosh(eval: ConstantEvaluator, arg: Handle[Expression], span: Span) -> Handle[Expression]:
         """Hyperbolic cosine."""
-        # TODO: Implement with component_wise_float
-        raise NotImplementedError("Cosh not implemented")
+        from .component_wise import component_wise_float, Float
+        
+        def handler(args: Float) -> Float:
+            match args:
+                case Float.Abstract(values=[e]):
+                    return Float.Abstract([math.cosh(e)])
+                case Float.F32(values=[e]):
+                    return Float.F32([math.cosh(e)])
+                case Float.F16(values=[e]):
+                    return Float.F16([math.cosh(e)])
+                case _:
+                    from .constant_evaluator import ConstantEvaluatorError
+                    raise ConstantEvaluatorError("InvalidMathArg", {})
+        
+        return component_wise_float(eval, span, [arg], handler)
 
     @staticmethod
     def _tanh(eval: ConstantEvaluator, arg: Handle[Expression], span: Span) -> Handle[Expression]:
         """Hyperbolic tangent."""
-        # TODO: Implement with component_wise_float
-        raise NotImplementedError("Tanh not implemented")
+        from .component_wise import component_wise_float, Float
+        
+        def handler(args: Float) -> Float:
+            match args:
+                case Float.Abstract(values=[e]):
+                    return Float.Abstract([math.tanh(e)])
+                case Float.F32(values=[e]):
+                    return Float.F32([math.tanh(e)])
+                case Float.F16(values=[e]):
+                    return Float.F16([math.tanh(e)])
+                case _:
+                    from .constant_evaluator import ConstantEvaluatorError
+                    raise ConstantEvaluatorError("InvalidMathArg", {})
+        
+        return component_wise_float(eval, span, [arg], handler)
 
     @staticmethod
     def _asinh(eval: ConstantEvaluator, arg: Handle[Expression], span: Span) -> Handle[Expression]:
         """Inverse hyperbolic sine."""
-        # TODO: Implement with component_wise_float
-        raise NotImplementedError("Asinh not implemented")
+        from .component_wise import component_wise_float, Float
+        
+        def handler(args: Float) -> Float:
+            match args:
+                case Float.Abstract(values=[e]):
+                    return Float.Abstract([math.asinh(e)])
+                case Float.F32(values=[e]):
+                    return Float.F32([math.asinh(e)])
+                case Float.F16(values=[e]):
+                    return Float.F16([math.asinh(e)])
+                case _:
+                    from .constant_evaluator import ConstantEvaluatorError
+                    raise ConstantEvaluatorError("InvalidMathArg", {})
+        
+        return component_wise_float(eval, span, [arg], handler)
 
     @staticmethod
     def _acosh(eval: ConstantEvaluator, arg: Handle[Expression], span: Span) -> Handle[Expression]:
         """Inverse hyperbolic cosine."""
-        # TODO: Implement with component_wise_float
-        raise NotImplementedError("Acosh not implemented")
+        from .component_wise import component_wise_float, Float
+        
+        def handler(args: Float) -> Float:
+            match args:
+                case Float.Abstract(values=[e]):
+                    return Float.Abstract([math.acosh(e)])
+                case Float.F32(values=[e]):
+                    return Float.F32([math.acosh(e)])
+                case Float.F16(values=[e]):
+                    return Float.F16([math.acosh(e)])
+                case _:
+                    from .constant_evaluator import ConstantEvaluatorError
+                    raise ConstantEvaluatorError("InvalidMathArg", {})
+        
+        return component_wise_float(eval, span, [arg], handler)
 
     @staticmethod
     def _atanh(eval: ConstantEvaluator, arg: Handle[Expression], span: Span) -> Handle[Expression]:
         """Inverse hyperbolic tangent."""
-        # TODO: Implement with component_wise_float
-        raise NotImplementedError("Atanh not implemented")
+        from .component_wise import component_wise_float, Float
+        
+        def handler(args: Float) -> Float:
+            match args:
+                case Float.Abstract(values=[e]):
+                    return Float.Abstract([math.atanh(e)])
+                case Float.F32(values=[e]):
+                    return Float.F32([math.atanh(e)])
+                case Float.F16(values=[e]):
+                    return Float.F16([math.atanh(e)])
+                case _:
+                    from .constant_evaluator import ConstantEvaluatorError
+                    raise ConstantEvaluatorError("InvalidMathArg", {})
+        
+        return component_wise_float(eval, span, [arg], handler)
 
     @staticmethod
     def _radians(eval: ConstantEvaluator, arg: Handle[Expression], span: Span) -> Handle[Expression]:
         """Convert degrees to radians."""
-        # TODO: Implement with component_wise_float
-        raise NotImplementedError("Radians not implemented")
+        from .component_wise import component_wise_float, Float
+        
+        def handler(args: Float) -> Float:
+            match args:
+                case Float.Abstract(values=[e]):
+                    return Float.Abstract([math.radians(e)])
+                case Float.F32(values=[e]):
+                    return Float.F32([math.radians(e)])
+                case Float.F16(values=[e]):
+                    return Float.F16([math.radians(e)])
+                case _:
+                    from .constant_evaluator import ConstantEvaluatorError
+                    raise ConstantEvaluatorError("InvalidMathArg", {})
+        
+        return component_wise_float(eval, span, [arg], handler)
 
     @staticmethod
     def _degrees(eval: ConstantEvaluator, arg: Handle[Expression], span: Span) -> Handle[Expression]:
         """Convert radians to degrees."""
-        # TODO: Implement with component_wise_float
-        raise NotImplementedError("Degrees not implemented")
+        from .component_wise import component_wise_float, Float
+        
+        def handler(args: Float) -> Float:
+            match args:
+                case Float.Abstract(values=[e]):
+                    return Float.Abstract([math.degrees(e)])
+                case Float.F32(values=[e]):
+                    return Float.F32([math.degrees(e)])
+                case Float.F16(values=[e]):
+                    return Float.F16([math.degrees(e)])
+                case _:
+                    from .constant_evaluator import ConstantEvaluatorError
+                    raise ConstantEvaluatorError("InvalidMathArg", {})
+        
+        return component_wise_float(eval, span, [arg], handler)
 
     # ========================================================================
     # Decomposition
@@ -410,32 +711,97 @@ class MathFunctionEvaluator:
     @staticmethod
     def _ceil(eval: ConstantEvaluator, arg: Handle[Expression], span: Span) -> Handle[Expression]:
         """Ceiling (round up)."""
-        # TODO: Implement with component_wise_float
-        raise NotImplementedError("Ceil not implemented")
+        from .component_wise import component_wise_float, Float
+        
+        def handler(args: Float) -> Float:
+            match args:
+                case Float.Abstract(values=[e]):
+                    return Float.Abstract([math.ceil(e)])
+                case Float.F32(values=[e]):
+                    return Float.F32([math.ceil(e)])
+                case Float.F16(values=[e]):
+                    return Float.F16([math.ceil(e)])
+                case _:
+                    from .constant_evaluator import ConstantEvaluatorError
+                    raise ConstantEvaluatorError("InvalidMathArg", {})
+        
+        return component_wise_float(eval, span, [arg], handler)
 
     @staticmethod
     def _floor(eval: ConstantEvaluator, arg: Handle[Expression], span: Span) -> Handle[Expression]:
         """Floor (round down)."""
-        # TODO: Implement with component_wise_float
-        raise NotImplementedError("Floor not implemented")
+        from .component_wise import component_wise_float, Float
+        
+        def handler(args: Float) -> Float:
+            match args:
+                case Float.Abstract(values=[e]):
+                    return Float.Abstract([math.floor(e)])
+                case Float.F32(values=[e]):
+                    return Float.F32([math.floor(e)])
+                case Float.F16(values=[e]):
+                    return Float.F16([math.floor(e)])
+                case _:
+                    from .constant_evaluator import ConstantEvaluatorError
+                    raise ConstantEvaluatorError("InvalidMathArg", {})
+        
+        return component_wise_float(eval, span, [arg], handler)
 
     @staticmethod
     def _round(eval: ConstantEvaluator, arg: Handle[Expression], span: Span) -> Handle[Expression]:
         """Round to nearest integer (ties to even)."""
-        # TODO: Implement with component_wise_float
-        raise NotImplementedError("Round not implemented")
+        from .component_wise import component_wise_float, Float
+        
+        def handler(args: Float) -> Float:
+            match args:
+                case Float.Abstract(values=[e]):
+                    return Float.Abstract([round(e)])
+                case Float.F32(values=[e]):
+                    return Float.F32([round(e)])
+                case Float.F16(values=[e]):
+                    return Float.F16([round(e)])
+                case _:
+                    from .constant_evaluator import ConstantEvaluatorError
+                    raise ConstantEvaluatorError("InvalidMathArg", {})
+        
+        return component_wise_float(eval, span, [arg], handler)
 
     @staticmethod
     def _fract(eval: ConstantEvaluator, arg: Handle[Expression], span: Span) -> Handle[Expression]:
         """Fractional part (x - floor(x))."""
-        # TODO: Implement with component_wise_float
-        raise NotImplementedError("Fract not implemented")
+        from .component_wise import component_wise_float, Float
+        
+        def handler(args: Float) -> Float:
+            match args:
+                case Float.Abstract(values=[e]):
+                    return Float.Abstract([e - math.floor(e)])
+                case Float.F32(values=[e]):
+                    return Float.F32([e - math.floor(e)])
+                case Float.F16(values=[e]):
+                    return Float.F16([e - math.floor(e)])
+                case _:
+                    from .constant_evaluator import ConstantEvaluatorError
+                    raise ConstantEvaluatorError("InvalidMathArg", {})
+        
+        return component_wise_float(eval, span, [arg], handler)
 
     @staticmethod
     def _trunc(eval: ConstantEvaluator, arg: Handle[Expression], span: Span) -> Handle[Expression]:
         """Truncate (round toward zero)."""
-        # TODO: Implement with component_wise_float
-        raise NotImplementedError("Trunc not implemented")
+        from .component_wise import component_wise_float, Float
+        
+        def handler(args: Float) -> Float:
+            match args:
+                case Float.Abstract(values=[e]):
+                    return Float.Abstract([math.trunc(e)])
+                case Float.F32(values=[e]):
+                    return Float.F32([math.trunc(e)])
+                case Float.F16(values=[e]):
+                    return Float.F16([math.trunc(e)])
+                case _:
+                    from .constant_evaluator import ConstantEvaluatorError
+                    raise ConstantEvaluatorError("InvalidMathArg", {})
+        
+        return component_wise_float(eval, span, [arg], handler)
 
     # ========================================================================
     # Exponent
@@ -444,26 +810,78 @@ class MathFunctionEvaluator:
     @staticmethod
     def _exp(eval: ConstantEvaluator, arg: Handle[Expression], span: Span) -> Handle[Expression]:
         """Exponential (e^x)."""
-        # TODO: Implement with component_wise_float
-        raise NotImplementedError("Exp not implemented")
+        from .component_wise import component_wise_float, Float
+        
+        def handler(args: Float) -> Float:
+            match args:
+                case Float.Abstract(values=[e]):
+                    return Float.Abstract([math.exp(e)])
+                case Float.F32(values=[e]):
+                    return Float.F32([math.exp(e)])
+                case Float.F16(values=[e]):
+                    return Float.F16([math.exp(e)])
+                case _:
+                    from .constant_evaluator import ConstantEvaluatorError
+                    raise ConstantEvaluatorError("InvalidMathArg", {})
+        
+        return component_wise_float(eval, span, [arg], handler)
 
     @staticmethod
     def _exp2(eval: ConstantEvaluator, arg: Handle[Expression], span: Span) -> Handle[Expression]:
         """Base-2 exponential (2^x)."""
-        # TODO: Implement with component_wise_float
-        raise NotImplementedError("Exp2 not implemented")
+        from .component_wise import component_wise_float, Float
+        
+        def handler(args: Float) -> Float:
+            match args:
+                case Float.Abstract(values=[e]):
+                    return Float.Abstract([math.pow(2.0, e)])
+                case Float.F32(values=[e]):
+                    return Float.F32([math.pow(2.0, e)])
+                case Float.F16(values=[e]):
+                    return Float.F16([math.pow(2.0, e)])
+                case _:
+                    from .constant_evaluator import ConstantEvaluatorError
+                    raise ConstantEvaluatorError("InvalidMathArg", {})
+        
+        return component_wise_float(eval, span, [arg], handler)
 
     @staticmethod
     def _log(eval: ConstantEvaluator, arg: Handle[Expression], span: Span) -> Handle[Expression]:
         """Natural logarithm (ln)."""
-        # TODO: Implement with component_wise_float
-        raise NotImplementedError("Log not implemented")
+        from .component_wise import component_wise_float, Float
+        
+        def handler(args: Float) -> Float:
+            match args:
+                case Float.Abstract(values=[e]):
+                    return Float.Abstract([math.log(e)])
+                case Float.F32(values=[e]):
+                    return Float.F32([math.log(e)])
+                case Float.F16(values=[e]):
+                    return Float.F16([math.log(e)])
+                case _:
+                    from .constant_evaluator import ConstantEvaluatorError
+                    raise ConstantEvaluatorError("InvalidMathArg", {})
+        
+        return component_wise_float(eval, span, [arg], handler)
 
     @staticmethod
     def _log2(eval: ConstantEvaluator, arg: Handle[Expression], span: Span) -> Handle[Expression]:
         """Base-2 logarithm."""
-        # TODO: Implement with component_wise_float
-        raise NotImplementedError("Log2 not implemented")
+        from .component_wise import component_wise_float, Float
+        
+        def handler(args: Float) -> Float:
+            match args:
+                case Float.Abstract(values=[e]):
+                    return Float.Abstract([math.log2(e)])
+                case Float.F32(values=[e]):
+                    return Float.F32([math.log2(e)])
+                case Float.F16(values=[e]):
+                    return Float.F16([math.log2(e)])
+                case _:
+                    from .constant_evaluator import ConstantEvaluatorError
+                    raise ConstantEvaluatorError("InvalidMathArg", {})
+        
+        return component_wise_float(eval, span, [arg], handler)
 
     @staticmethod
     def _pow(
@@ -473,8 +891,21 @@ class MathFunctionEvaluator:
         span: Span,
     ) -> Handle[Expression]:
         """Power (x^y)."""
-        # TODO: Implement with component_wise_float
-        raise NotImplementedError("Pow not implemented")
+        from .component_wise import component_wise_float, Float
+        
+        def handler(args: Float) -> Float:
+            match args:
+                case Float.Abstract(values=[x, y]):
+                    return Float.Abstract([math.pow(x, y)])
+                case Float.F32(values=[x, y]):
+                    return Float.F32([math.pow(x, y)])
+                case Float.F16(values=[x, y]):
+                    return Float.F16([math.pow(x, y)])
+                case _:
+                    from .constant_evaluator import ConstantEvaluatorError
+                    raise ConstantEvaluatorError("InvalidMathArg", {})
+        
+        return component_wise_float(eval, span, [arg, arg1], handler)
 
     # ========================================================================
     # Computational
@@ -483,8 +914,33 @@ class MathFunctionEvaluator:
     @staticmethod
     def _sign(eval: ConstantEvaluator, arg: Handle[Expression], span: Span) -> Handle[Expression]:
         """Sign of a value (-1, 0, or 1)."""
-        # TODO: Implement with component_wise_signed
-        raise NotImplementedError("Sign not implemented")
+        from .component_wise import component_wise_signed, Signed
+        
+        def handler(args: Signed) -> Signed:
+            def sign_value(e):
+                if e > 0:
+                    return type(e)(1)
+                elif e < 0:
+                    return type(e)(-1)
+                else:
+                    return type(e)(0)
+            
+            match args:
+                case Signed.AbstractFloat(values=[e]):
+                    return Signed.AbstractFloat([sign_value(e)])
+                case Signed.AbstractInt(values=[e]):
+                    return Signed.AbstractInt([sign_value(e)])
+                case Signed.F32(values=[e]):
+                    return Signed.F32([sign_value(e)])
+                case Signed.F16(values=[e]):
+                    return Signed.F16([sign_value(e)])
+                case Signed.I32(values=[e]):
+                    return Signed.I32([sign_value(e)])
+                case _:
+                    from .constant_evaluator import ConstantEvaluatorError
+                    raise ConstantEvaluatorError("InvalidMathArg", {})
+        
+        return component_wise_signed(eval, span, [arg], handler)
 
     @staticmethod
     def _fma(
@@ -495,8 +951,21 @@ class MathFunctionEvaluator:
         span: Span,
     ) -> Handle[Expression]:
         """Fused multiply-add (a * b + c)."""
-        # TODO: Implement with component_wise_float
-        raise NotImplementedError("Fma not implemented")
+        from .component_wise import component_wise_float, Float
+        
+        def handler(args: Float) -> Float:
+            match args:
+                case Float.Abstract(values=[a, b, c]):
+                    return Float.Abstract([a * b + c])
+                case Float.F32(values=[a, b, c]):
+                    return Float.F32([a * b + c])
+                case Float.F16(values=[a, b, c]):
+                    return Float.F16([a * b + c])
+                case _:
+                    from .constant_evaluator import ConstantEvaluatorError
+                    raise ConstantEvaluatorError("InvalidMathArg", {})
+        
+        return component_wise_float(eval, span, [arg, arg1, arg2], handler)
 
     @staticmethod
     def _step(
@@ -506,14 +975,40 @@ class MathFunctionEvaluator:
         span: Span,
     ) -> Handle[Expression]:
         """Step function (0 if x < edge, 1 otherwise)."""
-        # TODO: Implement with component_wise_float
-        raise NotImplementedError("Step not implemented")
+        from .component_wise import component_wise_float, Float
+        
+        def handler(args: Float) -> Float:
+            match args:
+                case Float.Abstract(values=[edge, x]):
+                    return Float.Abstract([0.0 if x < edge else 1.0])
+                case Float.F32(values=[edge, x]):
+                    return Float.F32([0.0 if x < edge else 1.0])
+                case Float.F16(values=[edge, x]):
+                    return Float.F16([0.0 if x < edge else 1.0])
+                case _:
+                    from .constant_evaluator import ConstantEvaluatorError
+                    raise ConstantEvaluatorError("InvalidMathArg", {})
+        
+        return component_wise_float(eval, span, [arg, arg1], handler)
 
     @staticmethod
     def _sqrt(eval: ConstantEvaluator, arg: Handle[Expression], span: Span) -> Handle[Expression]:
         """Square root."""
-        # TODO: Implement with component_wise_float
-        raise NotImplementedError("Sqrt not implemented")
+        from .component_wise import component_wise_float, Float
+        
+        def handler(args: Float) -> Float:
+            match args:
+                case Float.Abstract(values=[e]):
+                    return Float.Abstract([math.sqrt(e)])
+                case Float.F32(values=[e]):
+                    return Float.F32([math.sqrt(e)])
+                case Float.F16(values=[e]):
+                    return Float.F16([math.sqrt(e)])
+                case _:
+                    from .constant_evaluator import ConstantEvaluatorError
+                    raise ConstantEvaluatorError("InvalidMathArg", {})
+        
+        return component_wise_float(eval, span, [arg], handler)
 
     @staticmethod
     def _inverse_sqrt(
@@ -522,8 +1017,21 @@ class MathFunctionEvaluator:
         span: Span,
     ) -> Handle[Expression]:
         """Inverse square root (1 / sqrt(x))."""
-        # TODO: Implement with component_wise_float
-        raise NotImplementedError("InverseSqrt not implemented")
+        from .component_wise import component_wise_float, Float
+        
+        def handler(args: Float) -> Float:
+            match args:
+                case Float.Abstract(values=[e]):
+                    return Float.Abstract([1.0 / math.sqrt(e)])
+                case Float.F32(values=[e]):
+                    return Float.F32([1.0 / math.sqrt(e)])
+                case Float.F16(values=[e]):
+                    return Float.F16([1.0 / math.sqrt(e)])
+                case _:
+                    from .constant_evaluator import ConstantEvaluatorError
+                    raise ConstantEvaluatorError("InvalidMathArg", {})
+        
+        return component_wise_float(eval, span, [arg], handler)
 
     # ========================================================================
     # Bit operations
@@ -536,8 +1044,28 @@ class MathFunctionEvaluator:
         span: Span,
     ) -> Handle[Expression]:
         """Count trailing zero bits."""
-        # TODO: Implement with component_wise_concrete_int
-        raise NotImplementedError("CountTrailingZeros not implemented")
+        from .component_wise import component_wise_concrete_int, ConcreteInt
+        
+        def handler(args: ConcreteInt) -> ConcreteInt:
+            def count_tz(value: int, bits: int = 32) -> int:
+                if value == 0:
+                    return bits
+                count = 0
+                while (value & 1) == 0:
+                    value >>= 1
+                    count += 1
+                return count
+            
+            match args:
+                case ConcreteInt.U32(values=[e]):
+                    return ConcreteInt.U32([count_tz(e & 0xFFFFFFFF, 32)])
+                case ConcreteInt.I32(values=[e]):
+                    return ConcreteInt.I32([count_tz(e & 0xFFFFFFFF, 32)])
+                case _:
+                    from .constant_evaluator import ConstantEvaluatorError
+                    raise ConstantEvaluatorError("InvalidMathArg", {})
+        
+        return component_wise_concrete_int(eval, span, [arg], handler)
 
     @staticmethod
     def _count_leading_zeros(
@@ -546,8 +1074,29 @@ class MathFunctionEvaluator:
         span: Span,
     ) -> Handle[Expression]:
         """Count leading zero bits."""
-        # TODO: Implement with component_wise_concrete_int
-        raise NotImplementedError("CountLeadingZeros not implemented")
+        from .component_wise import component_wise_concrete_int, ConcreteInt
+        
+        def handler(args: ConcreteInt) -> ConcreteInt:
+            def count_lz(value: int, bits: int = 32) -> int:
+                if value == 0:
+                    return bits
+                count = 0
+                mask = 1 << (bits - 1)
+                while (value & mask) == 0:
+                    count += 1
+                    mask >>= 1
+                return count
+            
+            match args:
+                case ConcreteInt.U32(values=[e]):
+                    return ConcreteInt.U32([count_lz(e & 0xFFFFFFFF, 32)])
+                case ConcreteInt.I32(values=[e]):
+                    return ConcreteInt.I32([count_lz(e & 0xFFFFFFFF, 32)])
+                case _:
+                    from .constant_evaluator import ConstantEvaluatorError
+                    raise ConstantEvaluatorError("InvalidMathArg", {})
+        
+        return component_wise_concrete_int(eval, span, [arg], handler)
 
     @staticmethod
     def _count_one_bits(
@@ -556,8 +1105,26 @@ class MathFunctionEvaluator:
         span: Span,
     ) -> Handle[Expression]:
         """Count set bits."""
-        # TODO: Implement with component_wise_concrete_int
-        raise NotImplementedError("CountOneBits not implemented")
+        from .component_wise import component_wise_concrete_int, ConcreteInt
+        
+        def handler(args: ConcreteInt) -> ConcreteInt:
+            def popcount(value: int) -> int:
+                count = 0
+                while value:
+                    count += value & 1
+                    value >>= 1
+                return count
+            
+            match args:
+                case ConcreteInt.U32(values=[e]):
+                    return ConcreteInt.U32([popcount(e & 0xFFFFFFFF)])
+                case ConcreteInt.I32(values=[e]):
+                    return ConcreteInt.I32([popcount(e & 0xFFFFFFFF)])
+                case _:
+                    from .constant_evaluator import ConstantEvaluatorError
+                    raise ConstantEvaluatorError("InvalidMathArg", {})
+        
+        return component_wise_concrete_int(eval, span, [arg], handler)
 
     @staticmethod
     def _reverse_bits(
@@ -566,8 +1133,26 @@ class MathFunctionEvaluator:
         span: Span,
     ) -> Handle[Expression]:
         """Reverse bits."""
-        # TODO: Implement with component_wise_concrete_int
-        raise NotImplementedError("ReverseBits not implemented")
+        from .component_wise import component_wise_concrete_int, ConcreteInt
+        
+        def handler(args: ConcreteInt) -> ConcreteInt:
+            def reverse(value: int, bits: int = 32) -> int:
+                result = 0
+                for _ in range(bits):
+                    result = (result << 1) | (value & 1)
+                    value >>= 1
+                return result
+            
+            match args:
+                case ConcreteInt.U32(values=[e]):
+                    return ConcreteInt.U32([reverse(e & 0xFFFFFFFF, 32)])
+                case ConcreteInt.I32(values=[e]):
+                    return ConcreteInt.I32([reverse(e & 0xFFFFFFFF, 32)])
+                case _:
+                    from .constant_evaluator import ConstantEvaluatorError
+                    raise ConstantEvaluatorError("InvalidMathArg", {})
+        
+        return component_wise_concrete_int(eval, span, [arg], handler)
 
     @staticmethod
     def _first_trailing_bit(
@@ -576,8 +1161,20 @@ class MathFunctionEvaluator:
         span: Span,
     ) -> Handle[Expression]:
         """Find index of first trailing set bit."""
-        # TODO: Implement with component_wise_concrete_int
-        raise NotImplementedError("FirstTrailingBit not implemented")
+        from .component_wise import component_wise_concrete_int, ConcreteInt
+        from .type_methods import first_trailing_bit
+        
+        def handler(args: ConcreteInt) -> ConcreteInt:
+            match args:
+                case ConcreteInt.U32(values=[e]):
+                    return ConcreteInt.U32([first_trailing_bit(e, signed=False)])
+                case ConcreteInt.I32(values=[e]):
+                    return ConcreteInt.I32([first_trailing_bit(e, signed=True)])
+                case _:
+                    from .constant_evaluator import ConstantEvaluatorError
+                    raise ConstantEvaluatorError("InvalidMathArg", {})
+        
+        return component_wise_concrete_int(eval, span, [arg], handler)
 
     @staticmethod
     def _first_leading_bit(
@@ -586,8 +1183,20 @@ class MathFunctionEvaluator:
         span: Span,
     ) -> Handle[Expression]:
         """Find index of first leading set bit."""
-        # TODO: Implement with component_wise_concrete_int
-        raise NotImplementedError("FirstLeadingBit not implemented")
+        from .component_wise import component_wise_concrete_int, ConcreteInt
+        from .type_methods import first_leading_bit
+        
+        def handler(args: ConcreteInt) -> ConcreteInt:
+            match args:
+                case ConcreteInt.U32(values=[e]):
+                    return ConcreteInt.U32([first_leading_bit(e, signed=False)])
+                case ConcreteInt.I32(values=[e]):
+                    return ConcreteInt.I32([first_leading_bit(e, signed=True)])
+                case _:
+                    from .constant_evaluator import ConstantEvaluatorError
+                    raise ConstantEvaluatorError("InvalidMathArg", {})
+        
+        return component_wise_concrete_int(eval, span, [arg], handler)
 
     # ========================================================================
     # Vector operations
@@ -601,8 +1210,36 @@ class MathFunctionEvaluator:
         span: Span,
     ) -> Handle[Expression]:
         """Dot product of two packed i8 vectors."""
-        # TODO: Implement packed dot product
-        raise NotImplementedError("Dot4I8Packed not implemented")
+        from .component_wise import component_wise_concrete_int, ConcreteInt
+        
+        def unpack_i8x4(packed: int) -> list[int]:
+            """Unpack 4 signed bytes from u32."""
+            bytes_list = []
+            for i in range(4):
+                byte = (packed >> (i * 8)) & 0xFF
+                # Sign extend from 8 bits to 32 bits
+                if byte & 0x80:
+                    byte = byte - 256
+                bytes_list.append(byte)
+            return bytes_list
+        
+        def handler(args: ConcreteInt) -> ConcreteInt:
+            match args:
+                case ConcreteInt.U32(values=[a, b]) | ConcreteInt.I32(values=[a, b]):
+                    # Unpack both values
+                    a_bytes = unpack_i8x4(a & 0xFFFFFFFF)
+                    b_bytes = unpack_i8x4(b & 0xFFFFFFFF)
+                    
+                    # Compute dot product
+                    result = sum(x * y for x, y in zip(a_bytes, b_bytes))
+                    
+                    # Return as I32 (signed result)
+                    return ConcreteInt.I32([result])
+                case _:
+                    from .constant_evaluator import ConstantEvaluatorError
+                    raise ConstantEvaluatorError("InvalidMathArg", {})
+        
+        return component_wise_concrete_int(eval, span, [arg, arg1], handler)
 
     @staticmethod
     def _dot4_u8_packed(
@@ -612,8 +1249,32 @@ class MathFunctionEvaluator:
         span: Span,
     ) -> Handle[Expression]:
         """Dot product of two packed u8 vectors."""
-        # TODO: Implement packed dot product
-        raise NotImplementedError("Dot4U8Packed not implemented")
+        from .component_wise import component_wise_concrete_int, ConcreteInt
+        
+        def unpack_u8x4(packed: int) -> list[int]:
+            """Unpack 4 unsigned bytes from u32."""
+            return [
+                (packed >> (i * 8)) & 0xFF
+                for i in range(4)
+            ]
+        
+        def handler(args: ConcreteInt) -> ConcreteInt:
+            match args:
+                case ConcreteInt.U32(values=[a, b]) | ConcreteInt.I32(values=[a, b]):
+                    # Unpack both values
+                    a_bytes = unpack_u8x4(a & 0xFFFFFFFF)
+                    b_bytes = unpack_u8x4(b & 0xFFFFFFFF)
+                    
+                    # Compute dot product
+                    result = sum(x * y for x, y in zip(a_bytes, b_bytes))
+                    
+                    # Return as U32 (unsigned result)
+                    return ConcreteInt.U32([result])
+                case _:
+                    from .constant_evaluator import ConstantEvaluatorError
+                    raise ConstantEvaluatorError("InvalidMathArg", {})
+        
+        return component_wise_concrete_int(eval, span, [arg, arg1], handler)
 
     @staticmethod
     def _cross(
@@ -623,8 +1284,43 @@ class MathFunctionEvaluator:
         span: Span,
     ) -> Handle[Expression]:
         """Cross product of two 3D vectors."""
-        # TODO: Implement cross product
-        raise NotImplementedError("Cross not implemented")
+        from .vector_helpers import extract_vector_float_values, cross_product
+        from naga import Expression, ExpressionType, Literal
+        
+        # Extract vector values
+        vec1 = extract_vector_float_values(eval, arg, span)
+        vec2 = extract_vector_float_values(eval, arg1, span)
+        
+        # Compute cross product
+        result = cross_product(vec1, vec2)
+        
+        # Create vector literal components
+        components = []
+        for value in result:
+            lit_expr = Expression(
+                type=ExpressionType.LITERAL,
+                literal=Literal.F32(value),
+            )
+            components.append(eval.register_evaluated_expr(lit_expr, span))
+        
+        # Get the type from the first argument
+        arg_handle = eval.eval_zero_value_and_splat(arg, span)
+        arg_expr = eval.expressions[arg_handle]
+        
+        if arg_expr.type == ExpressionType.COMPOSE:
+            result_ty = arg_expr.compose_ty
+        else:
+            from .constant_evaluator import ConstantEvaluatorError
+            raise ConstantEvaluatorError("Cross product requires vector arguments", {})
+        
+        # Create compose expression
+        new_expr = Expression(
+            type=ExpressionType.COMPOSE,
+            compose_ty=result_ty,
+            compose_components=components,
+        )
+        
+        return eval.register_evaluated_expr(new_expr, span)
 
     @staticmethod
     def _dot(
@@ -634,8 +1330,17 @@ class MathFunctionEvaluator:
         span: Span,
     ) -> Handle[Expression]:
         """Dot product of two vectors."""
-        # TODO: Implement dot product
-        raise NotImplementedError("Dot not implemented")
+        from .vector_helpers import extract_vector_float_values, dot_product, create_float_literal
+        
+        # Extract vector values
+        vec1 = extract_vector_float_values(eval, arg, span)
+        vec2 = extract_vector_float_values(eval, arg1, span)
+        
+        # Compute dot product
+        result = dot_product(vec1, vec2)
+        
+        # Create result literal
+        return create_float_literal(eval, result, span)
 
     @staticmethod
     def _length(
@@ -644,8 +1349,16 @@ class MathFunctionEvaluator:
         span: Span,
     ) -> Handle[Expression]:
         """Length of a vector."""
-        # TODO: Implement length calculation
-        raise NotImplementedError("Length not implemented")
+        from .vector_helpers import extract_vector_float_values, vector_length, create_float_literal
+        
+        # Extract vector values
+        vec = extract_vector_float_values(eval, arg, span)
+        
+        # Compute length
+        result = vector_length(vec)
+        
+        # Create result literal
+        return create_float_literal(eval, result, span)
 
     @staticmethod
     def _distance(
@@ -655,8 +1368,17 @@ class MathFunctionEvaluator:
         span: Span,
     ) -> Handle[Expression]:
         """Distance between two points."""
-        # TODO: Implement distance calculation
-        raise NotImplementedError("Distance not implemented")
+        from .vector_helpers import extract_vector_float_values, vector_distance, create_float_literal
+        
+        # Extract vector values
+        vec1 = extract_vector_float_values(eval, arg, span)
+        vec2 = extract_vector_float_values(eval, arg1, span)
+        
+        # Compute distance
+        result = vector_distance(vec1, vec2)
+        
+        # Create result literal
+        return create_float_literal(eval, result, span)
 
     @staticmethod
     def _normalize(
@@ -665,5 +1387,39 @@ class MathFunctionEvaluator:
         span: Span,
     ) -> Handle[Expression]:
         """Normalize a vector."""
-        # TODO: Implement normalization
-        raise NotImplementedError("Normalize not implemented")
+        from .vector_helpers import extract_vector_float_values, vector_normalize
+        from naga import Expression, ExpressionType, Literal
+        
+        # Extract vector values
+        vec = extract_vector_float_values(eval, arg, span)
+        
+        # Normalize
+        result = vector_normalize(vec)
+        
+        # Create vector literal components
+        components = []
+        for value in result:
+            lit_expr = Expression(
+                type=ExpressionType.LITERAL,
+                literal=Literal.F32(value),
+            )
+            components.append(eval.register_evaluated_expr(lit_expr, span))
+        
+        # Get the type from the argument
+        arg_handle = eval.eval_zero_value_and_splat(arg, span)
+        arg_expr = eval.expressions[arg_handle]
+        
+        if arg_expr.type == ExpressionType.COMPOSE:
+            result_ty = arg_expr.compose_ty
+        else:
+            from .constant_evaluator import ConstantEvaluatorError
+            raise ConstantEvaluatorError("Normalize requires vector argument", {})
+        
+        # Create compose expression
+        new_expr = Expression(
+            type=ExpressionType.COMPOSE,
+            compose_ty=result_ty,
+            compose_components=components,
+        )
+        
+        return eval.register_evaluated_expr(new_expr, span)
