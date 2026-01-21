@@ -823,17 +823,52 @@ class Draw:
         Args:
             device: The HAL device.
         """
-        # In a real implementation we would:
-        # 1. Destroy compute pipeline
-        # 2. Destroy pipeline layout
-        # 3. Destroy bind group layouts
-        # 4. Destroy shader module
-        # 5. Destroy buffer pools
-
-        # For now, just clear the stubs
-        self.pipeline = None
-        self.pipeline_layout = None
-        self.module = None
-        self.src_bind_group_layout = None
-        self.dst_bind_group_layout = None
-        self.metadata_bind_group_layout = None
+        # Destroy all buffer pool entries
+        # In Rust: for entry in free_indirect_entries.into_inner().drain(..)
+        if hasattr(self, 'free_indirect_entries') and self.free_indirect_entries:
+            for entry in self.free_indirect_entries:
+                if hasattr(device, 'destroy_bind_group') and hasattr(entry, 'bind_group'):
+                    device.destroy_bind_group(entry.bind_group)
+                if hasattr(device, 'destroy_buffer') and hasattr(entry, 'buffer'):
+                    device.destroy_buffer(entry.buffer)
+            self.free_indirect_entries.clear()
+        
+        # In Rust: for entry in free_metadata_entries.into_inner().drain(..)
+        if hasattr(self, 'free_metadata_entries') and self.free_metadata_entries:
+            for entry in self.free_metadata_entries:
+                if hasattr(device, 'destroy_bind_group') and hasattr(entry, 'bind_group'):
+                    device.destroy_bind_group(entry.bind_group)
+                if hasattr(device, 'destroy_buffer') and hasattr(entry, 'buffer'):
+                    device.destroy_buffer(entry.buffer)
+            self.free_metadata_entries.clear()
+        
+        # Destroy pipeline resources
+        # In Rust: unsafe { device.destroy_compute_pipeline(pipeline); }
+        if hasattr(device, 'destroy_compute_pipeline') and self.pipeline:
+            device.destroy_compute_pipeline(self.pipeline)
+            self.pipeline = None
+        
+        # In Rust: unsafe { device.destroy_pipeline_layout(pipeline_layout); }
+        if hasattr(device, 'destroy_pipeline_layout') and self.pipeline_layout:
+            device.destroy_pipeline_layout(self.pipeline_layout)
+            self.pipeline_layout = None
+        
+        # In Rust: unsafe { device.destroy_bind_group_layout(metadata_bind_group_layout); }
+        if hasattr(device, 'destroy_bind_group_layout') and self.metadata_bind_group_layout:
+            device.destroy_bind_group_layout(self.metadata_bind_group_layout)
+            self.metadata_bind_group_layout = None
+        
+        # In Rust: unsafe { device.destroy_bind_group_layout(src_bind_group_layout); }
+        if hasattr(device, 'destroy_bind_group_layout') and self.src_bind_group_layout:
+            device.destroy_bind_group_layout(self.src_bind_group_layout)
+            self.src_bind_group_layout = None
+        
+        # In Rust: unsafe { device.destroy_bind_group_layout(dst_bind_group_layout); }
+        if hasattr(device, 'destroy_bind_group_layout') and self.dst_bind_group_layout:
+            device.destroy_bind_group_layout(self.dst_bind_group_layout)
+            self.dst_bind_group_layout = None
+        
+        # In Rust: unsafe { device.destroy_shader_module(module); }
+        if hasattr(device, 'destroy_shader_module') and self.module:
+            device.destroy_shader_module(self.module)
+            self.module = None

@@ -388,7 +388,7 @@ class BindGroupLayout:
     def error_ident(self) -> ResourceErrorIdent:
         """Get a resource error identifier."""
         return ResourceErrorIdent(
-            r#type="BindGroupLayout",
+            type="BindGroupLayout",
             label=self.label
         )
 
@@ -420,9 +420,107 @@ class BindGroup:
     def error_ident(self) -> ResourceErrorIdent:
         """Get a resource error identifier."""
         return ResourceErrorIdent(
-            r#type="BindGroup",
+            type="BindGroup",
             label=self.label
         )
+    
+    def try_raw(self, guard: Any) -> Any:
+        """
+        Get the raw HAL bind group, validating all resources are still alive.
+        
+        Args:
+            guard: Snatch guard for resource validation.
+            
+        Returns:
+            The raw HAL bind group.
+            
+        Raises:
+            DestroyedResourceError: If any resource has been destroyed.
+        """
+        # In Rust: validates all buffers and textures in used_buffer_ranges and used_texture_ranges
+        if hasattr(self, 'used_buffer_ranges'):
+            for buffer_action in self.used_buffer_ranges:
+                if hasattr(buffer_action, 'buffer'):
+                    buffer_action.buffer.try_raw(guard)
+        
+        if hasattr(self, 'used_texture_ranges'):
+            for texture_action in self.used_texture_ranges:
+                if hasattr(texture_action, 'texture'):
+                    texture_action.texture.try_raw(guard)
+        
+        # Get the raw bind group
+        if hasattr(self, 'raw') and self.raw:
+            if hasattr(self.raw, 'get'):
+                raw = self.raw.get(guard)
+                if raw is None:
+                    raise DestroyedResourceError(self.error_ident())
+                return raw
+            return self.raw
+        
+        raise DestroyedResourceError(self.error_ident())
+    
+    def validate_dynamic_bindings(
+        self,
+        bind_group_index: int,
+        offsets: List[int]
+    ) -> None:
+        """
+        Validate dynamic binding offsets.
+        
+        Args:
+            bind_group_index: Index of this bind group.
+            offsets: List of dynamic offsets to validate.
+            
+        Raises:
+            BindError: If validation fails.
+        """
+        # In Rust: validates dynamic_binding_info against provided offsets
+        if not hasattr(self, 'dynamic_binding_info'):
+            self.dynamic_binding_info = []
+        
+        if len(self.dynamic_binding_info) != len(offsets):
+            raise MismatchedDynamicOffsetCountError(
+                bind_group=self.error_ident(),
+                group=bind_group_index,
+                expected=len(self.dynamic_binding_info),
+                actual=len(offsets)
+            )
+        
+        for idx, (info, offset) in enumerate(zip(self.dynamic_binding_info, offsets)):
+            # Get alignment requirements
+            # In Rust: buffer_binding_type_alignment(&self.device.limits, info.binding_type)
+            alignment = 256  # Default, would come from device limits
+            limit_name = "minUniformBufferOffsetAlignment"
+            
+            if hasattr(info, 'binding_type'):
+                # Determine alignment based on binding type
+                # This would normally come from device.limits
+                pass
+            
+            # Check alignment
+            if offset % alignment != 0:
+                raise UnalignedDynamicBindingError(
+                    bind_group=self.error_ident(),
+                    idx=idx,
+                    group=bind_group_index,
+                    binding=info.binding_idx,
+                    offset=offset,
+                    alignment=alignment,
+                    limit_name=limit_name
+                )
+            
+            # Check bounds
+            if offset > info.maximum_dynamic_offset:
+                raise DynamicBindingOutOfBoundsError(
+                    bind_group=self.error_ident(),
+                    idx=idx,
+                    group=bind_group_index,
+                    binding=info.binding_idx,
+                    offset=offset,
+                    buffer_size=info.buffer_size,
+                    binding_range=info.binding_range,
+                    maximum_dynamic_offset=info.maximum_dynamic_offset
+                )
 
 
 class PipelineLayout:
@@ -476,10 +574,211 @@ class PipelineLayout:
     def error_ident(self) -> ResourceErrorIdent:
         """Get a resource error identifier."""
         return ResourceErrorIdent(
-            r#type="PipelineLayout",
+            type="PipelineLayout",
             label=self.label
         )
 
     def raw(self) -> Any:
         """Get the raw HAL layout."""
         return None
+    
+    def validate_immediates_ranges(self, offset: int, end_offset: int) -> None:
+        """
+        Validate immediates match up with expected ranges.
+        
+        Args:
+            offset: Start offset of immediate data.
+            end_offset: End offset of immediate data.
+            
+        Raises:
+            ImmediateUploadError: If validation fails.
+        """
+        # In Rust: validate offset alignment and size
+        try:
+            import wgt
+            IMMEDIATE_DATA_ALIGNMENT = wgt.IMMEDIATE_DATA_ALIGNMENT
+        except:
+            IMMEDIATE_DATA_ALIGNMENT = 4
+        
+        if offset % IMMEDIATE_DATA_ALIGNMENT != 0:
+            raise ValueError(f"Immediate data offset {offset} is not aligned to {IMMEDIATE_DATA_ALIGNMENT}")
+        
+        if end_offset > self.immediate_size:
+            raise ValueError(
+                f"Immediate data range {offset}..{end_offset} exceeds pipeline layout "
+                f"immediate size {self.immediate_size}"
+            )
+
+
+# Additional structures and descriptors
+
+@dataclass
+class BufferBinding:
+    """
+    Buffer binding with offset and optional size.
+    
+    Corresponds to Rust's BufferBinding struct.
+    """
+    buffer: Any  # Buffer or BufferId
+    offset: int  # wgt::BufferAddress
+    size: Optional[int] = None  # Optional size, None means to end of buffer
+
+
+@dataclass
+class BindGroupDescriptor:
+    """
+    Describes a group of bindings and the resources to be bound.
+    
+    Corresponds to Rust's BindGroupDescriptor.
+    """
+    label: Optional[str] = None
+    layout: Any = None  # BindGroupLayout or BindGroupLayoutId
+    entries: List[Any] = None  # List of BindGroupEntry
+
+
+@dataclass
+class BindGroupLayoutDescriptor:
+    """
+    Describes a bind group layout.
+    
+    Corresponds to Rust's BindGroupLayoutDescriptor.
+    """
+    label: Optional[str] = None
+    entries: List[Any] = None  # List of wgt::BindGroupLayoutEntry
+
+
+@dataclass
+class PipelineLayoutDescriptor:
+    """
+    Describes a pipeline layout.
+    
+    Corresponds to Rust's PipelineLayoutDescriptor.
+    """
+    label: Optional[str] = None
+    bind_group_layouts: List[Any] = None  # List of BindGroupLayout or BindGroupLayoutId
+    immediate_size: int = 0  # Size of immediate data in bytes
+
+
+@dataclass
+class BindGroupDynamicBindingData:
+    """
+    Data for dynamic buffer bindings.
+    
+    Corresponds to Rust's BindGroupDynamicBindingData.
+    """
+    binding_idx: int  # The index of the binding
+    buffer_size: int  # The size of the buffer
+    binding_range: range  # The range being bound
+    maximum_dynamic_offset: int  # Maximum allowed dynamic offset
+    binding_type: Any  # wgt::BufferBindingType
+
+
+@dataclass
+class BindGroupLateBufferBindingInfo:
+    """
+    Information about late buffer bindings (buffers without min_binding_size in BGL).
+    
+    Corresponds to Rust's BindGroupLateBufferBindingInfo.
+    """
+    shader_size: int  # Expected size from shader
+    bound_size: int  # Actual bound size
+
+
+# Additional error classes
+
+@dataclass
+class BindError(Exception):
+    """Errors that can occur when binding resources."""
+    pass
+
+
+@dataclass
+class MismatchedDynamicOffsetCountError(BindError):
+    """Dynamic offset count mismatch."""
+    bind_group: Any
+    group: int
+    expected: int
+    actual: int
+    
+    def __str__(self) -> str:
+        s0 = "s" if self.expected >= 2 else ""
+        s1 = "s" if self.actual >= 2 else ""
+        return (
+            f"{self.bind_group} {self.group} expects {self.expected} dynamic offset{s0}. "
+            f"However {self.actual} dynamic offset{s1} were provided."
+        )
+
+
+@dataclass
+class UnalignedDynamicBindingError(BindError):
+    """Dynamic binding offset not aligned."""
+    bind_group: Any
+    idx: int
+    group: int
+    binding: int
+    offset: int
+    alignment: int
+    limit_name: str
+    
+    def __str__(self) -> str:
+        return (
+            f"Dynamic binding index {self.idx} (targeting {self.bind_group} {self.group}, "
+            f"binding {self.binding}) with value {self.offset}, does not respect device's "
+            f"requested `{self.limit_name}` limit: {self.alignment}"
+        )
+
+
+@dataclass
+class DynamicBindingOutOfBoundsError(BindError):
+    """Dynamic binding offset would overrun buffer."""
+    bind_group: Any
+    idx: int
+    group: int
+    binding: int
+    offset: int
+    buffer_size: int
+    binding_range: range
+    maximum_dynamic_offset: int
+    
+    def __str__(self) -> str:
+        return (
+            f"Dynamic binding offset index {self.idx} with offset {self.offset} would overrun "
+            f"the buffer bound to {self.bind_group} {self.group} -> binding {self.binding}. "
+            f"Buffer size is {self.buffer_size} bytes, the binding binds bytes {self.binding_range}, "
+            f"meaning the maximum the binding can be offset is {self.maximum_dynamic_offset} bytes"
+        )
+
+
+@dataclass
+class GetBindGroupLayoutError(Exception):
+    """Error getting bind group layout."""
+    pass
+
+
+@dataclass
+class InvalidGroupIndexError(GetBindGroupLayoutError):
+    """Invalid group index."""
+    index: int
+    
+    def __str__(self) -> str:
+        return f"Invalid group index {self.index}"
+
+
+@dataclass
+class LateMinBufferBindingSizeMismatch(Exception):
+    """
+    Buffer binding size mismatch between shader expectation and actual binding.
+    
+    Corresponds to Rust's LateMinBufferBindingSizeMismatch.
+    """
+    group_index: int
+    binding_index: int
+    shader_size: int  # wgt::BufferAddress
+    bound_size: int  # wgt::BufferAddress
+    
+    def __str__(self) -> str:
+        return (
+            f"In bind group index {self.group_index}, the buffer bound at binding index "
+            f"{self.binding_index} is bound with size {self.bound_size} where the shader "
+            f"expects {self.shader_size}."
+        )

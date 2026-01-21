@@ -293,17 +293,17 @@ class ResourceErrorIdent:
     including its type and label, which is useful for error messages.
     
     Attributes:
-        r#type: The type of the resource.
+        type: The type of the resource.
         label: The label of the resource.
     """
 
-    def __init__(self, r#type: str, label: str = "") -> None:
+    def __init__(self, type: str, label: str = "") -> None:
         """Initialize the resource error identifier."""
-        self.r#type = r#type
+        self.type = type
         self.label = label
 
     def __str__(self) -> str:
         """Return a string representation of the resource identifier."""
         if self.label:
-            return f"{self.r#type} with '{self.label}' label"
-        return self.r#type
+            return f"{self.type} with '{self.label}' label"
+        return self.type

@@ -296,7 +296,7 @@ class Blas:
     def error_ident(self) -> ResourceErrorIdent:
         """Get a resource error identifier."""
         return ResourceErrorIdent(
-            r#type="Blas",
+            type="Blas",
             label=self.label
         )
 
@@ -324,6 +324,6 @@ class Tlas:
     def error_ident(self) -> ResourceErrorIdent:
         """Get a resource error identifier."""
         return ResourceErrorIdent(
-            r#type="Tlas",
+            type="Tlas",
             label=self.label
         )

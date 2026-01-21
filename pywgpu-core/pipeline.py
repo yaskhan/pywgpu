@@ -211,7 +211,7 @@ class ShaderModule:
     def error_ident(self) -> ResourceErrorIdent:
         """Get a resource error identifier."""
         return ResourceErrorIdent(
-            r#type="ShaderModule",
+            type="ShaderModule",
             label=self.label
         )
 
@@ -239,7 +239,7 @@ class ComputePipeline:
     def error_ident(self) -> ResourceErrorIdent:
         """Get a resource error identifier."""
         return ResourceErrorIdent(
-            r#type="ComputePipeline",
+            type="ComputePipeline",
             label=self.label
         )
 
@@ -267,7 +267,7 @@ class PipelineCache:
     def error_ident(self) -> ResourceErrorIdent:
         """Get a resource error identifier."""
         return ResourceErrorIdent(
-            r#type="PipelineCache",
+            type="PipelineCache",
             label=self.label
         )
 
@@ -295,6 +295,6 @@ class RenderPipeline:
     def error_ident(self) -> ResourceErrorIdent:
         """Get a resource error identifier."""
         return ResourceErrorIdent(
-            r#type="RenderPipeline",
+            type="RenderPipeline",
             label=self.label
         )
