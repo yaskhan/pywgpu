@@ -37,6 +37,7 @@ class Module:
         self.functions: List[Function] = []
         self.entry_points: List[EntryPoint] = []
         self.named_expressions: Dict[str, Any] = {}
+        self.overrides: List[Any] = []  # Pipeline-creation-time constants
 
     def add_type(self, name: Optional[str], inner: Any) -> int:
         """Add a type to the module's type arena."""
