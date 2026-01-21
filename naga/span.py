@@ -134,7 +134,7 @@ class WithSpan:
         """
         Return a SourceLocation for our first span, if we have one.
         """
-        if source.is_empty() or not self.span.is_defined():
+        if not source or not self.span.is_defined():
             return None
 
         return self.span.location(source)
