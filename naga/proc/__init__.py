@@ -16,6 +16,37 @@ from .index import (
     IndexableLength,
     IndexableLengthError,
 )
+from .constant_evaluator import (
+    ConstantEvaluator,
+    ConstantEvaluatorError,
+    ExpressionKind,
+    ExpressionKindTracker,
+)
+
+# Type methods and helpers
+from .type_methods import (
+    cross_product,
+    first_leading_bit,
+    first_trailing_bit,
+    flatten_compose,
+    TypeResolution,
+    TypeResolutionHandle,
+    TypeResolutionValue,
+)
+
+# Component-wise operations
+from .component_wise import (
+    component_wise_scalar,
+    component_wise_float,
+    component_wise_concrete_int,
+    component_wise_signed,
+    flatten_compose_to_literals,
+    extract_vector_literals,
+    math_function_arg_count,
+)
+
+# Math function implementations
+from .constant_evaluator_math import MathFunctionEvaluator
 
 __all__ = [
     "Namer",
@@ -32,4 +63,23 @@ __all__ = [
     "BoundsCheckPolicies",
     "IndexableLength",
     "IndexableLengthError",
+    "ConstantEvaluator",
+    "ConstantEvaluatorError",
+    "ExpressionKind",
+    "ExpressionKindTracker",
+    "cross_product",
+    "first_leading_bit",
+    "first_trailing_bit",
+    "flatten_compose",
+    "TypeResolution",
+    "TypeResolutionHandle",
+    "TypeResolutionValue",
+    "component_wise_scalar",
+    "component_wise_float",
+    "component_wise_concrete_int",
+    "component_wise_signed",
+    "flatten_compose_to_literals",
+    "extract_vector_literals",
+    "math_function_arg_count",
+    "MathFunctionEvaluator",
 ]
