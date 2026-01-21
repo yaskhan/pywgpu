@@ -264,44 +264,44 @@ def flush_bindings_helper(state: Any) -> None:
             )
  
  
- def push_debug_group(state: Any, string_data: bytearray, length: int) -> None:
-     """Push a debug group."""
-     label = string_data[state.string_offset : state.string_offset + length].decode("utf-8")
-     state.string_offset += length
- 
-     if hasattr(state.base, "raw_encoder") and state.base.raw_encoder:
-         state.base.raw_encoder.push_debug_group(label)
- 
- 
- def pop_debug_group(state: Any) -> None:
-     """Pop a debug group."""
-     if hasattr(state.base, "raw_encoder") and state.base.raw_encoder:
-         state.base.raw_encoder.pop_debug_group()
- 
- 
- def insert_debug_marker(state: Any, string_data: bytearray, length: int) -> None:
-     """Insert a debug marker."""
-     label = string_data[state.string_offset : state.string_offset + length].decode("utf-8")
-     state.string_offset += length
- 
-     if hasattr(state.base, "raw_encoder") and state.base.raw_encoder:
-         state.base.raw_encoder.insert_debug_marker(label)
- 
- 
- def write_timestamp(
-     state: Any,
-     device: Any,
-     encoder: Any,
-     query_set: Any,
-     query_index: int,
- ) -> None:
-     """Write a timestamp."""
-     raw_query_set = state.base.tracker.query_sets.insert_single(query_set)
-     if hasattr(state.base, "raw_encoder") and state.base.raw_encoder:
-         state.base.raw_encoder.write_timestamp(raw_query_set.raw(), query_index)
- 
- 
- def change_pipeline_layout(state: Any, layout: Any) -> None:
-     """Changes the pipeline layout."""
-     state.binder.pipeline_layout = layout
-     # In a full implementation, this might invalidate bind groups
+def push_debug_group(state: Any, string_data: bytearray, length: int) -> None:
+    """Push a debug group."""
+    label = string_data[state.string_offset : state.string_offset + length].decode("utf-8")
+    state.string_offset += length
+
+    if hasattr(state.base, "raw_encoder") and state.base.raw_encoder:
+        state.base.raw_encoder.push_debug_group(label)
+
+
+def pop_debug_group(state: Any) -> None:
+    """Pop a debug group."""
+    if hasattr(state.base, "raw_encoder") and state.base.raw_encoder:
+        state.base.raw_encoder.pop_debug_group()
+
+
+def insert_debug_marker(state: Any, string_data: bytearray, length: int) -> None:
+    """Insert a debug marker."""
+    label = string_data[state.string_offset : state.string_offset + length].decode("utf-8")
+    state.string_offset += length
+
+    if hasattr(state.base, "raw_encoder") and state.base.raw_encoder:
+        state.base.raw_encoder.insert_debug_marker(label)
+
+
+def write_timestamp(
+    state: Any,
+    device: Any,
+    encoder: Any,
+    query_set: Any,
+    query_index: int,
+) -> None:
+    """Write a timestamp."""
+    raw_query_set = state.base.tracker.query_sets.insert_single(query_set)
+    if hasattr(state.base, "raw_encoder") and state.base.raw_encoder:
+        state.base.raw_encoder.write_timestamp(raw_query_set.raw(), query_index)
+
+
+def change_pipeline_layout(state: Any, layout: Any) -> None:
+    """Changes the pipeline layout."""
+    state.binder.pipeline_layout = layout
+    # In a full implementation, this might invalidate bind groups
