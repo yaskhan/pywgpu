@@ -4,7 +4,7 @@ Module processing functionality.
 This package provides various utilities for processing Naga IR modules.
 """
 
-from .namer import Namer
+from .namer import Namer, NameKey, EntryPointIndex, ExternalTextureNameKey
 from .typifier import Typifier
 from .layouter import Layouter
 from .keyword_set import KeywordSet, CaseInsensitiveKeywordSet
@@ -19,6 +19,9 @@ from .index import (
 
 __all__ = [
     "Namer",
+    "NameKey",
+    "EntryPointIndex",
+    "ExternalTextureNameKey",
     "Typifier",
     "Layouter",
     "KeywordSet",
