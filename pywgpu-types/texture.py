@@ -112,7 +112,20 @@ class TextureFormat(Enum):
     ASTC_6X6_UNORM_SRGB = "astc-6x6-unorm-srgb"
     ASTC_8X5_UNORM = "astc-8x5-unorm"
     ASTC_8X5_UNORM_SRGB = "astc-8x5-unorm-srgb"
-    ASTC_8X6_UNORM =.
-.
-.
+    ASTC_8X6_UNORM = "astc-8x6-unorm"
+    ASTC_8X6_UNORM_SRGB = "astc-8x6-unorm-srgb"
+    ASTC_8X8_UNORM = "astc-8x8-unorm"
+
+class TextureViewDimension(Enum):
+    D1 = "1d"
+    D2 = "2d"
+    D2_ARRAY = "2d-array"
+    CUBE = "cube"
+    CUBE_ARRAY = "cube-array"
+    D3 = "3d"
+
+class StorageTextureAccess(Enum):
+    WRITE_ONLY = "write-only"
+    READ_ONLY = "read-only"
+    READ_WRITE = "read-write"
 

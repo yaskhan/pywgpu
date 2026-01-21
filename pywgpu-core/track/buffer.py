@@ -59,6 +59,11 @@ class BufferUsageScope:
         self.state[index] = merged_state
         self.metadata.insert(index, buffer)
 
+    def clear(self) -> None:
+        """Clears all tracked usages in this scope."""
+        self.state = [BufferUses(0)] * len(self.state)
+        self.metadata.clear()
+
 class BufferTracker:
     """Tracks buffer state across commands in a command buffer."""
     def __init__(self) -> None:

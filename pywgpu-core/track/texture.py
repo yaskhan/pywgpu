@@ -171,6 +171,12 @@ class TextureUsageScope:
                         rs.ranges[idx][1] |= new_state
                     rs.coalesce()
 
+    def clear(self) -> None:
+        """Clears all tracked usages in this scope."""
+        self.set.simple = [TextureUses.UNINITIALIZED] * len(self.set.simple)
+        self.set.complex.clear()
+        self.metadata.clear()
+
 class TextureTracker:
     """Tracks texture state across commands."""
     def __init__(self) -> None:

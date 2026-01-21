@@ -53,8 +53,25 @@ class Tracker:
         for view in scope.views.resources:
             self.views.insert_single(view)
         
-        # Return a structure containing all transitions
         return {
             'buffers': buffer_transitions,
             'textures': texture_transitions,
         }
+
+    def drain_transitions(self) -> Any:
+        """Yields and clears all pending transitions from stateful trackers."""
+        return {
+            'buffers': list(self.buffers.drain_transitions()),
+            'textures': list(self.textures.drain_transitions()),
+        }
+
+    def clear(self) -> None:
+        """Clears all trackers."""
+        self.buffers.clear()
+        self.textures.clear()
+        self.render_pipelines.pipelines.clear()
+        self.compute_pipelines.pipelines.clear()
+        self.bundles.resources.clear()
+        self.bind_groups.resources.clear()
+        self.query_sets.resources.clear()
+        self.views.resources.clear()
