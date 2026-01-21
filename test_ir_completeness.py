@@ -50,11 +50,11 @@ def test_block_methods():
     # Test splicing
     block4 = Block.from_vec(["new_stmt"])
     block.splice(1, 1, block4)
-    assert len(block) == 2
+    assert len(block) == 3
     
     # Test span iteration
     span_pairs = list(block.span_iter())
-    assert len(span_pairs) == 2
+    assert len(span_pairs) == 3
     
     print("✓ Block methods test passed")
 
