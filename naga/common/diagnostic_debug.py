@@ -4,6 +4,9 @@ from typing import Any, Tuple
 class DiagnosticDebug:
     """
     A wrapper for displaying Naga IR terms in debugging output.
+
+    This is like DiagnosticDisplay, but requires weaker context
+    and produces correspondingly lower-fidelity output.
     """
 
     def __init__(self, value: Any):
@@ -11,23 +14,37 @@ class DiagnosticDebug:
 
     def __repr__(self) -> str:
         if isinstance(self.value, tuple):
-            # This is a bit of a simplification, but it captures the essence
-            # of the Rust implementation.
             item, types = self.value
             return f"{item!r} with types {types!r}"
         else:
             return repr(self.value)
 
 
-def for_debug(value: Any) -> DiagnosticDebug:
+class ForDebug:
     """
-    Format this type using core::fmt::Debug.
+    Trait for types that can be formatted using Debug.
     """
-    return DiagnosticDebug(value)
+
+    def for_debug(self) -> DiagnosticDebug:
+        """
+        Format this type using Debug.
+
+        Return a value that implements the Debug trait by displaying
+        self in a language-appropriate way.
+        """
+        return DiagnosticDebug(self)
 
 
-def for_debug_with_types(value: Any, types: Any) -> DiagnosticDebug:
+class ForDebugWithTypes:
     """
-    Format this type using core::fmt::Debug, with a type arena.
+    Trait for types that can be formatted using Debug with type context.
     """
-    return DiagnosticDebug((value, types))
+
+    def for_debug(self, types: Any) -> DiagnosticDebug:
+        """
+        Format this type using Debug with a type arena.
+
+        Given an arena to look up type handles in, return a value that
+        implements the Debug trait by displaying self in a language-appropriate way.
+        """
+        return DiagnosticDebug((self, types))

@@ -2,21 +2,23 @@ from typing import Any, Optional
 from enum import Enum
 
 
-class PredeclaredTypeKind(Enum):
-    VEC = "vec"
-    MAT = "mat"
-    SAMPLER = "sampler"
-
-
-class PredeclaredType:
+class PredeclaredType(Enum):
     """
-    Helper for handling predeclared types in IR.
+    Types that are predeclared in the IR.
     """
-
-    def __init__(self, kind: PredeclaredTypeKind, size: int, format: Any):
-        self.kind = kind
-        self.size = size
-        self.format = format
+    ATOMIC_COMPARE_EXCHANGE_WEAK_RESULT = "atomic_compare_exchange_weak_result"
+    MODF_RESULT = "modf_result"
+    FREXP_RESULT = "frexp_result"
 
     def struct_name(self) -> str:
-        return f"predeclared_{self.kind.value}{self.size}"
+        """
+        Generate a struct name for this predeclared type.
+        """
+        if self == PredeclaredType.ATOMIC_COMPARE_EXCHANGE_WEAK_RESULT:
+            return "__atomic_compare_exchange_result"
+        elif self == PredeclaredType.MODF_RESULT:
+            return "__modf_result"
+        elif self == PredeclaredType.FREXP_RESULT:
+            return "__frexp_result"
+        else:
+            return f"__{self.value}"
