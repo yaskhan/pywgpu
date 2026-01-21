@@ -211,6 +211,18 @@ class RayIntersectionType(Enum):
     BOUNDING_BOX = 4
 
 
+from .continue_forward import Nesting, ContinueCtx
+from .pipeline_constants import (
+    PipelineConstantError,
+    MissingValueError,
+    SrcNeedsToBeFiniteError,
+    DstRangeTooSmallError,
+    NegativeWorkgroupSizeError,
+    NegativeMeshOutputMaxError,
+    process_overrides,
+    revalidate,
+)
+
 from .wgsl import Writer as WgslWriter, WriterFlags, write_string as write_wgsl_string
 from .glsl import (
     Writer as GlslWriter,
@@ -252,6 +264,18 @@ __all__ = [
     "FunctionCtx",
     "RayFlag",
     "RayIntersectionType",
+    # Continue forwarding
+    "Nesting",
+    "ContinueCtx",
+    # Pipeline constants
+    "PipelineConstantError",
+    "MissingValueError",
+    "SrcNeedsToBeFiniteError",
+    "DstRangeTooSmallError",
+    "NegativeWorkgroupSizeError",
+    "NegativeMeshOutputMaxError",
+    "process_overrides",
+    "revalidate",
     # Base Writer class
     "Writer",
     # WGSL backend
