@@ -1,3 +1,10 @@
+"""
+Arena implementation for storing shader translation components.
+
+This module provides the Arena class, which stores a series of values indexed by
+Handle values. This improves translator performance and reduces memory usage
+by providing strongly-typed handles instead of direct references.
+"""
 from typing import Generic, TypeVar, List, Tuple, Iterator, Optional, Callable, MutableSequence
 from .handle import Handle, BadHandle
 from .range import Range, BadRangeError

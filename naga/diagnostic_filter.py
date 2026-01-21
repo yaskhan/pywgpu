@@ -1,9 +1,17 @@
+"""
+Diagnostic filtering system for Naga shader validation.
+
+This module provides severity levels, triggering rules, and filter management
+for controlling diagnostic output during shader compilation.
+"""
+
 from enum import Enum
 from typing import Optional, Dict, List, Tuple, Union
 from ..span import Span
 
 
 class Severity(Enum):
+    """Severity levels for diagnostics."""
     OFF = "off"
     INFO = "info"
     WARNING = "warning"
@@ -182,6 +190,16 @@ class DiagnosticFilterMap:
         return iter(self._filters.items())
 
 
+class DiagnosticFilter:
+    """
+    A filtering rule that modifies how diagnostics are emitted for shaders.
+    """
+    
+    def __init__(self, new_severity: Severity, triggering_rule: FilterableTriggeringRule):
+        self.new_severity = new_severity
+        self.triggering_rule = triggering_rule
+
+
 class DiagnosticFilterNode:
     """
     Represents a single parent-linking node in a tree of DiagnosticFilters.
@@ -222,3 +240,41 @@ class DiagnosticFilterNode:
             current = current.parent
 
         return triggering_rule.default_severity()
+    
+    #def search(self, rule: FilterableTriggeringRule) -> Optional[Severity]:
+    #    """Search for a rule in this node or its ancestors."""
+    #    if rule in self.rules:
+    #       return self.rules[rule]
+    #    if self.parent:
+    #       return self.parent.search(rule)
+    #    return None
+
+
+class DiagnosticFilterMap:
+    """
+    A map from diagnostic filters to their severity and span.
+    """
+    
+    def __init__(self):
+        self.filters: Dict[FilterableTriggeringRule, tuple[Severity, Optional[tuple[int, int]]]] = {}
+    
+    def add(self, diagnostic_filter: DiagnosticFilter, span: tuple[int, int]) -> None:
+        """Add a diagnostic filter to the map."""
+        self.filters[diagnostic_filter.triggering_rule] = (diagnostic_filter.new_severity, span)
+    
+    def is_empty(self) -> bool:
+        """Check if the map is empty."""
+        return len(self.filters) == 0
+    
+    def spans(self):
+        """Get all spans in the map."""
+        return [span for _, span in self.filters.values()]
+
+
+__all__ = [
+    "Severity",
+    "FilterableTriggeringRule", 
+    "DiagnosticFilter",
+    "DiagnosticFilterNode",
+    "DiagnosticFilterMap"
+]

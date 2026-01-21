@@ -7,9 +7,14 @@ class Span:
     Source code span.
     """
 
-    def __init__(self, start: int, end: int):
+    def __init__(self, start: int = 0, end: int = 0):
         self.start = start
         self.end = end
+
+    @classmethod
+    def new(cls) -> "Span":
+        """Create a new empty span."""
+        return cls(0, 0)
 
     def __repr__(self) -> str:
         return f"Span({self.start}, {self.end})"
