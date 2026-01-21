@@ -5,45 +5,152 @@ This module provides the core data structures for Naga's shader translation IR,
 mirroring the structure from rust GPU infrastructure.
 """
 
+# Type aliases
+from typing import Final
+
 # Core IR components
 from .block import Block
 from .type import (
     Type,
     TypeInner,
+    TypeInnerType,
     ScalarKind,
     Scalar,
     VectorSize,
     Vector,
     Matrix,
     ArraySize,
+    ArraySizeType,
     Array,
     StructMember,
     Struct,
     ImageDimension,
     Image,
+    Sampler,
+    AccelerationStructure,
+    RayQuery,
+    BindingArray,
+    ValuePointer,
+    Pointer,
+    Atomic,
+    CooperativeSize,
+    CooperativeRole,
+    CooperativeMatrix,
+    Interpolation,
+    Sampling,
+    StorageAccess,
+    StorageFormat,
+    ImageClass,
+    ImageClassType,
+    ImageClassSampled,
+    ImageClassDepth,
+    ImageClassStorage,
 )
-from .constant import Constant
+from .composite_types import (
+    ShaderStage,
+    BuiltIn,
+    BuiltInType,
+    BuiltInPosition,
+    BuiltInBarycentric,
+    AddressSpace,
+)
+from .constant import Constant, Override, Literal, LiteralType
+from .operators import (
+    UnaryOperator,
+    BinaryOperator,
+    AtomicFunction,
+    DerivativeControl,
+    DerivativeAxis,
+    RelationalFunction,
+    MathFunction,
+    SwizzleComponent,
+    SampleLevel,
+    ImageQuery,
+    GatherMode,
+    Direction,
+    SubgroupOperation,
+    CollectiveOperation,
+    Barrier,
+)
 from .function import Function, FunctionArgument, FunctionResult, LocalVariable
 from .module import Module, EntryPoint
-from .expression import Expression
+from .expression import Expression, ExpressionType
 from .statement import Statement
 
+# Basic type aliases from mod.rs
+Bytes: Final = int  # u8 in Rust - Number of bytes per scalar
+
 __all__ = [
-    "Block",
+    # Type aliases
+    "Bytes",
+    # Type definitions
     "Type",
     "TypeInner",
+    "TypeInnerType",
     "ScalarKind",
     "Scalar",
     "VectorSize",
     "Vector",
     "Matrix",
     "ArraySize",
+    "ArraySizeType",
     "Array",
     "StructMember",
     "Struct",
     "ImageDimension",
     "Image",
+    "Sampler",
+    "AccelerationStructure",
+    "RayQuery",
+    "BindingArray",
+    "ValuePointer",
+    "Pointer",
+    "Atomic",
+    # Cooperative matrix types
+    "CooperativeSize",
+    "CooperativeRole",
+    "CooperativeMatrix",
+    # Binding qualifiers
+    "Interpolation",
+    "Sampling",
+    "StorageAccess",
+    "StorageFormat",
+    # Image class types
+    "ImageClass",
+    "ImageClassType",
+    "ImageClassSampled",
+    "ImageClassDepth",
+    "ImageClassStorage",
+    # Composite types
+    "ShaderStage",
+    "BuiltIn",
+    "BuiltInType",
+    "BuiltInPosition",
+    "BuiltInBarycentric",
+    "AddressSpace",
+    # Constants
     "Constant",
+    "Override",
+    "Literal",
+    "LiteralType",
+    # Operators
+    "UnaryOperator",
+    "BinaryOperator",
+    "AtomicFunction",
+    "DerivativeControl",
+    "DerivativeAxis",
+    "RelationalFunction",
+    "MathFunction",
+    "SwizzleComponent",
+    "SampleLevel",
+    "ImageQuery",
+    "GatherMode",
+    "Direction",
+    "SubgroupOperation",
+    "CollectiveOperation",
+    "Barrier",
+    # Core components
+    "Block",
     "Function",
     "FunctionArgument",
     "FunctionResult",
@@ -51,5 +158,6 @@ __all__ = [
     "Module",
     "EntryPoint",
     "Expression",
+    "ExpressionType",
     "Statement",
 ]
