@@ -114,8 +114,7 @@ class Parser:
             directive: Extension directive
             meta: Metadata
         """
-        # TODO: Proper extension handling (строка 315)
-        # The original comment mentions:
+        # TODO: Proper extension handling
         # - Checking for extension support in the compiler
         # - Handle behaviors such as warn
         # - Handle the all extension
@@ -194,11 +193,10 @@ class Parser:
             directive: Pragma directive
             meta: Metadata
         """
-        # TODO: handle some common pragmas? (строка 402)
-        # Common GLSL pragmas include:
+        # TODO: handle some common pragmas?
+        # Common GLSL pragmas that could be handled include:
         # - #pragma optimize(on/off)
         # - #pragma debug(on/off)
-        # - #pragma GCC optimize/dependency warnings
         # - vendor-specific pragmas
         
         # TODO: Implement common pragma handling

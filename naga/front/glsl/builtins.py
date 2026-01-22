@@ -62,10 +62,10 @@ class Builtins:
             if func_name not in self.builtin_functions:
                 self.builtin_functions[func_name] = []
             
-            # TODO: glsl supports using bias with depth samplers but naga doesn't (строка 183)
-            # This is about adding support for bias parameter with depth samplers
-            # In GLSL, depth textures can use bias parameters in texture sampling
-            # but naga doesn't currently support this combination
+            # TODO: glsl supports using bias with depth samplers but naga doesn't
+            # GLSL allows using bias parameters with depth/shadow samplers, but Naga's IR
+            # doesn't currently support this combination. When bias=true and shadow=true,
+            # we skip adding that variation.
             
             # Add variations for different texture types
             self._add_texture_variations(func_name)
@@ -89,14 +89,11 @@ class Builtins:
             # Add scalar and vector variations
             self._add_math_variations(func_name)
         
-        # TODO: https://github.com/gfx-rs/naga/issues/2526 (строка 1395)
-        # These functions are commented out in the original code:
-        # "modf", "frexp"
-        # Need to investigate and implement these math functions
-        
-        # TODO: Implement modf and frexp functions
-        # "modf" - Split float into integer and fractional parts
-        # "frexp" - Split float into mantissa and exponent
+        # TODO: https://github.com/gfx-rs/naga/issues/2526
+        # "modf" | "frexp" => { ... }
+        # These functions split floats into parts (modf: integer and fractional,
+        # frexp: mantissa and exponent) but require multiple return values which
+        # needs special handling. See https://github.com/gfx-rs/naga/issues/2526
         self._add_unimplemented_functions(["modf", "frexp"])
     
     def _initialize_vector_functions(self) -> None:

@@ -171,7 +171,8 @@ class TypeParser:
         # - Arithmetic operation compatibility
         # - Comparison operation compatibility
         
-        # TODO: These next ones seem incorrect to me (строка 448)
-        # Review and fix any type compatibility rules that seem incorrect
+        # TODO: These next ones seem incorrect to me
+        # Some format mappings may be incorrect (e.g., "rgb10_a2ui" might not map correctly).
+        # Review and fix any incorrect storage format mappings.
         
         return False

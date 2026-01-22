@@ -145,17 +145,16 @@ class VariableHandler:
         """
         input_var = (storage == StorageQualifier.INPUT)
         
-        # TODO: glslang seems to use a counter for variables without (строка 430)
+        # TODO: glslang seems to use a counter for variables without
         # explicit location (even if that causes collisions)
-        # The original comment mentions that glslang uses a counter for variables
-        # without explicit location layout qualifiers, even if this causes location
-        # collisions. We need to implement similar behavior.
+        # glslang assigns sequential location numbers to variables without explicit
+        # location qualifiers, even if this causes collisions. We follow the same approach.
         
-        location = declaration.meta.get('location', 0)
+        location = declaration.meta.get('location')
         if location is None:
-            # Use auto-generated location counter
-            # TODO: Implement location counter for variables without explicit location
-            location = self._get_next_location_counter()
+            # TODO: glslang seems to use a counter for variables without explicit location
+            # (even if that causes collisions). Naga currently defaults to 0.
+            location = 0
         
         interpolation = self._get_default_interpolation(declaration.ty)
         sampling = declaration.meta.get('sampling')
@@ -337,29 +336,18 @@ class VariableHandler:
         Returns:
             Parsed image variable
         """
-        # TODO: glsl supports images without format qualifier (строка 575)
+        # TODO: glsl supports images without format qualifier
         # if they are `writeonly`
-        # The original comment mentions that GLSL supports images without format
-        # qualifiers if they are writeonly. Naga currently requires format
-        # qualifiers for all image types.
+        # GLSL allows writeonly storage images to omit the format qualifier,
+        # but Naga requires format qualifiers for all storage images.
         
         format_qualifier = self._extract_format_qualifier(qualifiers)
         
         if format_qualifier is None:
-            # Check if this is a writeonly image (format not required)
-            if self._is_writeonly_image(qualifiers):
-                # Use default format for writeonly images
-                format_qualifier = self._get_default_writeonly_format()
-            else:
-                # Require format qualifier for non-writeonly images
-                self.errors.append("image types require a format layout qualifier")
-                return None
-        
-        # TODO: Add support for images without format qualifier for writeonly images
-        # This should:
-        # 1. Allow writeonly images to omit format qualifiers
-        # 2. Use appropriate default formats for writeonly images
-        # 3. Report errors for non-writeonly images without format qualifiers
+            # TODO: glsl supports images without format qualifier if they are `writeonly`.
+            # Naga currently requires a format layout qualifier for all storage images.
+            self.errors.append("image types require a format layout qualifier")
+            return None
         
         return self._create_image_variable(name, dim, arrayed, ty, format_qualifier, meta)
     
