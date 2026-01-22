@@ -18,20 +18,65 @@ from naga import (
 # Helper functions for type limits
 # ============================================================================
 
-class IntFloatLimits:
-    """Trait for types with min/max float representable values."""
+# Note: In Python we don't have half::f16 type, so we'll use approximations
+# These values come from the Rust implementation in type_methods.rs lines 567-588
 
-    @staticmethod
-    def min_float() -> float:
-        """Minimum finite representable float value."""
-        # TODO: Implement for each type
-        raise NotImplementedError("IntFloatLimits.min_float")
-
-    @staticmethod
-    def max_float() -> float:
-        """Maximum finite representable float value."""
-        # TODO: Implement for each type
-        raise NotImplementedError("IntFloatLimits.max_float")
+def min_max_float_representable_by(
+    float_scalar: Scalar, int_scalar: Scalar
+) -> tuple[Literal, Literal]:
+    """Returns a tuple of Literals representing the minimum and maximum
+    float values exactly representable by the provided float and integer types.
+    
+    Args:
+        float_scalar: The float scalar type (F16, F32, or F64)
+        int_scalar: The integer scalar type (I32, U32, I64, or U64)
+    
+    Returns:
+        Tuple of (min_literal, max_literal)
+    
+    Raises:
+        ValueError: If the scalar types are not supported
+    """
+    # F16 limits (using approximations since Python doesn't have native f16)
+    # half::f16::MIN ≈ -65504.0, half::f16::MAX ≈ 65504.0
+    F16_MIN = -65504.0
+    F16_MAX = 65504.0
+    F16_ZERO = 0.0
+    
+    # Match on (float_type, int_type) combinations
+    if float_scalar == Scalar.F16:
+        if int_scalar == Scalar.I32:
+            return (Literal.F16(F16_MIN), Literal.F16(F16_MAX))
+        elif int_scalar == Scalar.U32:
+            return (Literal.F16(F16_ZERO), Literal.F16(F16_MAX))
+        elif int_scalar == Scalar.I64:
+            return (Literal.F16(F16_MIN), Literal.F16(F16_MAX))
+        elif int_scalar == Scalar.U64:
+            return (Literal.F16(F16_ZERO), Literal.F16(F16_MAX))
+    
+    elif float_scalar == Scalar.F32:
+        if int_scalar == Scalar.I32:
+            return (Literal.F32(-2147483648.0), Literal.F32(2147483520.0))
+        elif int_scalar == Scalar.U32:
+            return (Literal.F32(0.0), Literal.F32(4294967040.0))
+        elif int_scalar == Scalar.I64:
+            return (Literal.F32(-9223372036854775808.0), Literal.F32(9223371487098961920.0))
+        elif int_scalar == Scalar.U64:
+            return (Literal.F32(0.0), Literal.F32(18446742974197923840.0))
+    
+    elif float_scalar == Scalar.F64:
+        if int_scalar == Scalar.I32:
+            return (Literal.F64(-2147483648.0), Literal.F64(2147483647.0))
+        elif int_scalar == Scalar.U32:
+            return (Literal.F64(0.0), Literal.F64(4294967295.0))
+        elif int_scalar == Scalar.I64:
+            return (Literal.F64(-9223372036854775808.0), Literal.F64(9223372036854774784.0))
+        elif int_scalar == Scalar.U64:
+            return (Literal.F64(0.0), Literal.F64(18446744073709549568.0))
+    
+    raise ValueError(
+        f"Unsupported scalar combination: float={float_scalar}, int={int_scalar}"
+    )
 
 
 # ============================================================================
