@@ -59,6 +59,7 @@ to Python, implementing the constant expression evaluator for Naga IR.
 9. **Documentation Files**:
    - `naga/proc/README.md` - Comprehensive module documentation
    - `naga/proc/CONSTANT_EVALUATOR_STATUS.md` - Implementation status
+   - `naga/proc/overloads/TODO.md` - Overload resolution port status
    - `IMPLEMENTATION_SUMMARY.md` - High-level summary
 
 ## What Was Implemented (from Rust source)

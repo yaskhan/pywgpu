@@ -54,9 +54,13 @@ Python best practices.
    - What was implemented vs. stubbed
    - Priority list for TODO items
 
+7. **`naga/proc/overloads/TODO.md`**
+   - Detailed status tracking of overload resolution port
+   - Python skeletons with TODO markers for each file
+
 ### Updated
 
-7. **`naga/proc/__init__.py`**
+8. **`naga/proc/__init__.py`**
    - Added exports for `ConstantEvaluator`, `ConstantEvaluatorError`, `ExpressionKind`, `ExpressionKindTracker`
    - Added exports for type methods (`cross_product`, `first_trailing_bit`, etc.)
    - Added exports for component-wise functions
