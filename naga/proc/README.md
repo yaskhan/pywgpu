@@ -29,6 +29,7 @@ This directory contains processing utilities for Naga IR (Intermediate Represent
 | `emitter.py` | Manage expression emission for code generation | ✅ Complete |
 | `terminator.py` | Ensure blocks have return statements | ✅ Complete |
 | `index.py` | Bounds checking and indexing utilities | ✅ Complete |
+| `overloads/` | Overload resolution for builtin functions | ✅ Skeletons with TODOs |
 
 ## Constant Evaluator
 
