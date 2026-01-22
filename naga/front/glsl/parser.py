@@ -1,7 +1,9 @@
-from typing import Any, Optional, Dict
+from typing import Any, Optional, Dict, List
 from enum import Enum
 from .. import Parser
 from ...ir import Module
+from . import ast, builtins, functions, offset, parser_main, types, variables
+from .parser import declarations, functions as parser_functions, types as parser_types
 
 # Import ShaderStage if it exists, otherwise define it locally
 try:
@@ -96,12 +98,24 @@ class GlslParser(Parser):
     def __init__(self, options: Optional[Options] = None) -> None:
         self.options = options
         self.metadata = ShaderMetadata()
-        self.errors: list[Any] = []
+        self.errors: List[str] = []
+        
+        # Initialize sub-parsers
+        self.builtins = builtins.Builtins()
+        self.functions = functions.FunctionHandler()
+        self.offset_calculator = offset.OffsetCalculator()
+        self.type_parser = types.TypeParser()
+        self.variable_handler = variables.VariableHandler()
+        self.declaration_parser = declarations.DeclarationParser(None)
+        self.function_parser = parser_functions.FunctionParser(None)
+        self.type_parser_impl = parser_types.TypeParser()
+        self.main_parser = parser_main.Parser()
+        
         # Internal lookup tables
         self.lookup_function: Dict[str, Any] = {}
         self.lookup_type: Dict[str, Any] = {}
-        self.global_variables: list[Any] = []
-        self.entry_args: list[Any] = []
+        self.global_variables: List[Any] = []
+        self.entry_args: List[Any] = []
 
     def reset(self, stage: ShaderStage) -> None:
         """Reset the parser state for new parsing."""
@@ -111,6 +125,17 @@ class GlslParser(Parser):
         self.lookup_type.clear()
         self.global_variables.clear()
         self.entry_args.clear()
+        
+        # Reset sub-parsers
+        self.builtins = builtins.Builtins()
+        self.functions = functions.FunctionHandler()
+        self.offset_calculator = offset.OffsetCalculator()
+        self.type_parser = types.TypeParser()
+        self.variable_handler = variables.VariableHandler()
+        self.declaration_parser = declarations.DeclarationParser(None)
+        self.function_parser = parser_functions.FunctionParser(None)
+        self.type_parser_impl = parser_types.TypeParser()
+        self.main_parser = parser_main.Parser()
 
     def parse(self, source: str, options: Optional[Options] = None) -> Module:
         """
@@ -137,9 +162,6 @@ class GlslParser(Parser):
         # Store options
         self.options = parse_options
 
-        # Create the module
-        module = Module()
-
         # TODO: Implement full GLSL parsing pipeline
         # The complete implementation requires:
         # 1. Lexical analysis - Create lexer from source and defines
@@ -160,13 +182,37 @@ class GlslParser(Parser):
         # 6. Error handling and collection
         #    - Collect errors during parsing
         #    - Return errors if parsing fails
-
+        
+        # Create the module
+        module = Module()
+        
+        # Initialize builtin functions
+        self._initialize_builtin_functions(module)
+        
+        # TODO: Parse the source and build the module
+        # This would involve:
+        # - Tokenizing the source
+        # - Parsing declarations
+        # - Building the AST
+        # - Converting to IR
+        
         # Check for errors
         if self.errors:
             error_messages = [str(e) for e in self.errors]
             raise ValueError(f"GLSL parsing failed with {len(self.errors)} error(s): {error_messages}")
 
         return module
+
+    def _initialize_builtin_functions(self, module: Module) -> None:
+        """Initialize builtin functions in the module."""
+        # TODO: Initialize all builtin functions
+        # This should populate the lookup_function table with:
+        # - Texture functions (texture, textureSize, etc.)
+        # - Math functions (sin, cos, sqrt, etc.)
+        # - Vector functions (dot, cross, normalize, etc.)
+        # - Matrix functions (matrixCompMult, transpose, etc.)
+        
+        pass
 
     def handle_directive(self, directive: Any, meta: Any) -> None:
         """
@@ -181,7 +227,9 @@ class GlslParser(Parser):
         # - #version: Set metadata.version and metadata.profile
         # - #extension: Add to metadata.extensions
         # - #pragma: Handle pragma directives
-        pass
+        
+        # Use the main parser for directive handling
+        self.main_parser.handle_directive(directive, meta)
 
     def add_entry_point(self, function_handle: Any, ctx: Any) -> None:
         """
@@ -196,6 +244,7 @@ class GlslParser(Parser):
         # 1. Create EntryPoint from function
         # 2. Set up entry point arguments from self.entry_args
         # 3. Add to module.entry_points
+
         pass
 
     def add_global_var(self, ctx: Any, declaration: Any) -> Any:
@@ -214,7 +263,8 @@ class GlslParser(Parser):
         # - Global variables
         # - Constants
         # - Overrides
-        pass
+
+        return self.variable_handler.add_global_variable(ctx, declaration)
 
     def add_local_var(self, ctx: Any, declaration: Any) -> Any:
         """
@@ -228,7 +278,12 @@ class GlslParser(Parser):
             Expression handle for the local variable
         """
         # TODO: Implement local variable addition
-        pass
+        # This should handle:
+        # - Local variable declarations
+        # - Function parameter handling
+        # - Variable initialization
+
+        return None
 
     def get_metadata(self) -> ShaderMetadata:
         """
@@ -238,6 +293,68 @@ class GlslParser(Parser):
             ShaderMetadata containing version, profile, extensions, etc.
         """
         return self.metadata
+
+    def resolve_builtin_function(self, name: str, args: List[Any]) -> Optional[Any]:
+        """
+        Resolve a builtin function call.
+
+        Args:
+            name: Function name
+            args: Function arguments
+
+        Returns:
+            Resolved builtin function or None
+        """
+        return self.builtins.resolve_builtin_call(name, args)
+
+    def check_type_conversion(self, expected_type: str, actual_type: str) -> Optional[Any]:
+        """
+        Check if conversion between types is possible.
+
+        Args:
+            expected_type: Expected type
+            actual_type: Actual type
+
+        Returns:
+            Conversion function or None
+        """
+        return self.functions.check_conversion_compatibility(expected_type, actual_type)
+
+    def calculate_type_offset(self, ty: Any, layout: ast.StructLayout) -> Optional[Any]:
+        """
+        Calculate type offset for layout.
+
+        Args:
+            ty: Type handle
+            layout: Struct layout
+
+        Returns:
+            Type offset information
+        """
+        return self.offset_calculator.calculate_offset(ty, None, layout, None)
+
+    def parse_image_type(self, tokens: List[str]) -> Optional[Any]:
+        """
+        Parse image type from tokens.
+
+        Args:
+            tokens: Image type tokens
+
+        Returns:
+            Parsed image type or None
+        """
+        return self.type_parser.parse_image_type(tokens)
+
+    def add_error(self, message: str, location: Any = None) -> None:
+        """
+        Add an error to the parser.
+
+        Args:
+            message: Error message
+            location: Error location
+        """
+        error_msg = f"Error at {location}: {message}" if location else f"Error: {message}"
+        self.errors.append(error_msg)
 
 
 class ParsingContext:
