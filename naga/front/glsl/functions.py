@@ -35,11 +35,16 @@ class FunctionHandler:
         self._initialize_conversion_rules()
     
     def _initialize_conversion_rules(self) -> None:
-        """Initialize built-in conversion rules."""
-        # TODO: casts (строка 222)
-        # The original TODO mentions that `Expression::As` doesn't support matrix width casts
-        # so we need to do extra work for matrix casts
-        # This involves handling conversions between different matrix dimensions
+        """
+        Initialize built-in conversion rules.
+        
+        Note: Matrix width casts require special handling.
+        The Expression::As operation in Naga IR doesn't support matrix width
+        casts, so conversions between matrices of different dimensions need
+        to be decomposed into component-wise operations.
+        """
+        # TODO: casts
+        # `Expression::As` doesn't support matrix width casts so we need to do some extra work for casts
         
         # Basic type conversion rules
         self.conversion_rules.extend([

@@ -46,17 +46,12 @@ class DeclarationParser:
         # - Const declarations
         # - Attribute declarations
         
-        # TODO: Accept layout arguments (строка 624)
-        # Layout qualifiers like std140, std430 should be parsed
-        # and accepted as arguments to struct declarations
+        # TODO: Accept layout arguments
+        # Struct members should support layout qualifiers like offset, align, etc.
         
-        # TODO: type_qualifier (строка 636)
-        # Full support for type qualifiers including:
-        # - Storage qualifiers (uniform, buffer, etc.)
-        # - Precision qualifiers (highp, mediump, lowp)
-        # - Interpolation qualifiers (flat, smooth, etc.)
-        # - Invariant qualifiers
-        # - Storage access qualifiers (read, write, read_write)
+        # TODO: type_qualifier
+        # Struct members should support type qualifiers like precision,
+        # interpolation, invariant, etc.
         
         return None
     

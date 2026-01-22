@@ -129,13 +129,32 @@ class StructLayout(Enum):
     STD430 = "std430"
 
 
-# TODO: Encode precision hints in the IR (строка 343)
-# This TODO is about encoding precision hints (highp, mediump, lowp)
-# into the intermediate representation. In GLSL, precision qualifiers
-# affect the precision of operations and storage, and this information
-# should be preserved in the IR for proper code generation.
+# TODO: Encode precision hints in the IR
+# A precision hint used in GLSL declarations.
+#
+# Precision hints can be used to either speed up shader execution or control
+# the precision of arithmetic operations.
+#
+# To use a precision hint simply add it before the type in the declaration.
+# ```glsl
+# mediump float a;
+# ```
+#
+# The default when no precision is declared is `highp` which means that all
+# operations operate with the type defined width.
+#
+# For `mediump` and `lowp` operations follow the spir-v
+# [`RelaxedPrecision`][RelaxedPrecision] decoration semantics.
+#
+# [RelaxedPrecision]: https://www.khronos.org/registry/SPIR-V/specs/unified1/SPIRV.html#_a_id_relaxedprecisionsection_a_relaxed_precision
 class Precision(Enum):
-    """Precision qualifiers for types and variables."""
+    """
+    Precision qualifiers for types and variables.
+    
+    Precision hints control the precision of arithmetic operations and can be
+    used to optimize shader execution. They correspond to SPIR-V RelaxedPrecision
+    decoration.
+    """
     LOW = "lowp"
     MEDIUM = "mediump"
     HIGH = "highp"

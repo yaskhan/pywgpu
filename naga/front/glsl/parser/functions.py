@@ -49,8 +49,8 @@ class FunctionParser:
         # - Function body (for definitions)
         # - Function qualifiers
         
-        # TODO: Implicit conversions (строка 99)
-        # Implement support for implicit type conversions in function calls:
+        # TODO: Implicit conversions
+        # Support for implicit type conversions in function arguments:
         # - Integer to float conversions
         # - Boolean to integer conversions
         # - Widening conversions (int8 -> int16, etc.)

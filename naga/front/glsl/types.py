@@ -1,317 +1,287 @@
-"""
-GLSL type handling and validation.
+"""GLSL frontend type parsing utilities.
 
-This module provides type handling, validation, and conversion functionality
-for GLSL shaders.
+This module is a Python translation of `wgpu-trunk/naga/src/front/glsl/types.rs`.
+It provides helpers for recognizing GLSL type names and converting them to Naga IR
+`Type`/`TypeInner` representations.
+
+Note:
+    This is intended for the GLSL frontend and is not a general-purpose GLSL type
+    system.
 """
 
-from typing import Any, Optional, List, Dict, Union
-from enum import Enum
+from __future__ import annotations
+
 from dataclasses import dataclass
+from typing import Optional
+
+from naga.ir import (
+    ImageClass,
+    ImageDimension,
+    Scalar,
+    ScalarKind,
+    StorageAccess,
+    StorageFormat,
+    Type,
+    TypeInner,
+    TypeInnerType,
+    VectorSize,
+)
 
 
-class ImageDimension(Enum):
-    """Image dimension types."""
-    D1 = "1D"
-    D2 = "2D"
-    D3 = "3D"
-    CUBE = "Cube"
+_BOOL = Scalar(kind=ScalarKind.BOOL, width=1)
+_F16 = Scalar(kind=ScalarKind.FLOAT, width=2)
+_F32 = Scalar(kind=ScalarKind.FLOAT, width=4)
+_F64 = Scalar(kind=ScalarKind.FLOAT, width=8)
+_I32 = Scalar(kind=ScalarKind.SINT, width=4)
+_U32 = Scalar(kind=ScalarKind.UINT, width=4)
 
 
-class ImageClass(Enum):
-    """Image class types."""
-    STORAGE = "storage"
-    DEPTH = "depth"
-    SAMPLER = "sampler"
+def _size_parse(text: str) -> Optional[VectorSize]:
+    if text == "2":
+        return VectorSize.BI
+    if text == "3":
+        return VectorSize.TRI
+    if text == "4":
+        return VectorSize.QUAD
+    return None
 
 
-class StorageFormat(Enum):
-    """Storage format types."""
-    R8_UINT = "r8uint"
-    R8_SINT = "r8sint"
-    R8_UNORM = "r8unorm"
-    R16_UINT = "r16uint"
-    R16_SINT = "r16sint"
-    R16_FLOAT = "r16float"
-    R16_UNORM = "r16unorm"
-    R16_SNORM = "r16snorm"
-    R32_UINT = "r32uint"
-    R32_SINT = "r32sint"
-    R32_FLOAT = "r32float"
-    RG8_UINT = "rg8uint"
-    RG8_SINT = "rg8sint"
-    RG8_UNORM = "rg8unorm"
-    RG16_UINT = "rg16uint"
-    RG16_SINT = "rg16sint"
-    RG16_FLOAT = "r16float"
-    RG16_UNORM = "rg16unorm"
-    RG16_SNORM = "rg16snorm"
-    RG32_UINT = "rg32uint"
-    RG32_SINT = "rg32sint"
-    RG32_FLOAT = "rg32float"
-    RGBA8_UINT = "rgba8uint"
-    RGBA8_SINT = "rgba8sint"
-    RGBA8_UNORM = "rgba8unorm"
-    RGBA8_SNORM = "rgba8snorm"
-    RGBA16_UINT = "rgba16uint"
-    RGBA16_SINT = "rgba16sint"
-    RGBA16_FLOAT = "rgba16float"
-    RGBA16_UNORM = "rgba16unorm"
-    RGBA16_SNORM = "rgba16snorm"
-    RGBA32_UINT = "rgba32uint"
-    RGBA32_SINT = "rgba32sint"
-    RGBA32_FLOAT = "rgba32float"
+def _kind_width_parse(text: str) -> Optional[Scalar]:
+    if text == "":
+        return _F32
+    if text == "b":
+        return _BOOL
+    if text == "i":
+        return _I32
+    if text == "u":
+        return _U32
+    if text == "d":
+        return _F64
+    if text == "f16":
+        return _F16
+    return None
 
 
-class StorageAccess(Enum):
-    """Storage access flags."""
-    LOAD = "load"
-    STORE = "store"
-    READ = "read"
-    WRITE = "write"
+def parse_type(type_name: str) -> Optional[Type]:
+    """Parse a GLSL type name into a Naga IR `Type`.
+
+    This mirrors `parse_type` in Rust.
+
+    Args:
+        type_name: The type name string as it appears in GLSL.
+
+    Returns:
+        A `Type` if recognized, otherwise `None`.
+    """
+
+    if type_name == "bool":
+        return Type(name=None, inner=TypeInner.scalar(_BOOL))
+    if type_name == "float16_t":
+        return Type(name=None, inner=TypeInner.scalar(_F16))
+    if type_name == "float":
+        return Type(name=None, inner=TypeInner.scalar(_F32))
+    if type_name == "double":
+        return Type(name=None, inner=TypeInner.scalar(_F64))
+    if type_name == "int":
+        return Type(name=None, inner=TypeInner.scalar(_I32))
+    if type_name == "uint":
+        return Type(name=None, inner=TypeInner.scalar(_U32))
+
+    if type_name in ("sampler", "samplerShadow"):
+        return Type(name=None, inner=TypeInner.sampler(comparison=(type_name == "samplerShadow")))
+
+    # Vector types
+    def vec_parse(word: str) -> Optional[Type]:
+        parts = word.split("vec")
+        if len(parts) != 2:
+            return None
+        kind, size_text = parts
+        scalar = _kind_width_parse(kind)
+        size = _size_parse(size_text)
+        if scalar is None or size is None:
+            return None
+        return Type(name=None, inner=TypeInner.vector(size=size, scalar=scalar))
+
+    # Matrix types
+    def mat_parse(word: str) -> Optional[Type]:
+        parts = word.split("mat")
+        if len(parts) != 2:
+            return None
+        kind, size_text = parts
+        scalar = _kind_width_parse(kind)
+        if scalar is None:
+            return None
+
+        square = _size_parse(size_text)
+        if square is not None:
+            columns = square
+            rows = square
+        else:
+            dim_parts = size_text.split("x")
+            if len(dim_parts) != 2:
+                return None
+            columns = _size_parse(dim_parts[0])
+            rows = _size_parse(dim_parts[1])
+            if columns is None or rows is None:
+                return None
+
+        return Type(name=None, inner=TypeInner.matrix(columns=columns, rows=rows, scalar=scalar))
+
+    # Texture types
+    def texture_parse(word: str) -> Optional[Type]:
+        parts = word.split("texture")
+        if len(parts) != 2:
+            return None
+        kind_text, size_text = parts
+
+        def texture_kind(text: str) -> Optional[ScalarKind]:
+            if text == "":
+                return ScalarKind.FLOAT
+            if text == "i":
+                return ScalarKind.SINT
+            if text == "u":
+                return ScalarKind.UINT
+            return None
+
+        kind = texture_kind(kind_text)
+        if kind is None:
+            return None
+
+        def sampled(multi: bool) -> ImageClass:
+            return ImageClass.sampled(kind=kind, multi=multi)
+
+        match size_text:
+            case "1D":
+                dim, arrayed, cls = ImageDimension.D1, False, sampled(False)
+            case "1DArray":
+                dim, arrayed, cls = ImageDimension.D1, True, sampled(False)
+            case "2D":
+                dim, arrayed, cls = ImageDimension.D2, False, sampled(False)
+            case "2DArray":
+                dim, arrayed, cls = ImageDimension.D2, True, sampled(False)
+            case "2DMS":
+                dim, arrayed, cls = ImageDimension.D2, False, sampled(True)
+            case "2DMSArray":
+                dim, arrayed, cls = ImageDimension.D2, True, sampled(True)
+            case "3D":
+                dim, arrayed, cls = ImageDimension.D3, False, sampled(False)
+            case "Cube":
+                dim, arrayed, cls = ImageDimension.CUBE, False, sampled(False)
+            case "CubeArray":
+                dim, arrayed, cls = ImageDimension.CUBE, True, sampled(False)
+            case _:
+                return None
+
+        return Type(name=None, inner=TypeInner.image(dim=dim, arrayed=arrayed, class_=cls))
+
+    # Storage image types
+    def image_parse(word: str) -> Optional[Type]:
+        parts = word.split("image")
+        if len(parts) != 2:
+            return None
+        kind_text, size_text = parts
+
+        def texture_kind(text: str) -> Optional[ScalarKind]:
+            if text == "":
+                return ScalarKind.FLOAT
+            if text == "i":
+                return ScalarKind.SINT
+            if text == "u":
+                return ScalarKind.UINT
+            return None
+
+        # The Rust implementation currently only validates that the kind prefix is one of
+        # the supported ones.
+        if texture_kind(kind_text) is None:
+            return None
+
+        cls = ImageClass.storage(
+            format=StorageFormat.R8_UINT,
+            access=StorageAccess.LOAD | StorageAccess.STORE,
+        )
+
+        # Multisampled storage images are not supported.
+        match size_text:
+            case "1D":
+                dim, arrayed = ImageDimension.D1, False
+            case "1DArray":
+                dim, arrayed = ImageDimension.D1, True
+            case "2D":
+                dim, arrayed = ImageDimension.D2, False
+            case "2DArray":
+                dim, arrayed = ImageDimension.D2, True
+            case "3D":
+                dim, arrayed = ImageDimension.D3, False
+            case _:
+                return None
+
+        return Type(name=None, inner=TypeInner.image(dim=dim, arrayed=arrayed, class_=cls))
+
+    return (
+        vec_parse(type_name)
+        or mat_parse(type_name)
+        or texture_parse(type_name)
+        or image_parse(type_name)
+    )
 
 
-@dataclass
-class ImageType:
-    """Image type information."""
-    dim: ImageDimension
-    arrayed: bool
-    class_type: ImageClass
-    format: Optional[StorageFormat] = None
-    access: Optional[StorageAccess] = None
+def scalar_components(inner: TypeInner) -> Optional[Scalar]:
+    """Return the scalar component type for scalar/vector/matrix/value-pointer types."""
+
+    if inner.type == TypeInnerType.SCALAR:
+        return inner.scalar
+    if inner.type == TypeInnerType.VECTOR:
+        return inner.vector.scalar if inner.vector is not None else None
+    if inner.type == TypeInnerType.VALUE_POINTER:
+        return inner.value_pointer.scalar if inner.value_pointer is not None else None
+    if inner.type == TypeInnerType.MATRIX:
+        return inner.matrix.scalar if inner.matrix is not None else None
+    return None
 
 
-class TextureKind(Enum):
-    """Texture kind types."""
-    UNORM = "unorm"
-    SNORM = "snorm"
-    UINT = "uint"
-    SINT = "sint"
-    FLOAT = "float"
-    SHADOW = "shadow"
+def type_power(scalar: Scalar) -> Optional[int]:
+    """Return a total ordering bucket for scalar types used in conversion ranking."""
+
+    if scalar.kind == ScalarKind.SINT:
+        return 0
+    if scalar.kind == ScalarKind.UINT:
+        return 1
+    if scalar.kind == ScalarKind.FLOAT and scalar.width == 4:
+        return 2
+    if scalar.kind == ScalarKind.FLOAT:
+        return 3
+    # Bool and abstract types are not ordered.
+    if scalar.kind in (ScalarKind.BOOL, ScalarKind.ABSTRACT_INT, ScalarKind.ABSTRACT_FLOAT):
+        return None
+    return None
 
 
 class TypeParser:
-    """Parser for GLSL type declarations."""
-    
-    def __init__(self):
-        self.errors: List[str] = []
-        self.type_definitions: Dict[str, Any] = {}
-    
-    def parse_image_type(self, tokens: List[str]) -> Optional[ImageType]:
-        """
-        Parse image type from token list.
-        
+    """Compatibility wrapper matching the earlier skeleton API."""
+
+    def __init__(self) -> None:
+        self.errors: list[str] = []
+
+    def parse_image_type(self, tokens: list[str]) -> Optional[Type]:
+        """Parse an image/texture/sampler type name.
+
         Args:
-            tokens: List of image type tokens
-            
+            tokens: Token list containing the type name (first element).
+
         Returns:
-            ImageType or None if parsing fails
+            A Naga IR `Type` if recognized, otherwise `None`.
         """
-        # Expected format: image[Size][Format][Type]
-        # Example: image2D, image2DArray, uimage2D, etc.
-        
+
         if not tokens:
             return None
-        
-        # TODO: Check that the texture format and the kind match (строка 159)
-        # This should validate that the format specifier matches the kind specifier
-        # For example, "uimage2D" should have both format (u = unsigned) and kind (image2D)
-        
-        # Remove "image" prefix
-        base = tokens[0].replace("image", "")
-        if not base:
-            return None
-        
-        # Parse size dimension
-        size_tokens = self._extract_size_tokens(base)
-        dim = self._parse_image_dimension(size_tokens)
-        arrayed = self._is_arrayed(size_tokens)
-        
-        # Parse format and kind
-        format_kind = self._extract_format_kind(base)
-        format = self._parse_storage_format(format_kind)
-        kind = self._parse_texture_kind(format_kind)
-        
-        # TODO: Check that the texture format and the kind match
-        # This should ensure:
-        # 1. If format is specified, kind should be compatible
-        # 2. Format suffixes (u, i, f) should match kind types
-        # 3. Validate format-kind combinations
-        
-        if not self._validate_format_kind_match(format, kind):
-            self.errors.append(f"Texture format and kind don't match: format={format}, kind={kind}")
-            return None
-        
-        class_type = self._determine_image_class(format, kind)
-        
-        return ImageType(
-            dim=dim,
-            arrayed=arrayed,
-            class_type=class_type,
-            format=format,
-            access=StorageAccess.LOAD | StorageAccess.STORE
-        )
-    
-    def _extract_size_tokens(self, base: str) -> List[str]:
-        """Extract size tokens from base string."""
-        # TODO: Implement size token extraction
-        # Should extract "1D", "2D", "3D", "Cube", "Rect" etc.
-        return []
-    
-    def _parse_image_dimension(self, size_tokens: List[str]) -> ImageDimension:
-        """Parse image dimension from size tokens."""
-        # TODO: Implement image dimension parsing
-        return ImageDimension.D2
-    
-    def _is_arrayed(self, size_tokens: List[str]) -> bool:
-        """Check if image is arrayed."""
-        # TODO: Implement arrayed check
-        return "Array" in str(size_tokens)
-    
-    def _extract_format_kind(self, base: str) -> str:
-        """Extract format and kind information."""
-        # TODO: Implement format-kind extraction
-        # Should extract format prefix (u, i, f, nothing) and kind suffix (1D, 2D, etc.)
-        return base
-    
-    def _parse_storage_format(self, format_kind: str) -> Optional[StorageFormat]:
-        """Parse storage format."""
-        # TODO: Implement storage format parsing
-        # Should map format strings to StorageFormat enum
-        format_mappings = {
-            "u": StorageFormat.R32_UINT,
-            "i": StorageFormat.R32_SINT,
-            "f": StorageFormat.R32_FLOAT,
-        }
-        
-        for prefix, format_type in format_mappings.items():
-            if format_kind.startswith(prefix):
-                return format_type
-        
-        return StorageFormat.R32_FLOAT  # Default
-    
-    def _parse_texture_kind(self, format_kind: str) -> TextureKind:
-        """Parse texture kind."""
-        # TODO: Implement texture kind parsing
-        # Should map format strings to TextureKind enum
-        kind_mappings = {
-            "u": TextureKind.UINT,
-            "i": TextureKind.SINT,
-            "f": TextureKind.FLOAT,
-            "shadow": TextureKind.SHADOW,
-        }
-        
-        for prefix, kind in kind_mappings.items():
-            if format_kind.startswith(prefix):
-                return kind
-        
-        return TextureKind.FLOAT  # Default
-    
-    def _validate_format_kind_match(self, format: Optional[StorageFormat], kind: TextureKind) -> bool:
-        """
-        Validate that texture format and kind match.
-        
-        Args:
-            format: Storage format
-            kind: Texture kind
-            
-        Returns:
-            True if format and kind are compatible
-        """
-        # TODO: Check that the texture format and the kind match
-        # This should validate:
-        # 1. Unsigned formats should match UINT kind
-        # 2. Signed formats should match SINT kind
-        # 3. Float formats should match FLOAT kind
-        # 4. Shadow formats should be compatible with depth textures
-        
-        if format is None:
-            return True
-        
-        format_kind_map = {
-            StorageFormat.R8_UINT: TextureKind.UINT,
-            StorageFormat.R8_SINT: TextureKind.SINT,
-            StorageFormat.R8_UNORM: TextureKind.UNORM,
-            StorageFormat.R32_UINT: TextureKind.UINT,
-            StorageFormat.R32_SINT: TextureKind.SINT,
-            StorageFormat.R32_FLOAT: TextureKind.FLOAT,
-            # Add more mappings...
-        }
-        
-        expected_kind = format_kind_map.get(format)
-        if expected_kind is None:
-            return True  # Unknown format, assume valid
-        
-        return expected_kind == kind
-    
-    def _determine_image_class(self, format: Optional[StorageFormat], kind: TextureKind) -> ImageClass:
-        """Determine image class based on format and kind."""
-        # TODO: Implement image class determination
-        if kind == TextureKind.SHADOW:
-            return ImageClass.DEPTH
-        elif format is not None:
-            return ImageClass.STORAGE
-        else:
-            return ImageClass.SAMPLER
-    
-    def parse_storage_image_type(self, tokens: List[str]) -> Optional[ImageType]:
-        """
-        Parse storage image type.
-        
-        Args:
-            tokens: Image type tokens
-            
-        Returns:
-            ImageType or None if parsing fails
-        """
-        # TODO: glsl support multisampled storage images, naga doesn't (строка 167)
-        # This is about adding support for multisampled storage images in GLSL.
-        # Naga currently doesn't support this feature.
-        
-        # Multisampled storage images would be:
-        # - image2DMS, image2DMSArray
-        # - Different sample counts (2, 4, 8, etc.)
-        # - Special handling for sample operations
-        
-        # Check if this is a multisampled storage image
-        if any("MS" in str(token) for token in tokens):
-            # TODO: Add multisampled storage image support
-            # This should:
-            # 1. Parse MS suffix and sample count
-            # 2. Create appropriate ImageType with multisampling
-            # 3. Handle sample operations
-            # 4. Validate multisampling support
-            
-            self.errors.append("Multisampled storage images not supported in naga")
-            return None
-        
-        # Regular storage image parsing
-        return self.parse_image_type(tokens)
-    
-    def validate_texture_type(self, image_type: ImageType) -> bool:
-        """
-        Validate a texture type.
-        
-        Args:
-            image_type: Image type to validate
-            
-        Returns:
-            True if valid
-        """
-        # TODO: Implement texture type validation
-        # Should check:
-        # 1. Valid dimension combinations
-        # 2. Valid format-kind combinations
-        # 3. Arrayed image constraints
-        # 4. Multisampling support
-        
-        return True
-    
-    def get_errors(self) -> List[str]:
-        """Get validation errors."""
+
+        ty = parse_type(tokens[0])
+        if ty is None:
+            self.errors.append(f"Unrecognized type: {tokens[0]}")
+        return ty
+
+    def get_errors(self) -> list[str]:
         return self.errors.copy()
-    
+
     def clear_errors(self) -> None:
-        """Clear validation errors."""
         self.errors.clear()
