@@ -1,6 +1,7 @@
 from typing import Any, Optional, Dict
 from .. import Parser
 from ...ir import Module
+from .recursive_parser import WgslRecursiveParser
 
 
 class ParseError(Exception):
@@ -117,10 +118,74 @@ class Frontend:
         return module
 
     def _parse_to_tu(self, source: str) -> Any:
-        """Parse source code into a translation unit (intermediate representation)."""
-        # This would use a WGSL lexer and parser
-        # For now, return empty structure
-        return {}
+        """
+        Parse source code into a translation unit (intermediate representation).
+        
+        This creates a lexer and parser to build the AST.
+        
+        Args:
+            source: WGSL source code
+            
+        Returns:
+            TranslationUnit (AST)
+            
+        Raises:
+            ParseError: If parsing fails
+        """
+        from .lexer import Lexer
+        from .ast import TranslationUnit, GlobalDecl
+        from .enable_extension import EnableExtensionSet
+        from .language_extension import LanguageExtensionSet
+        
+        # Create lexer
+        lexer = Lexer(source)
+        
+        # Create extension tracking
+        enable_extensions = EnableExtensionSet()
+        language_extensions = LanguageExtensionSet()
+        
+        # Create parser
+        parser = WgslRecursiveParser(
+            lexer,
+            enable_extensions,
+            language_extensions,
+            self.options
+        )
+        
+        # Parse global declarations
+        decls = []
+        directives = []
+        
+        try:
+            while True:
+                token = parser.peek()
+                if token is None:
+                    break
+                
+                # Check for directives
+                if parser.is_directive():
+                    directive = parser.parse_directive()
+                    directives.append(directive)
+                    continue
+                
+                # Parse global declaration
+                decl = parser.parse_global_decl()
+                if decl is not None:
+                    decls.append(decl)
+        
+        except Exception as e:
+            # Convert to ParseError if needed
+            if not isinstance(e, ParseError):
+                raise ParseError(
+                    message=str(e),
+                    labels=[(0, 0, "")],
+                    notes=[]
+                )
+            raise
+        
+        # Create translation unit
+        tu = TranslationUnit(decls=decls, directives=directives)
+        return tu
 
     def _generate_index(self, tu: Any) -> Any:
         """Generate semantic index from parsed translation unit."""
@@ -129,16 +194,118 @@ class Frontend:
         return {}
 
     def _lower_to_ir(self, tu: Any, index: Any) -> Module:
-        """Lower the parsed representation to NAGA IR."""
+        """
+        Lower the parsed representation to NAGA IR.
+        
+        This is the final stage of WGSL parsing that converts the analyzed
+        AST into NAGA's intermediate representation.
+        
+        Args:
+            tu: Translation unit (parsed AST)
+            index: Semantic index with dependency ordering
+            
+        Returns:
+            Complete NAGA IR Module
+        """
         module = Module()
 
-        # TODO: Implement actual lowering logic
-        # This involves:
-        # 1. Converting types
-        # 2. Converting constants
-        # 3. Converting functions and entry points
-        # 4. Converting variables and resources
-        # 5. Building the complete module structure
+        # The lowering process follows these steps (from Rust Lowerer):
+        
+        # 1. Initialize lowering context
+        #    - Create expression arena for global scope
+        #    - Set up type resolution tables
+        #    - Initialize handle maps for declarations
+        
+        # 2. Process global declarations in dependency order
+        #    for decl_handle in index.visit_ordered():
+        #        decl = tu.decls[decl_handle]
+        #        
+        #        Match on declaration kind:
+        #        - Struct: Lower struct type definition
+        #          * Process struct members with bindings
+        #          * Add to module.types
+        #          * Register in type lookup table
+        #        
+        #        - Type: Lower type alias
+        #          * Resolve aliased type
+        #          * Register in type lookup table
+        #        
+        #        - Const: Lower constant declaration
+        #          * Evaluate constant expression
+        #          * Add to module.constants
+        #          * Register in constant lookup table
+        #        
+        #        - Override: Lower pipeline-overridable constant
+        #          * Create override with default value
+        #          * Add to module.overrides
+        #          * Register in override lookup table
+        #        
+        #        - Var: Lower global variable
+        #          * Determine address space and access mode
+        #          * Process bindings (group, binding, location, etc.)
+        #          * Add to module.global_variables
+        #          * Register in variable lookup table
+        #        
+        #        - Fn: Lower function declaration
+        #          * Process function signature (parameters, return type)
+        #          * Lower function body statements
+        #          * Handle local variables
+        #          * Convert expressions to IR
+        #          * Add to module.functions
+        #          * If entry point, add to module.entry_points
+        #        
+        #        - ConstAssert: Evaluate and verify const assertion
+        #          * Evaluate assertion expression
+        #          * Verify it evaluates to true
+        #          * Emit error if false
+        
+        # 3. Type conversion (lower/conversion.rs)
+        #    - Scalar types: bool, i32, u32, f32, f16
+        #    - Vector types: vec2, vec3, vec4
+        #    - Matrix types: mat2x2, mat3x3, mat4x4, etc.
+        #    - Array types: array<T, N> or array<T>
+        #    - Struct types: user-defined structs
+        #    - Pointer types: ptr<address_space, T>
+        #    - Atomic types: atomic<T>
+        #    - Sampler types: sampler, sampler_comparison
+        #    - Texture types: texture_1d, texture_2d, etc.
+        #    - Image types: texture_storage_*
+        
+        # 4. Expression lowering (lower/mod.rs)
+        #    - Literals: bool, int, float
+        #    - Identifiers: resolve to variables, constants, functions
+        #    - Binary operations: +, -, *, /, %, &, |, ^, <<, >>, etc.
+        #    - Unary operations: -, !, ~
+        #    - Function calls: built-in and user-defined
+        #    - Member access: struct.field, vector.x, etc.
+        #    - Index access: array[i], vector[i]
+        #    - Construction: vec3(1.0, 2.0, 3.0), MyStruct(...)
+        #    - Type casts: f32(x), i32(y)
+        
+        # 5. Statement lowering (lower/mod.rs)
+        #    - Variable declarations: var x: i32 = 0;
+        #    - Assignments: x = y;
+        #    - Compound assignments: x += y;
+        #    - If statements: if (cond) { } else { }
+        #    - Switch statements: switch (x) { case 0: { } default: { } }
+        #    - Loops: loop { }, while (cond) { }, for (...) { }
+        #    - Break and continue
+        #    - Return statements: return expr;
+        #    - Discard: discard;
+        #    - Function calls as statements
+        
+        # 6. Entry point handling
+        #    - Detect @vertex, @fragment, @compute attributes
+        #    - Process workgroup_size for compute shaders
+        #    - Handle entry point inputs/outputs
+        #    - Create EntryPoint with proper stage
+        
+        # 7. Validation during lowering
+        #    - Type checking
+        #    - Address space validation
+        #    - Binding validation
+        #    - Expression scope validation
+        #    - Control flow validation
 
         return module
 
