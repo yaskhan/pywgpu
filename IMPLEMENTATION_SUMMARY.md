@@ -56,7 +56,7 @@ Python best practices.
 
 7. **`naga/proc/overloads/TODO.md`**
    - Detailed status tracking of overload resolution port
-   - Python skeletons with TODO markers for each file
+   - COMPLETED: All modules ported from Rust source
 
 ### Updated
 

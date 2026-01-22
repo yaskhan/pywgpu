@@ -1,4 +1,4 @@
-from typing import Protocol, List, runtime_checkable, TypeVar
+from typing import Protocol, List, runtime_checkable, TypeVar, Any
 from naga import ir, UniqueArena
 from naga.proc import TypeResolution
 from .rule import Rule
@@ -9,9 +9,6 @@ T = TypeVar("T", bound="OverloadSet")
 class OverloadSet(Protocol):
     """
     A Protocol for types representing a set of Naga IR type rules.
-    
-    Given an expression like `max(x, y)`, there are multiple type rules that
-    could apply, depending on the types of `x` and `y`.
     """
     
     def is_empty(self) -> bool:
@@ -29,23 +26,27 @@ class OverloadSet(Protocol):
     def arg(self, i: int, ty: ir.TypeInner, types: UniqueArena[ir.Type]) -> 'OverloadSet':
         """
         Find the overloads that could accept a given argument.
-        
-        Return a new overload set containing those members of `self` that could
-        accept a value of type `ty` for their `i`'th argument, once
-        feasible automatic conversions have been applied.
         """
         ...
 
     def concrete_only(self, types: UniqueArena[ir.Type]) -> 'OverloadSet':
-        """Limit `self` to overloads whose arguments are all concrete types."""
+        """Limit self to overloads whose arguments are all concrete types."""
         ...
 
     def most_preferred(self) -> Rule:
         """
         Return the most preferred candidate.
-        
-        Rank the candidates in `self` as described in WGSL's overload
-        resolution algorithm, and return a singleton set containing the
-        most preferred candidate.
         """
+        ...
+
+    def overload_list(self, gctx: Any = None) -> List[Rule]:
+        """Return a type rule for each of the overloads in self."""
+        ...
+
+    def allowed_args(self, i: int, gctx: Any = None) -> List[TypeResolution]:
+        """Return a list of the types allowed for argument i."""
+        ...
+
+    def for_debug(self, types: UniqueArena[ir.Type]) -> Any:
+        """Return an object that can be formatted with repr()."""
         ...

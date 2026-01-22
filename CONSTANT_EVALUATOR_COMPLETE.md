@@ -54,9 +54,16 @@ to Python, implementing the constant expression evaluator for Naga IR.
    - 5 Vector Operations: Dot, Cross, Length, Distance, Normalize
    - 2 Packed Operations: Dot4I8Packed, Dot4U8Packed
 
-8. **`naga/proc/__init__.py`** - Updated with exports
+8. **`naga/proc/overloads/`** (10 files) - **NEW**
+   - ✅ **FULL PORT OF OVERLOAD RESOLUTION - COMPLETED**
+   - Implementation of `OverloadSet` protocol
+   - `Regular` and `ListOverloadSet` for candidate matching
+   - Bitset-based `ConstructorSet` and `ScalarSet`
+   - Mapping of all `MathFunction` variants to their respective overload sets
 
-9. **Documentation Files**:
+9. **`naga/proc/__init__.py`** - Updated with exports
+
+10. **Documentation Files**:
    - `naga/proc/README.md` - Comprehensive module documentation
    - `naga/proc/CONSTANT_EVALUATOR_STATUS.md` - Implementation status
    - `naga/proc/overloads/TODO.md` - Overload resolution port status

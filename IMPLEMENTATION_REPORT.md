@@ -74,15 +74,15 @@
 - Добавлен импорт typing в compact модуль
 - Создан подробный README.md с документацией
 
-### ✅ 5. Реализация каркаса Overload Resolution
+### ✅ 5. Реализация Overload Resolution
 - Создана папка `/home/engine/project/naga/proc/overloads/`
-- Реализованы Python-каркасы для всех 10 модулей системы разрешения перегрузок:
+- Полностью портированы все 10 модулей системы разрешения перегрузок:
   - `overload_set.py` (trait/protocol)
   - `rule.py`, `regular.py`, `list.py`, `constructor_set.py`
   - `any_overload_set.py`, `scalar_set.py`, `mathfunction.py`
   - `utils.py`, `one_bits_iter.py`
-- Создан `TODO.md` с планом реализации и скелетами кода
-- Все файлы содержат TODO-метки и соответствуют структуре Rust-оригинала
+- Создан `TODO.md` с отметками о завершении
+- Все файлы соответствуют логике и структуре Rust-оригинала
 
 ## Статистика реализации
 
