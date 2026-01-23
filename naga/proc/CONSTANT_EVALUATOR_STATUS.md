@@ -115,23 +115,27 @@ All expression types are matched and dispatched, but most return NotImplementedE
 
 ### High Priority (Core Functionality)
 
-1. **LiteralVector.from_literal()** and **from_literal_vec()**
-   - Convert single Literal to LiteralVector
-   - Convert list of Literals to LiteralVector with type checking
+1. ✅ **LiteralVector.from_literal()** and **from_literal_vec()** - **COMPLETED**
+   - ✅ Convert single Literal to LiteralVector
+   - ✅ Convert list of Literals to LiteralVector with type checking
+   - Implemented in `naga/proc/literal_helpers.py`
 
-2. **literal.ty_inner()** method
-   - Return TypeInner for a Literal value
-   - Used in type resolution
+2. ✅ **literal.ty_inner()** method - **COMPLETED**
+   - ✅ Return TypeInner for a Literal value
+   - ✅ Used in type resolution
+   - Implemented as `literal_ty_inner()` function in `naga/proc/literal_helpers.py`
 
 3. ✅ **flatten_compose()** - **COMPLETED**
    - ✅ Recursively expand nested Compose expressions
    - ✅ Handle Splat expansion
    - ✅ Yield flattened component handles
 
-4. **Zero value evaluation** - `eval_zero_value_impl()`
-   - Complete implementation for all TypeInner variants
-   - Array with non-constant size handling
-   - Struct member type resolution
+4. ✅ **Zero value evaluation** - `eval_zero_value_impl()` - **COMPLETED**
+   - ✅ Complete implementation for all TypeInner variants
+   - ✅ Array with non-constant size handling
+   - ✅ Struct member type resolution
+   - ✅ Scalar, Vector, Matrix, Array, Struct support
+   - Implemented in `naga/proc/zero_value_helpers.py`
 
 ### Medium Priority (Math Functions) - ✅ **COMPLETED**
 
@@ -157,14 +161,23 @@ All expression types are matched and dispatched, but most return NotImplementedE
 
 ### Low Priority (Edge Cases)
 
-7. **Binary operations on literals**
-   - All BinaryOperator variants
-   - Overflow/underflow checking
-   - Type coercion rules
+7. ✅ **Binary operations on literals** - **COMPLETED**
+   - ✅ All BinaryOperator variants (Add, Subtract, Multiply, Divide, Modulo)
+   - ✅ Comparison operators (Equal, Less, Greater, etc.)
+   - ✅ Logical operators (AND, OR)
+   - ✅ Bitwise operators (AND, OR, XOR, Shift Left/Right)
+   - ✅ Overflow/underflow checking with wrapping for integers
+   - ✅ Division by zero detection
+   - ✅ Type checking and error handling
+   - Implemented in `naga/proc/literal_operations.py`
 
-8. **Unary operations on literals**
-   - All UnaryOperator variants
-   - Negation, logical not, bitwise not
+8. ✅ **Unary operations on literals** - **COMPLETED**
+   - ✅ All UnaryOperator variants
+   - ✅ Negation (with overflow checking for INT_MIN)
+   - ✅ Logical NOT (for bool)
+   - ✅ Bitwise NOT (for integers)
+   - ✅ Type checking and error handling
+   - Implemented in `naga/proc/literal_operations.py`
 
 9. **Casting operations**
    - `cast()` method for all type conversions
