@@ -72,8 +72,11 @@ class FunctionParser:
             
             # If name is 'main', add as entry point
             if name == "main":
-                # Entry point handling will be done by GlslParser
-                pass
+                from ....ir.module import EntryPoint
+                # Determine stage from parser options
+                stage = frontend.options.stage.value if frontend.options and frontend.options.stage else "fragment"
+                ep = EntryPoint(name="main", stage=stage, function=ir_func)
+                frontend.module.entry_points.append(ep)
             else:
                 # Add to module's functions
                 handle_index = len(frontend.module.functions)
@@ -206,7 +209,7 @@ class FunctionParser:
                             return overload
                             
         # 2. Try to find builtins
-        builtin = frontend.builtins.get_builtin_function(function_name, args)
+        builtin = frontend.builtins.get_builtin_function(function_name, arg_types)
         if builtin:
             return builtin
             

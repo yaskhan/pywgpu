@@ -7,10 +7,7 @@ function calls, and literals.
 
 from typing import Any, Optional, List, Dict
 from ..token import TokenValue
-
-from typing import Any, Optional, List, Dict
-from ..token import TokenValue
-from ....ir import Expression, BinaryOperator, UnaryOperator, Literal, Scalar, ScalarKind
+from ....ir import Expression, ExpressionType, BinaryOperator, UnaryOperator, Literal, Scalar, ScalarKind
 
 class ExpressionParser:
     """Parser for GLSL expressions that lowers them to NAGA IR handles."""
@@ -201,9 +198,11 @@ class ExpressionParser:
                 if all(c in 'xyzwrgbastpq' for c in field) and len(field) <= 4:
                     from ....ir import SwizzleComponent, VectorSize
                     components = []
-                    mapping = {'x': 0, 'y': 1, 'z': 2, 'w': 3,
-                               'r': 0, 'g': 1, 'b': 2, 'a': 3,
-                               's': 0, 't': 1, 'p': 2, 'q': 3}
+                    mapping = {
+                        'x': SwizzleComponent.X, 'y': SwizzleComponent.Y, 'z': SwizzleComponent.Z, 'w': SwizzleComponent.W,
+                        'r': SwizzleComponent.X, 'g': SwizzleComponent.Y, 'b': SwizzleComponent.Z, 'a': SwizzleComponent.W,
+                        's': SwizzleComponent.X, 't': SwizzleComponent.Y, 'p': SwizzleComponent.Z, 'q': SwizzleComponent.W
+                    }
                     for c in field:
                         components.append(mapping[c])
                     

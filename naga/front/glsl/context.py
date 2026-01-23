@@ -97,5 +97,21 @@ class Context:
                 from ...ir import Vector
                 return TypeInner.new_vector(expr.swizzle_size, base_type.vector.scalar)
             
+        elif expr.type == ExpressionType.MATH:
+            from ...ir import MathFunction, TypeInner, Scalar, ScalarKind
+            fun = expr.math_fun
+            # Functions always returning float
+            if fun in [MathFunction.DOT, MathFunction.DISTANCE, MathFunction.LENGTH]:
+                 return TypeInner.new_scalar(Scalar(ScalarKind.FLOAT, 4))
+            # Default to first argument type (component-wise functions)
+            return self.get_expression_type(expr.math_arg)
+
+        elif expr.type == ExpressionType.CALL_RESULT:
+             func_handle = expr.call_result
+             func = self.frontend.module.functions[func_handle]
+             if func.result:
+                 return self.frontend.module.types[func.result.ty].inner
+             return None
+
         # Fallback
         return None

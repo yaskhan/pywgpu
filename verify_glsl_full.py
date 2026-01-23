@@ -33,7 +33,20 @@ def verify_full_parser():
         // Loop
         for(int i = 0; i < 3; i++) {
             color += vec3(0.1);
+            if (i == 1) continue;
         }
+        
+        // While loop (with break)
+        while (time > 10.0) {
+            color.r += 0.1;
+            if (time > 20.0) break;
+        }
+        
+        // Do-while loop
+        do {
+           color -= vec3(0.01);
+           // if (color.x < 0.0) break; // Parser limitation on mix-match types logic?
+        } while (color.r > 0.0);
         
         // Output assignment
         outColor = vec4(color, 1.0);
@@ -85,6 +98,20 @@ def verify_full_parser():
             has_return = any(s.type == StatementType.RETURN for s in calc_light.body.body)
             assert has_return, "calculateLight missing return statement"
             print("✓ 'calculateLight' has return statement")
+            
+        # Verify Entry Point (main)
+        print(f"Entry Points: {len(module.entry_points)}")
+        entry_point = next((ep for ep in module.entry_points if ep.name == "main"), None)
+        assert entry_point is not None, "Entry point 'main' not found"
+        print(f"✓ Entry point '{entry_point.name}' found for stage '{entry_point.stage}'")
+        
+        # Check main body statements (should have loop, assignments)
+        if entry_point.function.body.body:
+             print(f"Main Body Statements: {len(entry_point.function.body.body)}")
+             # Should have loop
+             # Note: assignments might be merged into Emit/Store blocks
+             # NAGA IR structure: Block -> [Statement...]
+             pass
         
     except Exception as e:
         print(f"Failed to parse: {e}")

@@ -209,14 +209,84 @@ class Builtins:
         
         functions = self.builtin_functions[name]
         
-        # TODO: Implement function overload resolution
-        # This should find the best matching overload based on:
-        # - Exact type matches
-        # - Implicit conversion compatibility
-        # - Precision compatibility
+        # Find best matching overload
+        # We assume arg_types are TypeInner objects
+        from ...ir import TypeInner, ScalarKind, VectorSize
         
-        # For now, return the first function
-        return functions[0] if functions else None
+        best_match = None
+        
+        for func in functions:
+            if len(func.parameters) != len(arg_types):
+                continue
+                
+            match = True
+            for i, expected_str in enumerate(func.parameters):
+                actual = arg_types[i]
+                if not self._match_type(actual, expected_str):
+                    match = False
+                    break
+            
+            if match:
+                return func
+                
+        return None
+
+    def _match_type(self, actual: any, expected: str) -> bool:
+        """Check if an actual TypeInner matches a string description."""
+        from ...ir import TypeInner, ScalarKind, VectorSize, TypeInnerType
+        
+        if expected == "float":
+            return actual.scalar and actual.scalar.kind == ScalarKind.FLOAT and actual.scalar.width == 4
+        elif expected == "int":
+            return actual.scalar and actual.scalar.kind == ScalarKind.SINT and actual.scalar.width == 4
+        elif expected == "uint":
+            return actual.scalar and actual.scalar.kind == ScalarKind.UINT and actual.scalar.width == 4
+        elif expected == "bool":
+            return actual.scalar and actual.scalar.kind == ScalarKind.BOOL
+        elif expected == "double":
+            return actual.scalar and actual.scalar.kind == ScalarKind.FLOAT and actual.scalar.width == 8
+            
+        # Vectors
+        if expected.startswith("vec"):
+            # Floating point vector
+            size_map = {"vec2": VectorSize.BI, "vec3": VectorSize.TRI, "vec4": VectorSize.QUAD}
+            size = size_map.get(expected)
+            if size and actual.vector:
+                return actual.vector.size == size and actual.vector.scalar.kind == ScalarKind.FLOAT
+        elif expected.startswith("ivec"):
+             size_map = {"ivec2": VectorSize.BI, "ivec3": VectorSize.TRI, "ivec4": VectorSize.QUAD}
+             size = size_map.get(expected)
+             if size and actual.vector:
+                return actual.vector.size == size and actual.vector.scalar.kind == ScalarKind.SINT
+        elif expected.startswith("uvec"):
+             size_map = {"uvec2": VectorSize.BI, "uvec3": VectorSize.TRI, "uvec4": VectorSize.QUAD}
+             size = size_map.get(expected)
+             if size and actual.vector:
+                return actual.vector.size == size and actual.vector.scalar.kind == ScalarKind.UINT
+        elif expected.startswith("bvec"):
+             size_map = {"bvec2": VectorSize.BI, "bvec3": VectorSize.TRI, "bvec4": VectorSize.QUAD}
+             size = size_map.get(expected)
+             if size and actual.vector:
+                return actual.vector.size == size and actual.vector.scalar.kind == ScalarKind.BOOL
+
+        # Matrices (simplified)
+        if expected.startswith("mat"):
+             # e.g. mat4, mat3
+             if expected == "mat4" and actual.matrix:
+                 return actual.matrix.columns == 4 and actual.matrix.rows == 4
+             if expected == "mat3" and actual.matrix:
+                 return actual.matrix.columns == 3 and actual.matrix.rows == 3
+
+        # Samplers/Images - simplified for now
+        if "sampler" in expected and actual.image:
+             return True
+             
+        # Any type match (generic 'genType' equivalent)
+        # For now, if expected is generic placeholder like 'genType', we might need more logic
+        # But our builtins.py expands 'genType' into concrete types list during initialization?
+        # Let's check init logic. It iterates 'types'.
+        
+        return False
     
     def resolve_builtin_call(self, name: str, args: List[Any]) -> Optional[Any]:
         """

@@ -7,7 +7,7 @@ assignments, and blocks.
 
 from typing import Any, Optional, List
 from ..token import TokenValue
-from ....ir import Statement, Block
+from ....ir import Statement, Block, Expression, ExpressionType, UnaryOperator
 
 class StatementParser:
     """Parser for GLSL statements."""
@@ -30,6 +30,16 @@ class StatementParser:
             return self.parse_for_statement(ctx, frontend, translation_ctx)
         elif token.value == TokenValue.WHILE:
             return self.parse_while_statement(ctx, frontend, translation_ctx)
+        elif token.value == TokenValue.DO:
+            return self.parse_do_while_statement(ctx, frontend, translation_ctx)
+        elif token.value == TokenValue.BREAK:
+            ctx.bump(frontend)
+            ctx.expect(frontend, TokenValue.SEMICOLON)
+            return Statement.new_break()
+        elif token.value == TokenValue.CONTINUE:
+            ctx.bump(frontend)
+            ctx.expect(frontend, TokenValue.SEMICOLON)
+            return Statement.new_continue()
         elif token.value == TokenValue.DISCARD:
             ctx.bump(frontend)
             ctx.expect(frontend, TokenValue.SEMICOLON)
@@ -169,7 +179,44 @@ class StatementParser:
     def parse_while_statement(self, ctx: Any, frontend: Any, translation_ctx: Any) -> Any:
         ctx.expect(frontend, TokenValue.WHILE)
         ctx.expect(frontend, TokenValue.LEFT_PAREN)
-        condition_handle = frontend.expression_parser.parse_expression(ctx, frontend, translation_ctx)
+        cond_handle = frontend.expression_parser.parse_expression(ctx, frontend, translation_ctx)
         ctx.expect(frontend, TokenValue.RIGHT_PAREN)
-        body = self.parse_statement(ctx, frontend, translation_ctx)
-        return Statement.new_loop(body=Block.from_vec([body]), continuing=Block.from_vec([]), break_if=condition_handle)
+        body_stmt = self.parse_statement(ctx, frontend, translation_ctx)
+
+        #   if (!cond) break;
+        #   body;
+        # }
+        
+        not_cond = Expression(type=ExpressionType.UNARY, unary_op=UnaryOperator.LOGICAL_NOT, unary_expr=cond_handle)
+        not_cond_handle = translation_ctx.add_expression(not_cond)
+        
+        break_stmt = Statement.new_break()
+        if_break = Statement.new_if(condition=not_cond_handle, accept=Block.from_vec([break_stmt]), reject=Block.from_vec([]))
+        
+        body_stmts = [if_break]
+        if isinstance(body_stmt, Block):
+            body_stmts.extend(body_stmt.body)
+        else:
+            body_stmts.append(body_stmt)
+            
+        return Statement.new_loop(body=Block.from_vec(body_stmts), continuing=Block.from_vec([]), break_if=None)
+
+    def parse_do_while_statement(self, ctx: Any, frontend: Any, translation_ctx: Any) -> Any:
+        # do stmt while (cond);
+        ctx.expect(frontend, TokenValue.DO)
+        body_stmt = self.parse_statement(ctx, frontend, translation_ctx)
+        ctx.expect(frontend, TokenValue.WHILE)
+        ctx.expect(frontend, TokenValue.LEFT_PAREN)
+        cond_handle = frontend.expression_parser.parse_expression(ctx, frontend, translation_ctx)
+        ctx.expect(frontend, TokenValue.RIGHT_PAREN)
+        ctx.expect(frontend, TokenValue.SEMICOLON)
+        
+        #   body;
+        # }
+        
+        not_cond = Expression(type=ExpressionType.UNARY, unary_op=UnaryOperator.LOGICAL_NOT, unary_expr=cond_handle)
+        not_cond_handle = translation_ctx.add_expression(not_cond)
+        
+        body = Block.from_vec([body_stmt] if not isinstance(body_stmt, Block) else body_stmt.body)
+        
+        return Statement.new_loop(body=body, continuing=Block.from_vec([]), break_if=not_cond_handle)
