@@ -231,6 +231,7 @@ class VariableHandler:
         # TODO: glslang seems to use a counter for variables without
         # explicit location (even if that causes collisions)
         # This should implement the same behavior as glslang
+        """
         if not hasattr(self, '_location_counter'):
             self._location_counter = 0
         
@@ -269,21 +270,22 @@ class VariableHandler:
                 # However, IR usually requires a format. Let's use RGBA8UNORM as a widespread default
                 # or raise a more specific error if we can't infer.
                 from ...ir import StorageFormat
-                format_qualifier = StorageFormat.RGBA8UNORM
+                format_qualifier = StorageFormat.RGBA8UNORM 
+            else:
+                self.errors.append("image types require a format layout qualifier")
+                return None
         
-        # TODO: Implement full image variable creation.
-        # This code path was previously truncated/corrupted.
-        return None
-
+        return self._create_image_variable(name, dim, arrayed, ty, format_qualifier, meta)
+    
     def _extract_format_qualifier(self, qualifiers: Any) -> Optional[Any]:
         """Extract format qualifier from layout qualifiers."""
-        # Qualifiers can be a list of tokens or a meta dict with "layout"
+        # Qualifiers can be a list of tokens or a meta dict with 'layout'
         if isinstance(qualifiers, dict):
-            layout = qualifiers.get("layout", {})
+            layout = qualifiers.get('layout', {})
         else:
             # Try to get layout from meta if passed a declaration
-            meta = getattr(qualifiers, "meta", {})
-            layout = meta.get("layout", {})
+            meta = getattr(qualifiers, 'meta', {})
+            layout = meta.get('layout', {})
             
         # Common image formats in GLSL
         from ...ir import StorageFormat
@@ -321,16 +323,16 @@ class VariableHandler:
             if key in formats:
                 return formats[key]
         return None
-
+    
     def _is_writeonly_image(self, qualifiers: Any) -> bool:
         """Check if image is writeonly."""
         from .token import TokenValue
         qualifier_values = []
         if isinstance(qualifiers, list):
-            qualifier_values = [t.value for t in qualifiers if hasattr(t, "value")]
+            qualifier_values = [t.value for t in qualifiers if hasattr(t, 'value')]
         
-        return TokenValue.MEMORY_QUALIFIER in qualifier_values
-
+        return TokenValue.MEMORY_QUALIFIER in qualifier_values # Simplified
+    
     def _create_image_variable(self, name: str, dim: Any, arrayed: bool, ty: Any, format_qualifier: Any, meta: Any) -> Any:
         """Create image variable with format qualifier."""
         from ...ir import GlobalVariable, AddressSpace, Type, TypeInner, Image
@@ -341,26 +343,28 @@ class VariableHandler:
             arrayed=arrayed,
             class_info=None # Storage image
         )
+        # Actually it should be a Storage image class
         
         return {
-            "name": name,
-            "ty": ty,
-            "format": format_qualifier,
-            "meta": meta
+            'name': name,
+            'ty': ty,
+            'format': format_qualifier,
+            'meta': meta
         }
-
+    
     def get_entry_args(self) -> List[EntryArg]:
         """Get entry point arguments."""
         return self.entry_args.copy()
-
+    
     def get_global_variables(self) -> List[GlobalVariableInfo]:
         """Get global variables."""
         return self.global_variables.copy()
-
+    
     def get_errors(self) -> List[str]:
         """Get variable parsing errors."""
         return self.errors.copy()
-
+    
     def clear_errors(self) -> None:
         """Clear variable parsing errors."""
         self.errors.clear()
+    

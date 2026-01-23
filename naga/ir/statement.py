@@ -156,3 +156,6 @@ class Statement:
     def new_call(cls, function: int, arguments: List[int], result: Optional[int] = None) -> "Statement":
         return cls(type=StatementType.CALL, call_function=function, call_arguments=arguments, call_result=result)
 
+    @classmethod
+    def new_loop(cls, body: Any, continuing: Any, break_if: Optional[int] = None) -> "Statement":
+        return cls(type=StatementType.LOOP, loop_body=body, loop_continuing=continuing, loop_break_if=break_if)

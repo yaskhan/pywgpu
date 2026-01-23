@@ -75,20 +75,20 @@ def parse_type(type_name: str) -> Optional[Type]:
     """
 
     if type_name == "bool":
-        return Type(name=None, inner=TypeInner.scalar(_BOOL))
+        return Type(name=None, inner=TypeInner.new_scalar(_BOOL))
     if type_name == "float16_t":
-        return Type(name=None, inner=TypeInner.scalar(_F16))
+        return Type(name=None, inner=TypeInner.new_scalar(_F16))
     if type_name == "float":
-        return Type(name=None, inner=TypeInner.scalar(_F32))
+        return Type(name=None, inner=TypeInner.new_scalar(_F32))
     if type_name == "double":
-        return Type(name=None, inner=TypeInner.scalar(_F64))
+        return Type(name=None, inner=TypeInner.new_scalar(_F64))
     if type_name == "int":
-        return Type(name=None, inner=TypeInner.scalar(_I32))
+        return Type(name=None, inner=TypeInner.new_scalar(_I32))
     if type_name == "uint":
-        return Type(name=None, inner=TypeInner.scalar(_U32))
+        return Type(name=None, inner=TypeInner.new_scalar(_U32))
 
     if type_name in ("sampler", "samplerShadow"):
-        return Type(name=None, inner=TypeInner.sampler(comparison=(type_name == "samplerShadow")))
+        return Type(name=None, inner=TypeInner.new_sampler(comparison=(type_name == "samplerShadow")))
 
     # Vector types
     def vec_parse(word: str) -> Optional[Type]:
@@ -100,7 +100,7 @@ def parse_type(type_name: str) -> Optional[Type]:
         size = _size_parse(size_text)
         if scalar is None or size is None:
             return None
-        return Type(name=None, inner=TypeInner.vector(size=size, scalar=scalar))
+        return Type(name=None, inner=TypeInner.new_vector(size=size, scalar=scalar))
 
     # Matrix types
     def mat_parse(word: str) -> Optional[Type]:
@@ -125,7 +125,7 @@ def parse_type(type_name: str) -> Optional[Type]:
             if columns is None or rows is None:
                 return None
 
-        return Type(name=None, inner=TypeInner.matrix(columns=columns, rows=rows, scalar=scalar))
+        return Type(name=None, inner=TypeInner.new_matrix(columns=columns, rows=rows, scalar=scalar))
 
     # Texture types
     def texture_parse(word: str) -> Optional[Type]:
@@ -148,7 +148,7 @@ def parse_type(type_name: str) -> Optional[Type]:
             return None
 
         def sampled(multi: bool) -> ImageClass:
-            return ImageClass.sampled(kind=kind, multi=multi)
+            return ImageClass.new_sampled(kind=kind, multi=multi)
 
         match size_text:
             case "1D":
@@ -172,7 +172,7 @@ def parse_type(type_name: str) -> Optional[Type]:
             case _:
                 return None
 
-        return Type(name=None, inner=TypeInner.image(dim=dim, arrayed=arrayed, class_=cls))
+        return Type(name=None, inner=TypeInner.new_image(dim=dim, arrayed=arrayed, class_=cls))
 
     # Storage image types
     def image_parse(word: str) -> Optional[Type]:
@@ -195,7 +195,7 @@ def parse_type(type_name: str) -> Optional[Type]:
         if texture_kind(kind_text) is None:
             return None
 
-        cls = ImageClass.storage(
+        cls = ImageClass.new_storage(
             format=StorageFormat.R8_UINT,
             access=StorageAccess.LOAD | StorageAccess.STORE,
         )
@@ -215,7 +215,7 @@ def parse_type(type_name: str) -> Optional[Type]:
             case _:
                 return None
 
-        return Type(name=None, inner=TypeInner.image(dim=dim, arrayed=arrayed, class_=cls))
+        return Type(name=None, inner=TypeInner.new_image(dim=dim, arrayed=arrayed, class_=cls))
 
     return (
         vec_parse(type_name)

@@ -1,0 +1,50 @@
+
+with open('naga/front/glsl/variables.py', 'r+') as f:
+    content = f.read()
+    # Find the start of _is_writeonly_image
+    idx = content.find('def _is_writeonly_image')
+    if idx != -1:
+        f.seek(idx)
+        f.truncate()
+        f.write('    def _is_writeonly_image(self, qualifiers: Any) -> bool:\n')
+        f.write('        """Check if image is writeonly."""\n')
+        f.write('        from .token import TokenValue\n')
+        f.write('        qualifier_values = []\n')
+        f.write('        if isinstance(qualifiers, list):\n')
+        f.write('            qualifier_values = [t.value for t in qualifiers if hasattr(t, "value")]\n')
+        f.write('        \n')
+        f.write('        return TokenValue.MEMORY_QUALIFIER in qualifier_values\n\n')
+
+        f.write('    def _create_image_variable(self, name: str, dim: Any, arrayed: bool, ty: Any, format_qualifier: Any, meta: Any) -> Any:\n')
+        f.write('        """Create image variable with format qualifier."""\n')
+        f.write('        from ...ir import GlobalVariable, AddressSpace, Type, TypeInner, Image\n')
+        f.write('        \n')
+        f.write('        # Image in NAGA is a TypeInner\n')
+        f.write('        image_inner = TypeInner.new_image(\n')
+        f.write('            dim=dim,\n')
+        f.write('            arrayed=arrayed,\n')
+        f.write('            class_info=None # Storage image\n')
+        f.write('        )\n')
+        f.write('        \n')
+        f.write('        return {\n')
+        f.write('            "name": name,\n')
+        f.write('            "ty": ty,\n')
+        f.write('            "format": format_qualifier,\n')
+        f.write('            "meta": meta\n')
+        f.write('        }\n\n')
+        
+        f.write('    def get_entry_args(self) -> List[EntryArg]:\n')
+        f.write('        """Get entry point arguments."""\n')
+        f.write('        return self.entry_args.copy()\n\n')
+        
+        f.write('    def get_global_variables(self) -> List[GlobalVariableInfo]:\n')
+        f.write('        """Get global variables."""\n')
+        f.write('        return self.global_variables.copy()\n\n')
+        
+        f.write('    def get_errors(self) -> List[str]:\n')
+        f.write('        """Get variable parsing errors."""\n')
+        f.write('        return self.errors.copy()\n\n')
+        
+        f.write('    def clear_errors(self) -> None:\n')
+        f.write('        """Clear variable parsing errors."""\n')
+        f.write('        self.errors.clear()\n')

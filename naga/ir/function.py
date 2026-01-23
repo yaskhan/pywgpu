@@ -58,19 +58,19 @@ class Function:
 
     def add_argument(
         self, name: Optional[str], ty: Any, binding: Optional[Any]
-    ) -> FunctionArgument:
+    ) -> int:
         """Add an argument to the function."""
         arg = FunctionArgument(name, ty, binding)
         self.arguments.append(arg)
-        return arg
+        return len(self.arguments) - 1
 
     def add_local_var(
         self, name: Optional[str], ty: Any, init: Optional[Any]
-    ) -> LocalVariable:
+    ) -> int:
         """Add a local variable to the function."""
         var = LocalVariable(name, ty, init)
         self.local_variables.append(var)
-        return var
+        return len(self.local_variables) - 1
 
     def add_expression(self, expr: Any) -> Any:
         """Add an expression to the function's expression arena."""

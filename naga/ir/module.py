@@ -50,9 +50,18 @@ class Module:
         self.functions: List[Function] = []
         self.entry_points: List[EntryPoint] = []
         self.named_expressions: Dict[str, Any] = {}
-        self.overrides: List[Any] = []  # Pipeline-creation-time constants
+    def add_global_variable(self, name: Optional[str], space: Any, binding: Optional[Dict[str, int]], ty: Any, init: Optional[Any] = None) -> int:
+        """Add a global variable to the module."""
+        var = GlobalVariable(name, space, binding, ty, init)
+        self.global_variables.append(var)
+        return len(self.global_variables) - 1
 
-    def add_type(self, name: Optional[str], inner: Any) -> int:
+    def get_global_handle_by_name(self, name: str) -> Optional[int]:
+        """Find a global variable handle by its name."""
+        for i, var in enumerate(self.global_variables):
+            if var.name == name:
+                return i
+        return None
         """Add a type to the module's type arena."""
         typ = Type(name, inner)
         self.types.append(typ)

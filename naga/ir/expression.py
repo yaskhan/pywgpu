@@ -197,6 +197,14 @@ class Expression:
     cooperative_multiply_add_b: Optional[int] = None  # Handle<Expression>
     cooperative_multiply_add_c: Optional[int] = None  # Handle<Expression>
 
+    @classmethod
+    def new_binary(cls, op: Any, left: int, right: int) -> 'Expression':
+        return cls(type=ExpressionType.BINARY, binary_op=op, binary_left=left, binary_right=right)
+
+    @classmethod
+    def new_unary(cls, op: Any, expr: int) -> 'Expression':
+        return cls(type=ExpressionType.UNARY, unary_op=op, unary_expr=expr)
+
 
 __all__ = [
     "Expression",

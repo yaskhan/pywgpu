@@ -43,6 +43,7 @@ class TokenValue(Enum):
     FLOAT_CONSTANT = "float_constant"
     INT_CONSTANT = "int_constant"
     BOOL_CONSTANT = "bool_constant"
+    DIRECTIVE = "directive"
     
     # Keywords - qualifiers
     LAYOUT = "layout"

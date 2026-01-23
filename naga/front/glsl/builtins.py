@@ -135,10 +135,46 @@ class Builtins:
     
     def _add_math_variations(self, func_name: str) -> None:
         """Add math function variations for different types."""
-        # Add scalar variations (float, double)
-        # Add vector variations (vec2, vec3, vec4)
-        # Add matrix variations (mat2, mat3, mat4, etc.)
-        pass
+        # Common scalar and vector types
+        types = ["float", "vec2", "vec3", "vec4"]
+        
+        # Single argument functions (sin, cos, etc.)
+        if func_name in ["sin", "cos", "tan", "asin", "acos", "atan", "sinh", "cosh", "tanh", "asinh", "acosh", "atanh",
+                         "exp", "exp2", "log", "log2", "log10", "sqrt", "inversesqrt", "abs", "sign", "floor", "ceil", "fract",
+                         "normalize", "length"]:
+            for ty in types:
+                self.add_builtin_overload(func_name, BuiltinFunction(
+                    name=func_name, kind=BuiltinKind.MATH, parameters=[ty], return_type=ty if func_name not in ["length"] else "float",
+                    description=f"{func_name} overload"
+                ))
+
+        # Two argument functions (min, max, pow, mod, distance, dot, cross)
+        elif func_name in ["min", "max", "pow", "mod", "distance", "dot", "cross"]:
+            if func_name == "dot":
+                for ty in types[1:]: # vectors only
+                    self.add_builtin_overload("dot", BuiltinFunction(
+                        name="dot", kind=BuiltinKind.MATH, parameters=[ty, ty], return_type="float",
+                        description="Dot product"
+                    ))
+            elif func_name == "cross":
+                self.add_builtin_overload("cross", BuiltinFunction(
+                    name="cross", kind=BuiltinKind.MATH, parameters=["vec3", "vec3"], return_type="vec3",
+                    description="Cross product"
+                ))
+            else:
+                for ty in types:
+                    self.add_builtin_overload(func_name, BuiltinFunction(
+                        name=func_name, kind=BuiltinKind.MATH, parameters=[ty, ty], return_type=ty if func_name not in ["distance"] else "float",
+                        description=f"{func_name} overload"
+                    ))
+                    
+        # Three argument functions (mix, clamp, smoothstep)
+        elif func_name in ["mix", "clamp", "smoothstep"]:
+            for ty in types:
+                self.add_builtin_overload(func_name, BuiltinFunction(
+                    name=func_name, kind=BuiltinKind.MATH, parameters=[ty, ty, ty], return_type=ty,
+                    description=f"{func_name} overload"
+                ))
     
     def _add_unimplemented_functions(self, func_names: List[str]) -> None:
         """Mark functions as unimplemented due to known issues."""

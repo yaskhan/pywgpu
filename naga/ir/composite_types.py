@@ -77,11 +77,11 @@ class BuiltIn:
     barycentric: Optional[BuiltInBarycentric] = None
 
     @classmethod
-    def position(cls, invariant: bool = False) -> "BuiltIn":
+    def new_position(cls, invariant: bool = False) -> "BuiltIn":
         return cls(type=BuiltInType.POSITION, position=BuiltInPosition(invariant))
 
     @classmethod
-    def barycentric(cls, perspective: bool) -> "BuiltIn":
+    def new_barycentric(cls, perspective: bool) -> "BuiltIn":
         return cls(type=BuiltInType.BARYCENTRIC, barycentric=BuiltInBarycentric(perspective))
 
 
@@ -95,6 +95,9 @@ class AddressSpace(Enum):
     HANDLE = "handle"
     IMMEDIATE = "immediate"
     TASK_PAYLOAD = "task-payload"
+    IN = "in"
+    OUT = "out"
+    PUSH_CONSTANT = "push-constant"
 
 
 @dataclass(frozen=True, slots=True)
@@ -107,11 +110,11 @@ class Binding:
     second_blend: bool = False
 
     @classmethod
-    def built_in(cls, builtin: BuiltIn) -> "Binding":
+    def new_built_in(cls, builtin: BuiltIn) -> "Binding":
         return cls(builtin=builtin)
 
     @classmethod
-    def location(
+    def new_location(
         cls,
         location: int,
         interpolation: Optional[Any] = None,
