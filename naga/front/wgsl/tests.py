@@ -154,9 +154,10 @@ class TestParser:
         }
         """
         
-        # TODO: This will fail until parser is fully implemented
-        # module = parse_str(source)
-        # assert module is not None
+        module = parse_str(source)
+        assert module is not None
+        assert len(module.entry_points) == 1
+        assert module.entry_points[0].name == "main"
     
     def test_struct_declaration(self):
         """Test parsing struct declaration."""
@@ -172,9 +173,11 @@ class TestParser:
         }
         """
         
-        # TODO: This will fail until parser is fully implemented
-        # module = parse_str(source)
-        # assert module is not None
+        module = parse_str(source)
+        assert module is not None
+        # Should have VertexOutput and vec4<f32> etc.
+        assert len(module.types) >= 1
+
     
     def test_error_reporting(self):
         """Test error message formatting."""
@@ -227,9 +230,10 @@ class TestIntegration:
         }
         """
         
-        # TODO: This will work when parser and lowerer are complete
-        # module = parse_str(source)
-        # assert len(module.entry_points) == 2
+        module = parse_str(source)
+        assert len(module.entry_points) == 2
+        assert any(ep.name == "vs_main" for ep in module.entry_points)
+        assert any(ep.name == "fs_main" for ep in module.entry_points)
     
     def test_compute_shader(self):
         """Test compute shader."""
@@ -243,9 +247,12 @@ class TestIntegration:
         }
         """
         
-        # TODO: This will work when parser and lowerer are complete
-        # module = parse_str(source)
-        # assert len(module.entry_points) == 1
+        module = parse_str(source)
+        assert len(module.entry_points) == 1
+        assert module.entry_points[0].name == "main"
+        assert len(module.global_variables) == 1
+
+
 
 
 if __name__ == "__main__":

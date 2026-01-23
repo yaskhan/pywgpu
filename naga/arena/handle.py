@@ -1,4 +1,4 @@
-from typing import Generic, TypeVar, Any
+from typing import Generic, TypeVar, Any, List
 
 T = TypeVar("T")
 
@@ -61,3 +61,6 @@ class Handle(Generic[T]):
     def write_prefixed(self, prefix: str) -> str:
         """Write this handle's index preceded by prefix."""
         return f"{prefix}{self._index}"
+
+
+HandleVec = List[Handle[T]]

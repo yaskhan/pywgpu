@@ -3,7 +3,7 @@ Lowering contexts for WGSL to IR.
 """
 
 from typing import Any, Dict, List
-from ...ir import Module, Function, Expression, Statement
+from ....ir import Module, Function, Expression, Statement, Block
 
 
 class ExpressionContext:
@@ -55,7 +55,11 @@ class StatementContext:
         """
         self.function = function
         self.local_table: Dict[Any, Any] = {}
-        self.block_stack: List[List[Statement]] = [[]]
+        self.block_stack: List[Block] = [Block.new()]
+    
+    def add_expression(self, expr: Expression) -> Any:
+        """Add an expression to the function's arena."""
+        return self.function.add_expression(expr)
     
     def add_statement(self, stmt: Statement) -> None:
         """
@@ -64,17 +68,18 @@ class StatementContext:
         Args:
             stmt: Statement to add
         """
-        self.block_stack[-1].append(stmt)
+        from ....span import Span
+        self.block_stack[-1].push(stmt, Span())
     
     def push_block(self) -> None:
         """Start a new block."""
-        self.block_stack.append([])
+        self.block_stack.append(Block.new())
     
-    def pop_block(self) -> List[Statement]:
+    def pop_block(self) -> Block:
         """
         End the current block.
         
         Returns:
-            Statements in the block
+            The popped block
         """
         return self.block_stack.pop()

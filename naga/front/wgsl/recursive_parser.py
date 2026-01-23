@@ -220,14 +220,14 @@ class WgslRecursiveParser:
             GlobalDecl AST node or None
         """
         token = self.peek()
-        if token is None:
+        if token is None or token.kind == TokenKind.EOF:
             return None
         
         # Parse attributes first
         attributes = self.parse_attributes()
         
         token = self.peek()
-        if token is None:
+        if token is None or token.kind == TokenKind.EOF:
             return None
         
         # Determine declaration type
@@ -338,8 +338,20 @@ class WgslRecursiveParser:
         """Parse variable declaration."""
         self.expect(TokenKind.VAR)
         
-        # TODO: Parse address space and access mode
-        # var<storage, read_write> or var<private>
+        # Parse address space and access mode: var<storage, read_write>
+        address_space = None
+        access_mode = None
+        if self.peek() and self.peek().kind == TokenKind.LESS_THAN:
+            self.advance()
+            address_space_token = self.expect(TokenKind.IDENT)
+            address_space = address_space_token.value
+            
+            if self.peek() and self.peek().kind == TokenKind.COMMA:
+                self.advance()
+                access_mode_token = self.expect(TokenKind.IDENT)
+                access_mode = access_mode_token.value
+            
+            self.expect(TokenKind.GREATER_THAN)
         
         # Variable name
         name_token = self.expect(TokenKind.IDENT)
@@ -362,8 +374,8 @@ class WgslRecursiveParser:
         var_decl = VarDecl(
             name=name,
             type_=type_,
-            address_space=None,
-            access_mode=None,
+            address_space=address_space,
+            access_mode=access_mode,
             initializer=initializer,
             attributes=attributes
         )

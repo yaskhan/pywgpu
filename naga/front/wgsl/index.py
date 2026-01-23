@@ -248,8 +248,15 @@ def _get_decl_ident(decl: Any) -> Optional[Dict[str, Any]]:
     kind_type = type(kind).__name__
     
     if hasattr(kind, 'name'):
+        name_obj = kind.name
+        from .ast import Ident
+        if isinstance(name_obj, Ident):
+            return {
+                'name': name_obj.name,
+                'span': name_obj.span
+            }
         return {
-            'name': kind.name,
+            'name': str(name_obj),
             'span': getattr(kind, 'span', (0, 0))
         }
     

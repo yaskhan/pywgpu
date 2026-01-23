@@ -97,6 +97,35 @@ class AddressSpace(Enum):
     TASK_PAYLOAD = "task-payload"
 
 
+@dataclass(frozen=True, slots=True)
+class Binding:
+    """The mapping of an input/output variable or struct field."""
+    builtin: Optional[BuiltIn] = None
+    location: Optional[int] = None
+    interpolation: Optional[Any] = None  # Interpolation
+    sampling: Optional[Any] = None  # Sampling
+    second_blend: bool = False
+
+    @classmethod
+    def built_in(cls, builtin: BuiltIn) -> "Binding":
+        return cls(builtin=builtin)
+
+    @classmethod
+    def location(
+        cls,
+        location: int,
+        interpolation: Optional[Any] = None,
+        sampling: Optional[Any] = None,
+        second_blend: bool = False
+    ) -> "Binding":
+        return cls(
+            location=location,
+            interpolation=interpolation,
+            sampling=sampling,
+            second_blend=second_blend
+        )
+
+
 __all__ = [
     "ShaderStage",
     "BuiltIn",
@@ -104,4 +133,5 @@ __all__ = [
     "BuiltInPosition",
     "BuiltInBarycentric",
     "AddressSpace",
+    "Binding",
 ]

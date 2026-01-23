@@ -7,7 +7,7 @@ This module handles conversion of WGSL types to NAGA IR types.
 """
 
 from typing import Any, Optional, Tuple
-from ...ir import (
+from ....ir import (
     Type, TypeInner, Scalar, ScalarKind, VectorSize, 
     ArraySize, AddressSpace, StorageAccess, ImageDimension,
     ImageClass, StorageFormat
@@ -46,9 +46,17 @@ class TypeConverter:
         Raises:
             ParseError: If type conversion fails
         """
-        # Check cache
-        if ast_type in self.type_cache:
-            return self.type_cache[ast_type]
+        # Check cache (making sure key is hashable)
+        def make_hashable(obj):
+            if isinstance(obj, dict):
+                return tuple(sorted((k, make_hashable(v)) for k, v in obj.items()))
+            if isinstance(obj, list):
+                return tuple(make_hashable(x) for x in obj)
+            return obj
+            
+        cache_key = make_hashable(ast_type)
+        if cache_key in self.type_cache:
+            return self.type_cache[cache_key]
         
         # Handle dict-style AST types (from parser)
         type_inner = None
@@ -69,8 +77,7 @@ class TypeConverter:
                     # Get component type from params
                     if type_params:
                         comp_handle, comp_inner = self.convert_type(type_params[0])
-                        # This is a bit simplified, NAGA would extract the scalar kind
-                        scalar = Scalar(kind=ScalarKind.FLOAT, width=4) 
+                        scalar = comp_inner.scalar if comp_inner.scalar else Scalar(kind=ScalarKind.FLOAT, width=4)
                     else:
                         scalar = Scalar(kind=ScalarKind.FLOAT, width=4)
                     
@@ -78,18 +85,31 @@ class TypeConverter:
             
             # Matrix types
             elif type_name.startswith('mat'):
-                # Parse matrix dimensions (e.g., mat3x3, mat4x4)
-                type_inner = self.convert_matrix(
-                    VectorSize.QUAD, 
-                    VectorSize.QUAD,
-                    Scalar(kind=ScalarKind.FLOAT, width=4)
-                )
+                # matNxM
+                cols = VectorSize.QUAD
+                rows = VectorSize.QUAD
+                if '2x2' in type_name: cols, rows = VectorSize.BI, VectorSize.BI
+                elif '2x3' in type_name: cols, rows = VectorSize.BI, VectorSize.TRI
+                elif '2x4' in type_name: cols, rows = VectorSize.BI, VectorSize.QUAD
+                elif '3x2' in type_name: cols, rows = VectorSize.TRI, VectorSize.BI
+                elif '3x3' in type_name: cols, rows = VectorSize.TRI, VectorSize.TRI
+                elif '3x4' in type_name: cols, rows = VectorSize.TRI, VectorSize.QUAD
+                elif '4x2' in type_name: cols, rows = VectorSize.QUAD, VectorSize.BI
+                elif '4x3' in type_name: cols, rows = VectorSize.QUAD, VectorSize.TRI
+                
+                scalar = Scalar(kind=ScalarKind.FLOAT, width=4)
+                if type_params:
+                    comp_handle, comp_inner = self.convert_type(type_params[0])
+                    scalar = comp_inner.scalar if comp_inner.scalar else scalar
+                
+                type_inner = self.convert_matrix(cols, rows, scalar)
             
             # Array types
             elif type_name == 'array':
                 if type_params:
                     base_handle, base_inner = self.convert_type(type_params[0])
-                    type_inner = self.convert_array(base_handle, ArraySize.DYNAMIC)
+                    # TODO: Resolve array size (constant or dynamic)
+                    type_inner = self.convert_array(base_handle, ArraySize.dynamic())
             
             # Pointer types
             elif type_name == 'ptr':
@@ -102,7 +122,8 @@ class TypeConverter:
             # Atomic types
             elif type_name == 'atomic':
                 if type_params:
-                    scalar = Scalar(kind=ScalarKind.SINT, width=4) 
+                    comp_handle, comp_inner = self.convert_type(type_params[0])
+                    scalar = comp_inner.scalar if comp_inner.scalar else Scalar(kind=ScalarKind.SINT, width=4)
                     type_inner = self.convert_atomic(scalar)
             
             # Sampler types
@@ -117,6 +138,7 @@ class TypeConverter:
                 dim = ImageDimension.D2 # Default
                 if '_1d' in type_name: dim = ImageDimension.D1
                 elif '_3d' in type_name: dim = ImageDimension.D3
+                elif '_cube_array' in type_name: dim = ImageDimension.CUBE
                 elif '_cube' in type_name: dim = ImageDimension.CUBE
                 
                 is_storage = 'storage' in type_name
@@ -124,11 +146,25 @@ class TypeConverter:
                 is_depth = 'depth' in type_name
                 
                 if is_storage:
-                    class_ = ImageClass.STORAGE(format=StorageFormat.RGBA8_UNORM, access=StorageAccess.WRITE)
+                    # texture_storage_2d<format, access>
+                    format_val = StorageFormat.RGBA8_UNORM
+                    access_val = StorageAccess.STORE
+                    if len(type_params) >= 1:
+                        format_name = type_params[0].get('name') if isinstance(type_params[0], dict) else str(type_params[0])
+                        format_val = resolve_storage_format(format_name)
+                    if len(type_params) >= 2:
+                        access_name = type_params[1].get('name') if isinstance(type_params[1], dict) else str(type_params[1])
+                        access_val = resolve_storage_access(access_name)
+                    class_ = ImageClass.new_storage(format=format_val, access=access_val)
                 elif is_depth:
-                    class_ = ImageClass.DEPTH(multi=is_multisampled)
+                    class_ = ImageClass.new_depth(multi=is_multisampled)
                 else:
-                    class_ = ImageClass.SAMPLED(kind=ScalarKind.FLOAT, multi=is_multisampled)
+                    # texture_2d<f32>
+                    kind = ScalarKind.FLOAT
+                    if type_params:
+                        comp_handle, comp_inner = self.convert_type(type_params[0])
+                        kind = comp_inner.scalar.kind if comp_inner.scalar else ScalarKind.FLOAT
+                    class_ = ImageClass.new_sampled(kind=kind, multi=is_multisampled)
                 
                 type_inner = self.convert_image(dim=dim, arrayed='_array' in type_name, class_=class_)
         
@@ -139,16 +175,16 @@ class TypeConverter:
                 for i, existing_type in enumerate(self.module.types):
                     if existing_type.inner == type_inner:
                         result = (i, type_inner)
-                        self.type_cache[ast_type] = result
+                        self.type_cache[cache_key] = result
                         return result
                 
                 # Add new type
-                from ...ir import Type
+                from ....ir import Type
                 new_type = Type(name=None, inner=type_inner)
                 self.module.types.append(new_type)
                 handle = len(self.module.types) - 1
                 result = (handle, type_inner)
-                self.type_cache[ast_type] = result
+                self.type_cache[cache_key] = result
                 return result
             else:
                 return (None, type_inner)
@@ -166,7 +202,31 @@ class TypeConverter:
         Returns:
             TypeInner for scalar
         """
-        return TypeInner.SCALAR(scalar)
+        return TypeInner.new_scalar(scalar)
+
+    def get_handle_for_type_inner(self, type_inner: TypeInner) -> int:
+        """
+        Get or create a type handle for a TypeInner.
+        
+        Args:
+            type_inner: TypeInner to find or add
+            
+        Returns:
+            Type handle
+        """
+        if not self.module:
+            return None
+            
+        # Check if this type inner already exists in module.types
+        for i, existing_type in enumerate(self.module.types):
+            if existing_type.inner == type_inner:
+                return i
+        
+        # Add new type
+        from ....ir import Type
+        new_type = Type(name=None, inner=type_inner)
+        self.module.types.append(new_type)
+        return len(self.module.types) - 1
     
     def convert_vector(self, size: VectorSize, scalar: Scalar) -> TypeInner:
         """
@@ -179,7 +239,7 @@ class TypeConverter:
         Returns:
             TypeInner for vector
         """
-        return TypeInner.VECTOR(size=size, scalar=scalar)
+        return TypeInner.new_vector(size=size, scalar=scalar)
     
     def convert_matrix(
         self, 
@@ -198,7 +258,7 @@ class TypeConverter:
         Returns:
             TypeInner for matrix
         """
-        return TypeInner.MATRIX(columns=columns, rows=rows, scalar=scalar)
+        return TypeInner.new_matrix(columns=columns, rows=rows, scalar=scalar)
     
     def convert_array(
         self, 
@@ -215,7 +275,7 @@ class TypeConverter:
         Returns:
             TypeInner for array
         """
-        return TypeInner.ARRAY(base=base, size=size, stride=None)
+        return TypeInner.new_array(base=base, size=size, stride=0)
     
     def convert_struct(self, members: list) -> TypeInner:
         """
@@ -228,7 +288,7 @@ class TypeConverter:
             TypeInner for struct
         """
         # TODO: Convert struct members
-        return TypeInner.STRUCT(members=members, span=0)
+        return TypeInner.new_struct(members=members, span=0)
     
     def convert_pointer(
         self, 
@@ -245,7 +305,7 @@ class TypeConverter:
         Returns:
             TypeInner for pointer
         """
-        return TypeInner.POINTER(base=base, space=space)
+        return TypeInner.new_pointer(base=base, space=space)
     
     def convert_atomic(self, scalar: Scalar) -> TypeInner:
         """
@@ -257,7 +317,7 @@ class TypeConverter:
         Returns:
             TypeInner for atomic
         """
-        return TypeInner.ATOMIC(scalar)
+        return TypeInner.new_atomic(scalar)
     
     def convert_image(
         self,
@@ -276,7 +336,7 @@ class TypeConverter:
         Returns:
             TypeInner for image
         """
-        return TypeInner.IMAGE(dim=dim, arrayed=arrayed, class_=class_)
+        return TypeInner.new_image(dim=dim, arrayed=arrayed, class_=class_)
     
     def convert_sampler(self, comparison: bool) -> TypeInner:
         """
@@ -288,7 +348,7 @@ class TypeConverter:
         Returns:
             TypeInner for sampler
         """
-        return TypeInner.SAMPLER(comparison=comparison)
+        return TypeInner.new_sampler(comparison=comparison)
 
 
 def resolve_address_space(ast_space: Optional[str]) -> AddressSpace:

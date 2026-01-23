@@ -7,7 +7,7 @@ for controlling diagnostic output during shader compilation.
 
 from enum import Enum
 from typing import Optional, Dict, List, Tuple, Union
-from ..span import Span
+from .span import Span
 
 
 class Severity(Enum):

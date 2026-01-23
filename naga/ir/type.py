@@ -186,19 +186,19 @@ class ImageClass:
     storage: Optional[ImageClassStorage] = None
 
     @classmethod
-    def sampled(cls, kind: ScalarKind, multi: bool) -> "ImageClass":
+    def new_sampled(cls, kind: ScalarKind, multi: bool) -> "ImageClass":
         return cls(type=ImageClassType.SAMPLED, sampled=ImageClassSampled(kind, multi))
 
     @classmethod
-    def depth(cls, multi: bool) -> "ImageClass":
+    def new_depth(cls, multi: bool) -> "ImageClass":
         return cls(type=ImageClassType.DEPTH, depth=ImageClassDepth(multi))
 
     @classmethod
-    def external(cls) -> "ImageClass":
+    def new_external(cls) -> "ImageClass":
         return cls(type=ImageClassType.EXTERNAL)
 
     @classmethod
-    def storage(cls, format: StorageFormat, access: StorageAccess) -> "ImageClass":
+    def new_storage(cls, format: StorageFormat, access: StorageAccess) -> "ImageClass":
         return cls(type=ImageClassType.STORAGE, storage=ImageClassStorage(format, access))
 
 
@@ -365,19 +365,19 @@ class TypeInner:
     binding_array: Optional[BindingArray] = None
 
     @classmethod
-    def scalar(cls, scalar: Scalar) -> "TypeInner":
+    def new_scalar(cls, scalar: Scalar) -> "TypeInner":
         return cls(type=TypeInnerType.SCALAR, scalar=scalar)
 
     @classmethod
-    def vector(cls, size: VectorSize, scalar: Scalar) -> "TypeInner":
+    def new_vector(cls, size: VectorSize, scalar: Scalar) -> "TypeInner":
         return cls(type=TypeInnerType.VECTOR, vector=Vector(size, scalar))
 
     @classmethod
-    def matrix(cls, columns: VectorSize, rows: VectorSize, scalar: Scalar) -> "TypeInner":
+    def new_matrix(cls, columns: VectorSize, rows: VectorSize, scalar: Scalar) -> "TypeInner":
         return cls(type=TypeInnerType.MATRIX, matrix=Matrix(columns, rows, scalar))
 
     @classmethod
-    def cooperative_matrix(
+    def new_cooperative_matrix(
         cls,
         columns: CooperativeSize,
         rows: CooperativeSize,
@@ -390,43 +390,43 @@ class TypeInner:
         )
 
     @classmethod
-    def atomic(cls, scalar: Scalar) -> "TypeInner":
+    def new_atomic(cls, scalar: Scalar) -> "TypeInner":
         return cls(type=TypeInnerType.ATOMIC, atomic=Atomic(scalar))
 
     @classmethod
-    def pointer(cls, base: int, space: str) -> "TypeInner":
+    def new_pointer(cls, base: int, space: str) -> "TypeInner":
         return cls(type=TypeInnerType.POINTER, pointer=Pointer(base, space))
 
     @classmethod
-    def value_pointer(cls, size: Optional[VectorSize], scalar: Scalar, space: str) -> "TypeInner":
+    def new_value_pointer(cls, size: Optional[VectorSize], scalar: Scalar, space: str) -> "TypeInner":
         return cls(type=TypeInnerType.VALUE_POINTER, value_pointer=ValuePointer(size, scalar, space))
 
     @classmethod
-    def array(cls, base: int, size: ArraySize, stride: int) -> "TypeInner":
+    def new_array(cls, base: int, size: ArraySize, stride: int) -> "TypeInner":
         return cls(type=TypeInnerType.ARRAY, array=Array(base, size, stride))
 
     @classmethod
-    def struct_(cls, members: List[StructMember], span: int) -> "TypeInner":
+    def new_struct(cls, members: List[StructMember], span: int) -> "TypeInner":
         return cls(type=TypeInnerType.STRUCT, struct=Struct(members, span))
 
     @classmethod
-    def image(cls, dim: ImageDimension, arrayed: bool, class_: ImageClass) -> "TypeInner":
+    def new_image(cls, dim: ImageDimension, arrayed: bool, class_: ImageClass) -> "TypeInner":
         return cls(type=TypeInnerType.IMAGE, image=Image(dim, arrayed, class_))
 
     @classmethod
-    def sampler(cls, comparison: bool) -> "TypeInner":
+    def new_sampler(cls, comparison: bool) -> "TypeInner":
         return cls(type=TypeInnerType.SAMPLER, sampler=Sampler(comparison))
 
     @classmethod
-    def acceleration_structure(cls, vertex_return: bool) -> "TypeInner":
+    def new_acceleration_structure(cls, vertex_return: bool) -> "TypeInner":
         return cls(type=TypeInnerType.ACCELERATION_STRUCTURE, acceleration_structure=AccelerationStructure(vertex_return))
 
     @classmethod
-    def ray_query(cls, vertex_return: bool) -> "TypeInner":
+    def new_ray_query(cls, vertex_return: bool) -> "TypeInner":
         return cls(type=TypeInnerType.RAY_QUERY, ray_query=RayQuery(vertex_return))
 
     @classmethod
-    def binding_array(cls, base: int, size: ArraySize) -> "TypeInner":
+    def new_binding_array(cls, base: int, size: ArraySize) -> "TypeInner":
         return cls(type=TypeInnerType.BINDING_ARRAY, binding_array=BindingArray(base, size))
 
 

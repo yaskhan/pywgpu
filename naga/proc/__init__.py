@@ -22,6 +22,7 @@ from .constant_evaluator import (
     ExpressionKind,
     ExpressionKindTracker,
 )
+from .resolve import ResolveContext, ResolveError
 
 # Type methods and helpers
 from .type_methods import (
@@ -84,4 +85,6 @@ __all__ = [
     "extract_vector_literals",
     "math_function_arg_count",
     "MathFunctionEvaluator",
+    "ResolveContext",
+    "ResolveError",
 ]

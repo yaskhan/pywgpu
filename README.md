@@ -27,7 +27,12 @@ The project is an exact structural copy of the original `wgpu` repository, divid
 
 ## 🚀 Status
 
-The project is in a phase of **active logic implementation**, having moved significantly beyond the initial skeleton stage. Key components have seen substantial development
+The project is in a phase of **active logic implementation**, having moved significantly beyond the initial skeleton stage. 
+
+**Key Achievements:**
+- ✓ **Naga WGSL Frontend**: Lowerer (AST to IR conversion) is [**fully complete**](./WGSL_LOWERER_COMPLETE.md).
+- ✓ **Constant Evaluator**: Core infrastructure [**fully complete**](./IMPLEMENTATION_SUMMARY.md).
+- ✓ **Naga GLSL Frontend**: Foundation (Types, Offset, Error, Token) [**complete**](./GLSL_TRANSLATION_COMPLETE.md).
 
 ## 📜 Principles
 

@@ -132,13 +132,16 @@ class Lexer:
         self.line = 1
         self.column = 1
     
-    def __iter__(self) -> Iterator[Token]:
-        """Iterate over tokens."""
-        while True:
-            token = self.next_token()
-            yield token
-            if token.kind == TokenKind.EOF:
-                break
+    def __iter__(self) -> "Lexer":
+        """Returning self as iterator."""
+        return self
+    
+    def __next__(self) -> Token:
+        """Get the next token."""
+        token = self.next_token()
+        if token.kind == TokenKind.EOF and self.position > len(self.source):
+             raise StopIteration
+        return token
     
     def next_token(self) -> Token:
         """
@@ -253,7 +256,7 @@ class Lexer:
         # TODO: Implement full number parsing (hex, float, etc.)
         while self.position < len(self.source):
             char = self.source[self.position]
-            if char.isdigit() or char in '.eE+-xXabcdefABCDEF':
+            if char.isdigit() or char in '.eE+-xXabcdefABCDEFuifh':
                 self.position += 1
             else:
                 break

@@ -53,6 +53,7 @@ from .composite_types import (
     BuiltInPosition,
     BuiltInBarycentric,
     AddressSpace,
+    Binding,
 )
 from .constant import Constant, Override, Literal, LiteralType
 from .operators import (
@@ -71,11 +72,13 @@ from .operators import (
     SubgroupOperation,
     CollectiveOperation,
     Barrier,
+    ImageQueryType,
+    ImageQuerySize,
 )
 from .function import Function, FunctionArgument, FunctionResult, LocalVariable
-from .module import Module, EntryPoint
+from .module import Module, EntryPoint, GlobalVariable
 from .expression import Expression, ExpressionType
-from .statement import Statement
+from .statement import Statement, StatementType
 
 # Basic type aliases from mod.rs
 Bytes: Final = int  # u8 in Rust - Number of bytes per scalar
@@ -102,6 +105,7 @@ __all__ = [
     "Sampler",
     "AccelerationStructure",
     "RayQuery",
+    "Binding",
     "BindingArray",
     "ValuePointer",
     "Pointer",
@@ -144,6 +148,8 @@ __all__ = [
     "SwizzleComponent",
     "SampleLevel",
     "ImageQuery",
+    "ImageQueryType",
+    "ImageQuerySize",
     "GatherMode",
     "Direction",
     "SubgroupOperation",
@@ -159,5 +165,7 @@ __all__ = [
     "EntryPoint",
     "Expression",
     "ExpressionType",
+    "GlobalVariable",
     "Statement",
+    "StatementType",
 ]

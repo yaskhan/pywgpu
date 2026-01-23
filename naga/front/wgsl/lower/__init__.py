@@ -7,12 +7,14 @@ This module converts the WGSL AST into NAGA's intermediate representation.
 """
 
 from typing import Any, Dict, List, Optional
-from ...ir import Module, Function, Expression, Statement, Type
+from ....ir import Module, Function, Expression, Statement, Type
 from ..ast import TranslationUnit, GlobalDecl
 from ..index import Index
 from .lowerer_extensions import add_lowering_methods
+from .type_resolver import add_type_resolver_methods
 
 
+@add_type_resolver_methods
 @add_lowering_methods
 class Lowerer:
     """
@@ -37,6 +39,10 @@ class Lowerer:
         self.const_map: Dict[Any, Any] = {}
         self.var_map: Dict[Any, Any] = {}
         self.function_map: Dict[Any, Any] = {}
+        
+        from .builtins import BuiltInResolver
+        self.builtin_resolver = BuiltInResolver()
+
     
     def lower(self, tu: TranslationUnit) -> Module:
         """
@@ -266,23 +272,24 @@ class Lowerer:
         Returns:
             IR function handle
         """
-        from ...ir import Function, Expression, Statement, FunctionArgument, TypeInner
+        from ....ir import Function, Expression, Statement, FunctionArgument, TypeInner
         from .context import StatementContext
         
+        from ....ir import Function, Block
         # Create new function
-        func = Function(name=ast_func.name.name)
+        func = Function(name=ast_func.name.name, result=None, body=Block.new())
         
         # Process function parameters
         for i, param in enumerate(ast_func.parameters):
             param_type = self._lower_type(param['type'])
             # Create function argument
-            arg = FunctionArgument(name=param['name'].name, ty=param_type, handle=i)
-            func.arguments.append(arg)
+            arg = func.add_argument(name=param['name'].name, ty=param_type, binding=None)
             # Store in local map if we have a context (but we populate local_table later)
         
         # Process return type
         if ast_func.return_type:
-            func.result = self._lower_type(ast_func.return_type)
+            from ....ir import FunctionResult
+            func.result = FunctionResult(ty=self._lower_type(ast_func.return_type), binding=None)
         
         # Detect entry point
         for attr in ast_func.attributes:
@@ -301,7 +308,7 @@ class Lowerer:
             self._lower_statement(stmt, ctx)
         
         # Finalize function body
-        func.body = ctx.block_stack[0] # Grab first block
+        func.body.append_block(ctx.block_stack[0])
         
         # Add to module
         if self.module:
@@ -314,7 +321,7 @@ class Lowerer:
     def _lower_struct(self, ast_struct: Any) -> Any:
         """Lower struct type definition."""
         from .conversion import TypeConverter
-        from ...ir import StructMember
+        from ....ir import StructMember
         
         converter = TypeConverter(self.module)
         members = []
@@ -330,7 +337,7 @@ class Lowerer:
     
     def _lower_const(self, ast_const: Any) -> Any:
         """Lower constant declaration."""
-        from ...ir import Constant
+        from ....ir import Constant
         # TODO: Evaluate constant expression
         # For now, just create a placeholder constant
         const = Constant(name=ast_const.name.name, ty=self._lower_type(ast_const.type_), init=None)
@@ -346,7 +353,7 @@ class Lowerer:
     
     def _lower_global_var(self, ast_var: Any) -> Any:
         """Lower global variable."""
-        from ...ir import GlobalVariable, AddressSpace, StorageAccess
+        from ....ir import GlobalVariable, AddressSpace, StorageAccess
         
         # Determine address space and access mode
         space = AddressSpace.PRIVATE
@@ -367,6 +374,16 @@ class Lowerer:
                 group = int(attr.arguments[0])
             elif attr.name == 'binding':
                 binding = int(attr.arguments[0])
+        
+        # Validation: Check for required bindings
+        if space in (AddressSpace.UNIFORM, AddressSpace.STORAGE, AddressSpace.HANDLE):
+            if group is None or binding is None:
+                from ..error import ParseError
+                raise ParseError(
+                    message=f"resource variable in address space {space.value} must have @group and @binding attributes",
+                    labels=[(ast_var.name.span[0], ast_var.name.span[1], "")],
+                    notes=[]
+                )
         
         # Lower initializer
         init = None

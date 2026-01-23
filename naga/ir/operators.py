@@ -284,19 +284,19 @@ class ImageQuery:
     size: Optional[ImageQuerySize] = None
 
     @classmethod
-    def size(cls, level: Optional[int] = None) -> "ImageQuery":
+    def new_size(cls, level: Optional[int] = None) -> "ImageQuery":
         return cls(type=ImageQueryType.SIZE, size=ImageQuerySize(level))
 
     @classmethod
-    def num_levels(cls) -> "ImageQuery":
+    def new_num_levels(cls) -> "ImageQuery":
         return cls(type=ImageQueryType.NUM_LEVELS)
 
     @classmethod
-    def num_layers(cls) -> "ImageQuery":
+    def new_num_layers(cls) -> "ImageQuery":
         return cls(type=ImageQueryType.NUM_LAYERS)
 
     @classmethod
-    def num_samples(cls) -> "ImageQuery":
+    def new_num_samples(cls) -> "ImageQuery":
         return cls(type=ImageQueryType.NUM_SAMPLES)
 
 

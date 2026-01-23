@@ -1,7 +1,20 @@
+from dataclasses import dataclass
 from typing import Any, List, Dict, Optional, Tuple
 from .function import Function
 from .type import Type
 from .constant import Constant
+
+
+@dataclass
+class GlobalVariable:
+    """
+    Global variable in the module.
+    """
+    name: Optional[str]
+    space: Any  # AddressSpace
+    binding: Optional[Dict[str, int]]
+    ty: Any  # Type handle
+    init: Optional[Any] = None  # Expression handle
 
 
 class EntryPoint:

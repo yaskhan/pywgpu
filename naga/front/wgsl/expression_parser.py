@@ -91,7 +91,7 @@ class ExpressionParser:
             )
         
         # Check for unary operators
-        if token.kind in (TokenKind.MINUS, TokenKind.BANG, TokenKind.TILDE):
+        if token.kind in (TokenKind.MINUS, TokenKind.BANG, TokenKind.TILDE, TokenKind.AND, TokenKind.STAR):
             op_token = self.parser.advance()
             operand = self.parse_unary_expression()
             
@@ -204,29 +204,46 @@ class ExpressionParser:
         elif token.kind == TokenKind.IDENT:
             self.parser.advance()
             
-            # Check if it's a constructor
-            if self.parser.peek() and self.parser.peek().kind == TokenKind.PAREN_LEFT:
-                # Type name for constructor
+            # Check if it's a constructor: vec2(1, 2) or vec2<i32>(1, 2)
+            is_generic = self.parser.peek() and self.parser.peek().kind == TokenKind.LESS_THAN
+            is_call = self.parser.peek() and self.parser.peek().kind == TokenKind.PAREN_LEFT
+            
+            if is_generic or is_call:
+                # Need to use the previously advanced token as part of the type
+                # But TypeParser expects to advance the token itself.
+                # Since we already advanced, we can either rewind or just use his parse_generic if it's LESS_THAN
+                
                 type_node = {"name": token.value, "span": token.span}
+                if is_generic:
+                    full_type = self.parser.type_parser.parse_generic_type(token.value, token.span)
+                    type_node = full_type
                 
-                # Constructor: Type(args)
-                self.parser.advance()
-                args = self.parse_argument_list()
-                close_paren = self.parser.expect(TokenKind.PAREN_RIGHT)
-                
-                return Expression(
-                    kind=ExpressionKind.CONSTRUCT,
-                    data=ConstructExpression(ty=type_node, arguments=args),
-                    span=(token.span[0], close_paren.span[1])
-                )
-            else:
-                # Simple identifier
-                return Expression(
-                    kind=ExpressionKind.IDENT,
-                    data=Ident(name=token.value, span=token.span),
-                    span=token.span
-                )
-        
+                if self.parser.peek() and self.parser.peek().kind == TokenKind.PAREN_LEFT:
+                    # Constructor: Type(args)
+                    self.parser.advance()
+                    args = self.parse_argument_list()
+                    close_paren = self.parser.expect(TokenKind.PAREN_RIGHT)
+                    
+                    return Expression(
+                        kind=ExpressionKind.CONSTRUCT,
+                        data=ConstructExpression(ty=type_node, arguments=args),
+                        span=(token.span[0], close_paren.span[1])
+                    )
+                elif is_generic:
+                    # Type name with generics but no parentheses? 
+                    # In expression context this is likely an error but let's return it as an IDENT-like or error out
+                    raise ParseError(
+                        message=f"type name {token.value}<...> must be followed by '(' in expression",
+                        labels=[(token.span[0], token.span[1], "")],
+                        notes=[]
+                    )
+            
+            # Simple identifier
+            return Expression(
+                kind=ExpressionKind.IDENT,
+                data=Ident(name=token.value, span=token.span),
+                span=token.span
+            )
         # Parenthesized expression
         elif token.kind == TokenKind.PAREN_LEFT:
             self.parser.advance()
@@ -320,7 +337,7 @@ class ExpressionParser:
             TokenKind.OR_OR: 3,
         }
         
-        return precedence_map.get(kind, 0)
+        return precedence_map.get(kind, -1)
 
 
 class TypeParser:
