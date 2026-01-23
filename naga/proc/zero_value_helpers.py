@@ -9,8 +9,9 @@ from typing import TYPE_CHECKING
 
 from naga.ir import (
     TypeInner, TypeInnerType, Scalar, ScalarKind, ArraySize,
-    Expression, ExpressionType, Literal, LiteralType, Type, Span
+    Expression, ExpressionType, Literal, LiteralType, Type
 )
+from naga.span import Span
 
 if TYPE_CHECKING:
     from naga import Handle, UniqueArena, Arena

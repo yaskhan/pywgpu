@@ -1,6 +1,6 @@
-"""WGSL Statement Writer
+"""GLSL Statement Writer
 
-Converts NAGA IR statements to valid WGSL code.
+Converts NAGA IR statements to valid GLSL code.
 Handles control flow, variable declarations, and assignments.
 """
 
@@ -9,17 +9,16 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, List, Optional
 
 from ...ir import Statement, StatementType, Barrier
-from .expression_writer import WGSLExpressionWriter
+from .expression_writer import GLSLExpressionWriter
 
 if TYPE_CHECKING:
     from ...ir.module import Module
-    from ...ir.function import Function
 
 
-class WGSLStatementWriter:
-    """Writes NAGA IR statements as WGSL code."""
+class GLSLStatementWriter:
+    """Writes NAGA IR statements as GLSL code."""
     
-    def __init__(self, module: Module, names: dict[str, str], expression_writer: WGSLExpressionWriter):
+    def __init__(self, module: Module, names: dict[str, str], expression_writer: GLSLExpressionWriter):
         """Initialize statement writer.
         
         Args:
@@ -44,7 +43,7 @@ class WGSLStatementWriter:
             indent_level: Current indentation level
             
         Returns:
-            WGSL code for the block
+            GLSL code for the block
         """
         self.indent_level = indent_level
         lines = []
@@ -59,13 +58,12 @@ class WGSLStatementWriter:
             stmt: The statement to write
             
         Returns:
-            WGSL code for the statement
+            GLSL code for the statement
         """
         indent = self._indent()
         
         match stmt.type:
             case StatementType.EMIT:
-                # Emit is a NAGA IR concept, usually doesn't output code directly
                 return ""
             
             case StatementType.BLOCK:
@@ -97,7 +95,7 @@ class WGSLStatementWriter:
                     return f"{indent}return;\n"
             
             case StatementType.KILL:
-                return f"{indent}discard;\n"  # WGSL's kill is discard
+                return f"{indent}discard;\n"
             
             case StatementType.BARRIER:
                 return self._write_barrier(stmt.barrier, indent)
@@ -106,13 +104,10 @@ class WGSLStatementWriter:
                 pointer = self.expression_writer.write_expression(stmt.store_pointer)
                 value = self.expression_writer.write_expression(stmt.store_value)
                 return f"{indent}{pointer} = {value};\n"
-
+            
             case StatementType.IMAGE_STORE:
                 return self._write_image_store(stmt, indent)
-
-            case StatementType.ATOMIC:
-                return self._write_atomic(stmt, indent)
-
+            
             case StatementType.IMAGE_ATOMIC:
                 return self._write_image_atomic(stmt, indent)
             
@@ -166,25 +161,25 @@ class WGSLStatementWriter:
     
     def _write_loop(self, stmt: Statement, indent: str) -> str:
         """Write a loop statement."""
-        result = f"{indent}loop {{\n"
+        # GLSL doesn't have a direct 'loop' statement like WGSL. 
+        # Usually implemented with while(true) or for(;;).
+        result = f"{indent}while (true) {{\n"
         self.indent_level += 1
         
         body = self.write_block(stmt.loop_body, self.indent_level)
         result += body
         
+        # NAGA Loop can have a 'continuing' block which is tricky in while(true).
+        # We might need to handle it within the body or transform to a for loop.
+        # For now, simple body.
+        
         if hasattr(stmt, 'loop_continuing') and stmt.loop_continuing:
-            result += f"{self._indent()}continuing {{\n"
-            self.indent_level += 1
-            
             continuing_body = self.write_block(stmt.loop_continuing, self.indent_level)
-            result += continuing_body
+            result += f"{self._indent()}// continuing\n{continuing_body}"
             
             if hasattr(stmt, 'loop_break_if') and stmt.loop_break_if is not None:
                 condition = self.expression_writer.write_expression(stmt.loop_break_if)
-                result += f"{self._indent()}break if {condition};\n"
-                
-            self.indent_level -= 1
-            result += f"{self._indent()}}}\n"
+                result += f"{self._indent()}if ({condition}) break;\n"
             
         self.indent_level -= 1
         result += f"{indent}}}\n"
@@ -192,8 +187,12 @@ class WGSLStatementWriter:
     
     def _write_call(self, stmt: Statement, indent: str) -> str:
         """Write a function call statement."""
-        func = self.module.functions[stmt.call_function]
-        func_name = self.names.get(f"function_{stmt.call_function}", func.name or f"func_{stmt.call_function}")
+        func_handle = stmt.call_function
+        if isinstance(func_handle, int) and func_handle < len(self.module.functions):
+            func = self.module.functions[func_handle]
+            func_name = self.names.get(f"func_{func_handle}", func.name or f"func_{func_handle}")
+        else:
+            func_name = f"/* Unknown func {func_handle} */"
         
         args = [
             self.expression_writer.write_expression(arg)
@@ -206,29 +205,29 @@ class WGSLStatementWriter:
     def _write_barrier(self, barrier: Barrier, indent: str) -> str:
         """Write a barrier statement."""
         if barrier == Barrier.WORK_GROUP:
-            return f"{indent}workgroupBarrier();\n"
+            return f"{indent}groupMemoryBarrier();\n{indent}barrier();\n"
         elif barrier == Barrier.STORAGE:
-            return f"{indent}storageBarrier();\n"
+            return f"{indent}memoryBarrierBuffer();\n"
+        elif barrier == Barrier.TEXTURE:
+            return f"{indent}memoryBarrierImage();\n"
         else:
-            return f"{indent}textureBarrier();\n"
+            return f"{indent}memoryBarrier();\n{indent}barrier();\n"
 
     def _write_image_store(self, stmt: Statement, indent: str) -> str:
         """Write an image store statement."""
         image = self.expression_writer.write_expression(stmt.image_store_image)
         coord = self.expression_writer.write_expression(stmt.image_store_coordinate)
         value = self.expression_writer.write_expression(stmt.image_store_value)
-        # textureStore(image, coord, value)
-        return f"{indent}textureStore({image}, {coord}, {value});\n"
-
-    def _write_atomic(self, stmt: Statement, indent: str) -> str:
-        """Write an atomic statement."""
-        # Simple atomic call as expression-like statement
-        expr = self.expression_writer._write_atomic(stmt) # Re-use expression writer logic
-        return f"{indent}{expr};\n"
+        # GLSL imageStore(image, coord, value)
+        return f"{indent}imageStore({image}, {coord}, {value});\n"
 
     def _write_image_atomic(self, stmt: Statement, indent: str) -> str:
         """Write an image atomic statement."""
-        return f"{indent}/* TODO: WGSL textureAtomic{stmt.image_atomic_fun} */\n"
+        # Simple implementation using imageAtomic* functions
+        image = self.expression_writer.write_expression(stmt.image_atomic_image)
+        coord = self.expression_writer.write_expression(stmt.image_atomic_coordinate)
+        value = self.expression_writer.write_expression(stmt.image_atomic_value)
+        return f"{indent}/* TODO: imageAtomic{stmt.image_atomic_fun}({image}, {coord}, {value}) */\n"
 
 
-__all__ = ['WGSLStatementWriter']
+__all__ = ['GLSLStatementWriter']

@@ -13,6 +13,10 @@ from .expression_writer import WGSLExpressionWriter
 from .statement_writer import WGSLStatementWriter
 from ...error import ShaderError
 from ...common.diagnostic_debug import DiagnosticDebug
+from ...ir.type import (
+    Type, TypeInner, TypeInnerType, ScalarKind, VectorSize,
+    ImageDimension, ImageClass, StorageFormat
+)
 
 
 class WriterFlags(IntFlag):
@@ -191,17 +195,21 @@ class Writer:
 
     def _write_globals(self, module: Any) -> None:
         """Write global variables."""
-        for ty, global_var in module.global_variables.items():
+        for i, global_var in enumerate(module.global_variables):
             var_name = self.names.get(
-                str(id(global_var)), global_var.name or f"var_{id(global_var)}"
+                f"global_{id(global_var)}", global_var.name or f"var_{i}"
             )
+            
+            # Write binding and group info if present
+            if global_var.binding:
+                self._write_attributes([self._binding_to_attribute(global_var.binding)])
+
             var_decl = (
                 f"var<{self._address_space_to_string(global_var.space)}> {var_name}"
             )
             if global_var.ty:
                 var_decl += f": {self._type_to_string(global_var.ty)}"
-            if global_var.binding:
-                var_decl += f" @{self._binding_to_string(global_var.binding)}"
+            
             self.out.write(f"{var_decl};\n")
         self.out.write("\n")
 
@@ -213,12 +221,11 @@ class Writer:
 
     def _write_entry_points(self, module: Any, info: Any) -> None:
         """Write entry point functions."""
-        for index, ep in enumerate(module.entry_points):
+        for ep in module.entry_points:
             self._write_function(
-                module, ep.function, info.get_entry_point(index), "entry_point", index
+                module, ep.function, info.get_function_info(ep.function), "entry_point", ep
             )
-            if index < len(module.entry_points) - 1:
-                self.out.write("\n")
+            self.out.write("\n")
 
     def _write_function(
         self,
@@ -226,13 +233,20 @@ class Writer:
         func: Any,
         func_info: Any,
         func_type: str,
-        index: Optional[int] = None,
+        ep: Optional[Any] = None,
     ) -> None:
-        """Write a single function."""
-        func_name_key = (
-            f"entry_point_{index}" if index is not None else f"function_{id(func)}"
-        )
-        func_name = self.names.get(func_name_key, f"func_{func_name_key}")
+        """Write a single function or entry point."""
+        if ep is not None:
+            # Entry point specific attributes
+            self.out.write(f"@{ep.stage}\n")
+            if ep.stage == "compute":
+                ws = ep.workgroup_size
+                self.out.write(f"@workgroup_size({ws[0]}, {ws[1]}, {ws[2]})\n")
+            
+            func_name = self.names.get(f"entry_point_{ep.name}", ep.name)
+        else:
+            func_name_key = f"function_{id(func)}"
+            func_name = self.names.get(func_name_key, f"func_{func_name_key}")
 
         # Write function signature
         self.out.write(f"fn {func_name}(")
@@ -242,7 +256,7 @@ class Writer:
             if arg.binding:
                 self._write_attributes([self._binding_to_attribute(arg.binding)])
 
-            arg_name = self.names.get(f"{func_name_key}_arg_{i}", f"arg_{i}")
+            arg_name = self.names.get(f"arg_{id(arg)}", arg.name or f"arg_{i}")
             self.out.write(f"{arg_name}: {self._type_to_string(arg.ty)}")
 
             if i < len(func.arguments) - 1:
@@ -252,6 +266,10 @@ class Writer:
 
         # Write return type
         if func.result:
+            if hasattr(func.result, "binding") and func.result.binding:
+                self.out.write(" ")
+                self._write_attributes([self._binding_to_attribute(func.result.binding)])
+            
             self.out.write(f" -> {self._type_to_string(func.result.ty)}")
 
         self.out.write(" {\n")
@@ -273,41 +291,108 @@ class Writer:
         if ty is None:
             return "void"
 
-        if hasattr(ty, "inner"):
-            inner = ty.inner
-        else:
-            inner = ty
+        if isinstance(ty, int):
+            # This is a type handle, lookup the type
+            if ty < 0 or ty >= len(self._module.types):
+                return f"/* Invalid Type Handle {ty} */"
+            ty_obj = self._module.types[ty]
+            if ty_obj.name:
+                return self.names.get(f"type_{ty}", ty_obj.name)
+            return self._type_inner_to_string(ty_obj.inner)
 
-        if hasattr(inner, "ty"):
-            inner = inner.ty
+        if isinstance(ty, Type):
+            if ty.name:
+                return ty.name
+            return self._type_inner_to_string(ty.inner)
 
-        if str(inner).startswith("Scalar."):
-            scalar_type = str(inner).split(".")[1]
-            return {
-                "F16": "f16",
-                "F32": "f32",
-                "F64": "f64",
-                "I32": "i32",
-                "U32": "u32",
-                "Bool": "bool",
-            }.get(scalar_type, str(inner).lower())
-        elif str(inner).startswith("Vector"):
-            # Vector<count, scalar>
-            return f"vec{inner.size}<{self._type_to_string(inner.scalar)}>"
-        elif str(inner).startswith("Matrix"):
-            # Matrix<columns, rows, scalar>
-            return (
-                f"mat{inner.columns}x{inner.rows}<{self._type_to_string(inner.scalar)}>"
-            )
-        elif str(inner).startswith("Array"):
-            # Array<element, count>
-            count = getattr(inner, "size", None)
-            if count is None:
-                return f"array<{self._type_to_string(inner.element)}>"
-            else:
-                return f"array<{self._type_to_string(inner.element)}, {count}>"
-        else:
-            return str(inner).lower()
+        if isinstance(ty, TypeInner):
+            return self._type_inner_to_string(ty)
+
+        return str(ty).lower()
+
+    def _type_inner_to_string(self, inner: TypeInner) -> str:
+        """Convert a TypeInner to WGSL string representation."""
+        match inner.type:
+            case TypeInnerType.SCALAR:
+                scalar = inner.scalar
+                match scalar.kind:
+                    case ScalarKind.F16: return "f16"
+                    case ScalarKind.F32: return "f32"
+                    case ScalarKind.F64: return "f32"  # WGSL doesn't have f64 yet, use f32 or polyfill?
+                    case ScalarKind.I32: return "i32"
+                    case ScalarKind.UINT: return "u32"
+                    case ScalarKind.BOOL: return "bool"
+                    case ScalarKind.ABSTRACT_INT: return "abstract-int"
+                    case ScalarKind.ABSTRACT_FLOAT: return "abstract-float"
+                    case _: return "/* Unknown Scalar */"
+            
+            case TypeInnerType.VECTOR:
+                vec = inner.vector
+                size = vec.size.value
+                scalar_str = self._type_inner_to_string(TypeInner.new_scalar(vec.scalar))
+                return f"vec{size}<{scalar_str}>"
+            
+            case TypeInnerType.MATRIX:
+                mat = inner.matrix
+                cols = mat.columns.value
+                rows = mat.rows.value
+                scalar_str = self._type_inner_to_string(TypeInner.new_scalar(mat.scalar))
+                return f"mat{cols}x{rows}<{scalar_str}>"
+            
+            case TypeInnerType.ARRAY:
+                arr = inner.array
+                base_str = self._type_to_string(arr.base)
+                if arr.size is None:
+                    return f"array<{base_str}>"
+                else:
+                    # size is ArraySize, need to handle Constant/Literal/Override
+                    size_val = self._array_size_to_string(arr.size)
+                    return f"array<{base_str}, {size_val}>"
+            
+            case TypeInnerType.STRUCT:
+                # Structs are referred to by name usually
+                # If it's an anonymous struct in NAGA, we should have generated a name for it
+                return "/* struct */"
+            
+            case TypeInnerType.IMAGE:
+                img = inner.image
+                dim_str = self._image_dim_to_string(img.dim)
+                if img.class_ == ImageClass.DEPTH:
+                    return f"texture_depth_{dim_str}"
+                elif img.class_ == ImageClass.STORAGE:
+                    format_str = img.storage_format.value if hasattr(img.storage_format, "value") else str(img.storage_format)
+                    return f"texture_storage_{dim_str}<{format_str}, write>" # Handle access
+                else:
+                    # Sampled or multisampled
+                    prefix = "texture_multisampled" if img.class_ == ImageClass.MULTISAMPLED else "texture"
+                    # Handle base type if known
+                    return f"{prefix}_{dim_str}<f32>"
+            
+            case TypeInnerType.SAMPLER:
+                return "sampler_comparison" if inner.sampler.comparison else "sampler"
+            
+            case TypeInnerType.POINTER:
+                ptr = inner.pointer
+                base_str = self._type_to_string(ptr.base)
+                space_str = self._address_space_to_string(ptr.space)
+                return f"ptr<{space_str}, {base_str}>"
+            
+            case _:
+                return f"/* TODO: {inner.type} */"
+
+    def _image_dim_to_string(self, dim: ImageDimension) -> str:
+        match dim:
+            case ImageDimension.D1: return "1d"
+            case ImageDimension.D2: return "2d"
+            case ImageDimension.D3: return "3d"
+            case ImageDimension.CUBE: return "cube"
+            case _: return "2d"
+
+    def _array_size_to_string(self, size: Any) -> str:
+        # ArraySize can be Constant, Dynamic, or Literal
+        if hasattr(size, "value"):
+            return str(size.value)
+        return str(size)
 
     def _constant_value_to_string(self, constant: Any) -> str:
         """Convert a constant value to string representation."""

@@ -9,10 +9,12 @@ This module contains writers for different shader backends:
 - SPIR-V (Standard Portable Intermediate Representation)
 """
 
-from typing import Any, Tuple, Optional
+from typing import Any, Tuple, Optional, Set, Dict
 from enum import Enum
-from .. import Arena, Handle, Expression, BinaryOperator, TypeInner, Statement, Binding, BuiltIn
+from .. import Arena, Handle, Expression, BinaryOperator, TypeInner, Statement, Binding, BuiltIn, VectorSize
 from .. import ShaderStage as ShaderStageEnum
+from ..proc.namer import NameKey, ExternalTextureNameKey
+from ..proc.type_methods import TypeResolutionHandle, TypeResolutionValue
 
 # Names of vector components
 COMPONENTS: Tuple[str, ...] = ('x', 'y', 'z', 'w')
@@ -74,13 +76,11 @@ class FunctionType(Enum):
     FUNCTION = "function"
     ENTRY_POINT = "entry_point"
 
-    def is_compute_like_entry_point(self, module: Any) -> bool:
+    def is_compute_like(self, stage: ShaderStageEnum) -> bool:
         """
         Returns true if the function is an entry point for a compute-like shader.
         """
-        # This would need access to the module's entry points
-        # For now, return False
-        return False
+        return stage in (ShaderStageEnum.COMPUTE, ShaderStageEnum.TASK, ShaderStageEnum.MESH)
 
 
 class FunctionCtx:
@@ -94,50 +94,71 @@ class FunctionCtx:
         info: Any,
         expressions: Arena[Expression],
         named_expressions: dict,
+        handle: Optional[Handle] = None,
+        ep_index: Optional[int] = None,
     ):
         self.ty = ty
         self.info = info
         self.expressions = expressions
         self.named_expressions = named_expressions
+        self.handle = handle
+        self.ep_index = ep_index
 
-    def resolve_type(self, handle: Handle[Expression], types: Any) -> TypeInner:
+    def resolve_type(self, handle: Handle[Expression], module: "Module") -> TypeInner:
         """
         Helper method that resolves a type of a given expression.
         """
-        # This would need access to the type information
-        # For now, return a placeholder
-        return TypeInner()
+        if handle.index < len(self.info.expressions):
+            expr_info = self.info.expressions[handle.index]
+            resolution = expr_info.ty
+            if isinstance(resolution, TypeResolutionHandle):
+                return module.types[resolution.handle].inner
+            elif isinstance(resolution, TypeResolutionValue):
+                return resolution.inner
+        
+        return TypeInner(type=None)  # Default fallback
 
-    def name_key(self, local: Any) -> Any:
-        """
+    def name_key(self, local: Handle) -> NameKey:
+        """ 
         Helper method that generates a NameKey for a local in the current function.
         """
-        # This would need access to the proc module
-        # For now, return a placeholder
-        return None
+        if self.ty == FunctionType.ENTRY_POINT and self.ep_index is not None:
+            return NameKey.entry_point_local(self.ep_index, local)
+        elif self.handle is not None:
+            return NameKey.function_local(self.handle, local)
+        return NameKey("local", (local,))
 
-    def argument_key(self, arg: int) -> Any:
+    def argument_key(self, arg_index: int) -> NameKey:
         """
         Helper method that generates a NameKey for a function argument.
         """
-        # This would need access to the proc module
-        # For now, return a placeholder
-        return None
+        if self.ty == FunctionType.ENTRY_POINT and self.ep_index is not None:
+            return NameKey.entry_point_argument(self.ep_index, arg_index)
+        elif self.handle is not None:
+            return NameKey.function_argument(self.handle, arg_index)
+        return NameKey("argument", (arg_index,))
 
-    def external_texture_argument_key(self, arg: int, external_texture_key: Any) -> Any:
+    def external_texture_argument_key(self, arg_index: int, external_texture_key: ExternalTextureNameKey) -> NameKey:
         """
         Helper method that generates a NameKey for an external texture function argument.
         """
-        # This would need access to the proc module
-        # For now, return a placeholder
-        return None
+        # This is used for lowered external textures
+        base_key = self.argument_key(arg_index)
+        return NameKey("external_texture", (base_key, external_texture_key))
 
-    def is_fixed_function_input(self, expression: Handle[Expression], module: Any) -> Optional[BuiltIn]:
+    def is_fixed_function_input(self, expression_handle: Handle[Expression], module: "Module") -> Optional[BuiltIn]:
         """
-        Returns true if the given expression points to a fixed-function pipeline input.
+        Returns the BuiltIn if the given expression points to a fixed-function pipeline input.
         """
-        # This would need access to the module's entry points
-        # For now, return None
+        expr = self.expressions[expression_handle]
+        from .. import ExpressionType
+        if expr.type == ExpressionType.FUNCTION_ARGUMENT:
+            arg_index = expr.function_argument
+            if self.ty == FunctionType.ENTRY_POINT and self.ep_index is not None:
+                ep = module.entry_points[self.ep_index]
+                arg = ep.function.arguments[arg_index]
+                if arg.binding and hasattr(arg.binding, 'builtin'):
+                    return arg.binding.builtin
         return None
 
 

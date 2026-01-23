@@ -9,7 +9,12 @@ from typing import Any, Dict, List, Optional, Set, Union
 from enum import IntEnum, IntFlag
 import io
 
+from .expression_writer import GLSLExpressionWriter
+from .statement_writer import GLSLStatementWriter
 from ...error import ShaderError
+from ...ir.type import (
+    Type, TypeInner, TypeInnerType, ScalarKind, VectorSize, Matrix, ArraySizeType
+)
 
 
 class Version(IntEnum):
@@ -670,14 +675,16 @@ class Writer:
             return
 
         # Write function signature
-        func_name = self._get_entry_point_name()
         self.out.write(f"void main() {{\n")
 
-        # Write function body - simplified
-        if hasattr(self.entry_point, "function") and hasattr(
-            self.entry_point.function, "body"
-        ):
-            self._write_block(self.entry_point.function.body, 1)
+        # Create writers for the entry point function
+        expr_writer = GLSLExpressionWriter(self.module, self.names, self.entry_point.function.expressions)
+        stmt_writer = GLSLStatementWriter(self.module, self.names, expr_writer)
+
+        # Write function body
+        if hasattr(self.entry_point.function, "body") and self.entry_point.function.body:
+            body_code = stmt_writer.write_block(self.entry_point.function.body, 1)
+            self.out.write(body_code)
 
         self.out.write("}\n")
 
@@ -686,174 +693,91 @@ class Writer:
         func_name = self._get_function_name(function)
 
         # Write function signature
-        self.out.write(f"void {func_name}(")
-
-        # Write arguments
-        for i, arg in enumerate(function.arguments):
-            arg_name = f"arg_{i}"
-            type_name = self._type_to_glsl(arg.ty)
-            self.out.write(f"{type_name} {arg_name}")
-            if i < len(function.arguments) - 1:
-                self.out.write(", ")
-
-        self.out.write(") {\n")
+        # Create writers for this function
+        expr_writer = GLSLExpressionWriter(self.module, self.names, function.expressions)
+        stmt_writer = GLSLStatementWriter(self.module, self.names, expr_writer)
 
         # Write function body
         if hasattr(function, "body") and function.body:
-            self._write_block(function.body, 1)
+            body_code = stmt_writer.write_block(function.body, 1)
+            self.out.write(body_code)
 
         self.out.write("}\n")
 
-    def _write_block(self, block: Any, indent_level: int) -> None:
-        """Write a statement block with proper indentation."""
-        indent = "    " * indent_level
-
-        for stmt in block:
-            self._write_statement(stmt, indent_level)
-
-    def _write_statement(self, stmt: Any, indent_level: int) -> None:
-        """Write a single statement."""
-        indent = "    " * indent_level
-
-        stmt_type = type(stmt).__name__
-
-        if stmt_type == "LocalVariable":
-            var_name = self._get_local_variable_name(stmt)
-            self.out.write(f"{indent}var {var_name}")
-            if hasattr(stmt, "ty") and stmt.ty:
-                self.out.write(f": {self._type_to_glsl(stmt.ty)}")
-            if hasattr(stmt, "init") and stmt.init:
-                self.out.write(f" = {self._expression_to_glsl(stmt.init)}")
-            self.out.write(";\n")
-        elif stmt_type == "Store":
-            if hasattr(stmt, "pointer") and hasattr(stmt, "value"):
-                self.out.write(
-                    f"{indent}{self._expression_to_glsl(stmt.pointer)} = {self._expression_to_glsl(stmt.value)};\n"
-                )
-        elif stmt_type == "Return":
-            if hasattr(stmt, "value") and stmt.value:
-                self.out.write(
-                    f"{indent}return {self._expression_to_glsl(stmt.value)};\n"
-                )
-            else:
-                self.out.write(f"{indent}return;\n")
-        elif stmt_type == "Break":
-            self.out.write(f"{indent}break;\n")
-        elif stmt_type == "Continue":
-            self.out.write(f"{indent}continue;\n")
-        elif stmt_type == "Discard":
-            self.out.write(f"{indent}discard;\n")
-        else:
-            self.out.write(f"{indent}// TODO: Implement {stmt_type}\n")
-
-    def _expression_to_glsl(self, expr: Any) -> str:
-        """Convert an expression to GLSL string representation."""
-        expr_type = type(expr).__name__
-
-        if expr_type == "Literal":
-            return str(expr.value)
-        elif expr_type == "Variable":
-            return self._get_variable_name(expr)
-        elif expr_type == "BinaryOperation":
-            left = self._expression_to_glsl(expr.left)
-            right = self._expression_to_glsl(expr.right)
-            op = self._binary_op_to_glsl(expr.op)
-            return f"({left} {op} {right})"
-        elif expr_type == "Call":
-            func_name = self._get_function_name(expr.function)
-            args = [self._expression_to_glsl(arg) for arg in expr.arguments]
-            return f"{func_name}({', '.join(args)})"
-        elif expr_type == "Swizzle":
-            base = self._expression_to_glsl(expr.base)
-            components = "".join(expr.components)
-            return f"{base}.{components}"
-        else:
-            return f"/* TODO: {expr_type} */"
-
-    def _binary_op_to_glsl(self, op: Any) -> str:
-        """Convert binary operation to GLSL operator."""
-        op_map = {
-            "Add": "+",
-            "Subtract": "-",
-            "Multiply": "*",
-            "Divide": "/",
-            "Modulo": "%",
-            "Equal": "==",
-            "NotEqual": "!=",
-            "Less": "<",
-            "LessEqual": "<=",
-            "Greater": ">",
-            "GreaterEqual": ">=",
-            "And": "&&",
-            "Or": "||",
-            "LogicalAnd": "&&",
-            "LogicalOr": "||",
-        }
-        return op_map.get(str(op), "?")
 
     def _type_to_glsl(self, ty: Any) -> str:
         """Convert a type to GLSL string representation."""
         if ty is None:
             return "void"
 
-        if hasattr(ty, "inner"):
-            inner = ty.inner
-        else:
-            inner = ty
+        if isinstance(ty, int):
+            # Type handle
+            if ty < 0 or ty >= len(self.module.types):
+                return f"/* Invalid Type {ty} */"
+            ty_obj = self.module.types[ty]
+            if ty_obj.name:
+                return self.names.get(f"type_{ty}", ty_obj.name)
+            return self._type_inner_to_glsl(ty_obj.inner)
 
-        if hasattr(inner, "ty"):
-            inner = inner.ty
+        if isinstance(ty, Type):
+            if ty.name:
+                return ty.name
+            return self._type_inner_to_glsl(ty.inner)
+        
+        return str(ty).lower()
 
-        if str(inner).startswith("Scalar."):
-            scalar_type = str(inner).split(".")[1]
-            type_map = {
-                "F16": "mediump float" if self.options.is_es() else "float",
-                "F32": "mediump float" if self.options.is_es() else "float",
-                "F64": "double",
-                "I32": "int",
-                "U32": "uint" if not self.options.is_es() else "int",
-                "Bool": "bool",
-            }
-            return type_map.get(scalar_type, str(inner).lower())
-        elif str(inner).startswith("Vector"):
-            scalar = (
-                self._type_to_glsl(inner.scalar)
-                if hasattr(inner, "scalar")
-                else "float"
-            )
-            size = getattr(inner, "size", 2)
-            if scalar in ["mediump float", "float"]:
-                return f"vec{size}"
-            elif scalar == "int":
-                return f"ivec{size}"
-            elif scalar == "uint":
-                return f"uvec{size}"
-            elif scalar == "bool":
-                return f"bvec{size}"
-            else:
-                return f"{scalar} vec{size}"
-        elif str(inner).startswith("Matrix"):
-            scalar = (
-                self._type_to_glsl(inner.scalar)
-                if hasattr(inner, "scalar")
-                else "float"
-            )
-            columns = getattr(inner, "columns", 2)
-            rows = getattr(inner, "rows", 2)
-            return f"mat{columns}x{rows}"
-        elif str(inner).startswith("Array"):
-            element = (
-                self._type_to_glsl(inner.element)
-                if hasattr(inner, "element")
-                else "float"
-            )
-            count = getattr(inner, "size", None)
-            if count is None:
-                return f"{element}[]"
-            else:
-                return f"{element}[{count}]"
-        else:
-            return str(inner).lower()
+    def _type_inner_to_glsl(self, inner: TypeInner) -> str:
+        """Convert a TypeInner to GLSL string representation."""
+        match inner.type:
+            case TypeInnerType.SCALAR:
+                match inner.scalar.kind:
+                    case ScalarKind.F16: return "float" # Usually float in GLSL unless fp16 ext
+                    case ScalarKind.F32: return "float"
+                    case ScalarKind.F64: return "double"
+                    case ScalarKind.I32: return "int"
+                    case ScalarKind.UINT: return "uint"
+                    case ScalarKind.BOOL: return "bool"
+                    case _: return "float"
+            
+            case TypeInnerType.VECTOR:
+                vec = inner.vector
+                size = vec.size.value
+                scalar_type = TypeInner.new_scalar(vec.scalar)
+                scalar_str = self._type_inner_to_glsl(scalar_type)
+                
+                prefix_map = {"int": "i", "uint": "u", "bool": "b", "double": "d"}
+                prefix = prefix_map.get(scalar_str, "")
+                
+                # GLSL uses vecN, ivecN, uvecN, bvecN, dvecN
+                return f"{prefix}vec{size}"
+            
+            case TypeInnerType.MATRIX:
+                mat = inner.matrix
+                cols = mat.columns.value
+                rows = mat.rows.value
+                scalar_str = self._type_inner_to_glsl(TypeInner.new_scalar(mat.scalar))
+                
+                prefix = "d" if scalar_str == "double" else ""
+                if cols == rows:
+                    return f"{prefix}mat{cols}"
+                return f"{prefix}mat{cols}x{rows}"
+            
+            case TypeInnerType.ARRAY:
+                arr = inner.array
+                element_str = self._type_to_glsl(arr.base)
+                if arr.size.type == ArraySizeType.DYNAMIC:
+                    return f"{element_str}[]"
+                elif arr.size.type == ArraySizeType.CONSTANT:
+                    return f"{element_str}[{arr.size.constant.value}]"
+                elif arr.size.type == ArraySizeType.PENDING:
+                    return f"{element_str}[/* pending {arr.size.pending.handle} */]"
+                return f"{element_str}[]"
+            
+            case TypeInnerType.STRUCT:
+                return "/* struct */"
+            
+            case _:
+                return f"/* TODO: {inner.type} */"
 
     def _get_variable_name(self, var: Any) -> str:
         """Get the GLSL variable name."""

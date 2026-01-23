@@ -1,12 +1,12 @@
-"""WGSL Expression Writer
+"""GLSL Expression Writer
 
-Comprehensive expression writing for WGSL backend.
-Handles all NAGA IR expression types and converts them to valid WGSL syntax.
+Comprehensive expression writing for GLSL backend.
+Handles all NAGA IR expression types and converts them to valid GLSL syntax.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from ...ir import (
     Expression, ExpressionType, Literal, LiteralType,
@@ -18,8 +18,8 @@ if TYPE_CHECKING:
     from ...ir.module import Module
 
 
-class WGSLExpressionWriter:
-    """Writes NAGA IR expressions as WGSL code."""
+class GLSLExpressionWriter:
+    """Writes NAGA IR expressions as GLSL code."""
     
     def __init__(self, module: Module, names: dict[str, str], expressions: Arena[Expression]):
         """Initialize expression writer.
@@ -34,13 +34,13 @@ class WGSLExpressionWriter:
         self.expressions = expressions
     
     def write_expression(self, expr_handle: Handle[Expression]) -> str:
-        """Write an expression to WGSL string.
+        """Write an expression to GLSL string.
         
         Args:
             expr_handle: Handle to the expression
             
         Returns:
-            WGSL code for the expression
+            GLSL code for the expression
         """
         expr = self.expressions[expr_handle]
         
@@ -53,17 +53,16 @@ class WGSLExpressionWriter:
                 return self.names.get(f"const_{expr.constant}", const.name or f"const_{expr.constant}")
             
             case ExpressionType.ZERO_VALUE:
-                ty_name = self._type_name(expr.zero_value_ty)
-                return f"{ty_name}()"
+                # GLSL zero value is just type constructor with no args or 0
+                return self._write_zero_value(expr.zero_value_ty)
             
             case ExpressionType.COMPOSE:
-                return self._write_compose(expr, expressions)
+                return self._write_compose(expr)
             
             case ExpressionType.SPLAT:
                 size = expr.splat_size
                 value = self.write_expression(expr.splat_value)
-                # vec3<f32>(value) for splat
-                return f"vec{self._vector_size_to_int(size)}({value})"
+                return f"{self._type_name(expr.splat_type)}({value})"
             
             case ExpressionType.SWIZZLE:
                 vector = self.write_expression(expr.swizzle_vector)
@@ -91,8 +90,9 @@ class WGSLExpressionWriter:
                 return self.names.get(f"arg_{expr.function_argument}", f"arg_{expr.function_argument}")
             
             case ExpressionType.LOAD:
+                # GLSL LOAD is implicit for many types, but for pointers we might need *
                 pointer = self.write_expression(expr.load_pointer)
-                return f"(*{pointer})"  # Dereference in WGSL
+                return pointer # GLSL usually doesn't need explicit deref for variables
             
             case ExpressionType.UNARY:
                 return self._write_unary(expr)
@@ -110,7 +110,6 @@ class WGSLExpressionWriter:
                 return self._write_relational(expr)
             
             case ExpressionType.CALL_RESULT:
-                # Function call result - just reference it
                 return self.names.get(f"call_{expr.call_result}", f"call_{expr.call_result}")
             
             case ExpressionType.IMAGE_SAMPLE:
@@ -131,26 +130,25 @@ class WGSLExpressionWriter:
             case LiteralType.F64:
                 return f"{lit.f64}"
             case LiteralType.F32:
-                return f"{lit.f32}f"
+                # GLSL f32 literal
+                return f"{lit.f32}" if "." in str(lit.f32) else f"{lit.f32}.0"
             case LiteralType.F16:
-                return f"{lit.f16}h"
+                return f"{lit.f16}"
             case LiteralType.U32:
                 return f"{lit.u32}u"
             case LiteralType.I32:
                 return f"{lit.i32}"
-            case LiteralType.U64:
-                return f"{lit.u64}ul"
-            case LiteralType.I64:
-                return f"{lit.i64}l"
             case LiteralType.BOOL:
                 return "true" if lit.bool else "false"
-            case LiteralType.ABSTRACT_INT:
-                return f"{lit.abstract_int}"
-            case LiteralType.ABSTRACT_FLOAT:
-                return f"{lit.abstract_float}"
             case _:
                 return "0"
     
+    def _write_zero_value(self, ty_handle: int) -> str:
+        """Write a zero value for a type."""
+        # In GLSL, we can often just use a constructor with 0
+        # or if it's a scalar, just 0.0 or 0.
+        return f"{self._type_name(ty_handle)}(0)"
+
     def _write_compose(self, expr: Expression) -> str:
         """Write a compose expression."""
         ty_name = self._type_name(expr.compose_ty)
@@ -209,8 +207,8 @@ class WGSLExpressionWriter:
         accept = self.write_expression(expr.select_accept)
         reject = self.write_expression(expr.select_reject)
         
-        # WGSL uses select(reject, accept, condition)
-        return f"select({reject}, {accept}, {condition})"
+        # GLSL ternary operator
+        return f"({condition} ? {accept} : {reject})"
     
     def _write_math(self, expr: Expression) -> str:
         """Write a math function call."""
@@ -239,18 +237,16 @@ class WGSLExpressionWriter:
         sampler = self.write_expression(expr.image_sample_sampler)
         coord = self.write_expression(expr.image_sample_coordinate)
         
-        # WGSL textureSample(image, sampler, coord)
-        return f"textureSample({image}, {sampler}, {coord})"
+        # GLSL usually combines image and sampler into a single sampler object
+        # but in Vulkan/OpenGL 4.5+ they can be separate.
+        # For now, assume they are combined or handled by the driver.
+        return f"texture(sampler2D({image}, {sampler}), {coord})"
 
     def _write_image_load(self, expr: Expression) -> str:
         """Write an image load expression."""
         image = self.write_expression(expr.image_load_image)
         coord = self.write_expression(expr.image_load_coordinate)
-        # WGSL textureLoad(image, coord, level)
-        level = "0" # Default level
-        if hasattr(expr, 'image_load_level') and expr.image_load_level is not None:
-            level = self.write_expression(expr.image_load_level)
-        return f"textureLoad({image}, {coord}, {level})"
+        return f"imageLoad({image}, {coord})"
 
     def _write_atomic(self, expr: Expression) -> str:
         """Write an atomic operation."""
@@ -260,7 +256,7 @@ class WGSLExpressionWriter:
         
         func_map = {
             AtomicFunction.ADD: "atomicAdd",
-            AtomicFunction.SUBTRACT: "atomicSub",
+            AtomicFunction.SUBTRACT: "atomicAdd", # GLSL uses atomicAdd with negative
             AtomicFunction.AND: "atomicAnd",
             AtomicFunction.EXCLUSIVE_OR: "atomicXor",
             AtomicFunction.INCLUSIVE_OR: "atomicOr",
@@ -270,124 +266,75 @@ class WGSLExpressionWriter:
         }
         
         func = func_map.get(expr.atomic_fun, "atomicAdd")
+        if expr.atomic_fun == AtomicFunction.SUBTRACT:
+             value = f"(-{value})"
+             
         return f"{func}({pointer}, {value})"
     
     def _math_function_name(self, func: MathFunction) -> str:
-        """Get WGSL name for math function."""
-        # Most math functions have the same name in WGSL
+        """Get GLSL name for math function."""
         func_map = {
             MathFunction.ABS: "abs",
             MathFunction.MIN: "min",
             MathFunction.MAX: "max",
             MathFunction.CLAMP: "clamp",
-            MathFunction.SATURATE: "saturate",
             MathFunction.COS: "cos",
-            MathFunction.COSH: "cosh",
             MathFunction.SIN: "sin",
-            MathFunction.SINH: "sinh",
             MathFunction.TAN: "tan",
-            MathFunction.TANH: "tanh",
             MathFunction.ACOS: "acos",
             MathFunction.ASIN: "asin",
             MathFunction.ATAN: "atan",
-            MathFunction.ATAN2: "atan2",
-            MathFunction.ASINH: "asinh",
-            MathFunction.ACOSH: "acosh",
-            MathFunction.ATANH: "atanh",
-            MathFunction.RADIANS: "radians",
-            MathFunction.DEGREES: "degrees",
-            MathFunction.CEIL: "ceil",
-            MathFunction.FLOOR: "floor",
-            MathFunction.ROUND: "round",
-            MathFunction.FRACT: "fract",
-            MathFunction.TRUNC: "trunc",
-            MathFunction.MODF: "modf",
-            MathFunction.FREXP: "frexp",
-            MathFunction.LDEXP: "ldexp",
+            MathFunction.ATAN2: "atan", # GLSL atan is overloaded for 1 or 2 args
             MathFunction.EXP: "exp",
             MathFunction.EXP2: "exp2",
             MathFunction.LOG: "log",
             MathFunction.LOG2: "log2",
             MathFunction.POW: "pow",
             MathFunction.DOT: "dot",
-            MathFunction.OUTER: "outerProduct",
             MathFunction.CROSS: "cross",
             MathFunction.DISTANCE: "distance",
             MathFunction.LENGTH: "length",
             MathFunction.NORMALIZE: "normalize",
-            MathFunction.FACE_FORWARD: "faceForward",
+            MathFunction.FACE_FORWARD: "faceforward",
             MathFunction.REFLECT: "reflect",
             MathFunction.REFRACT: "refract",
             MathFunction.SIGN: "sign",
-            MathFunction.FMA: "fma",
             MathFunction.MIX: "mix",
             MathFunction.STEP: "step",
             MathFunction.SMOOTH_STEP: "smoothstep",
             MathFunction.SQRT: "sqrt",
-            MathFunction.INVERSE_SQRT: "inverseSqrt",
-            MathFunction.INVERSE: "inverse",
+            MathFunction.INVERSE_SQRT: "inversesqrt",
             MathFunction.TRANSPOSE: "transpose",
             MathFunction.DETERMINANT: "determinant",
-            MathFunction.QUANTIZE_TO_F16: "quantizeToF16",
-            MathFunction.COUNT_TRAILING_ZEROS: "countTrailingZeros",
-            MathFunction.COUNT_LEADING_ZEROS: "countLeadingZeros",
-            MathFunction.COUNT_ONE_BITS: "countOneBits",
-            MathFunction.REVERSE_BITS: "reverseBits",
-            MathFunction.EXTRACT_BITS: "extractBits",
-            MathFunction.INSERT_BITS: "insertBits",
-            MathFunction.FIRST_TRAILING_BIT: "firstTrailingBit",
-            MathFunction.FIRST_LEADING_BIT: "firstLeadingBit",
+            MathFunction.INVERSE: "inverse",
         }
         return func_map.get(func, str(func).lower())
     
     def _relational_function_name(self, func: Any) -> str:
-        """Get WGSL name for relational function."""
+        """Get GLSL name for relational function."""
         func_map = {
             "All": "all",
             "Any": "any",
-            "IsNan": "isNan",
-            "IsInf": "isInf",
-            "IsFinite": "isFinite",
-            "IsNormal": "isNormal",
+            "IsNan": "isnan",
+            "IsInf": "isinf",
         }
         return func_map.get(str(func), str(func).lower())
     
-    def _type_name(self, ty_handle: int) -> str:
-        """Get WGSL type name."""
-        if ty_handle >= len(self.module.types):
-            return "unknown"
-        
-        ty = self.module.types[ty_handle]
-        
-        # Simplified type name generation
-        if hasattr(ty, 'name') and ty.name:
-            return ty.name
-        
-        return f"Type{ty_handle}"
-    
-    def _vector_size_to_int(self, size: Any) -> int:
-        """Convert VectorSize to integer."""
-        size_map = {
-            "BI": 2,
-            "TRI": 3,
-            "QUAD": 4,
-        }
-        return size_map.get(str(size), 4)
-    
+    def _type_name(self, ty_handle: int | Any) -> str:
+        """Get GLSL type name."""
+        if isinstance(ty_handle, int):
+            if ty_handle >= len(self.module.types):
+                return "unknown"
+            ty = self.module.types[ty_handle]
+            if hasattr(ty, 'name') and ty.name:
+                return ty.name
+            return f"Type{ty_handle}"
+        return str(ty_handle).lower()
+
     def _swizzle_pattern(self, pattern: list, size: Any) -> str:
         """Generate swizzle pattern string."""
         component_map = {0: "x", 1: "y", 2: "z", 3: "w"}
-        size_int = self._vector_size_to_int(size)
-        
-        components = []
-        for i in range(size_int):
-            if i < len(pattern):
-                comp_idx = pattern[i] if isinstance(pattern[i], int) else 0
-                components.append(component_map.get(comp_idx, "x"))
-            else:
-                components.append("x")
-        
-        return "".join(components)
+        return "".join(component_map.get(c, "x") for c in pattern)
 
 
-__all__ = ['WGSLExpressionWriter']
+__all__ = ['GLSLExpressionWriter']
