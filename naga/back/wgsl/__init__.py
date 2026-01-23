@@ -9,6 +9,8 @@ from typing import Any, Dict, List, Optional, Set, Union
 from enum import IntFlag
 import io
 
+from .expression_writer import WGSLExpressionWriter
+from .statement_writer import WGSLStatementWriter
 from ...error import ShaderError
 from ...common.diagnostic_debug import DiagnosticDebug
 
@@ -254,108 +256,17 @@ class Writer:
 
         self.out.write(" {\n")
 
-        # Write function body - simplified
+        # Create writers for this function
+        expr_writer = WGSLExpressionWriter(module, self.names, func.expressions)
+        stmt_writer = WGSLStatementWriter(module, self.names, expr_writer)
+
+        # Write function body
         if hasattr(func, "body") and func.body:
-            self._write_block(func.body, 1)
+            body_code = stmt_writer.write_block(func.body, 1)
+            self.out.write(body_code)
 
         self.out.write("}\n")
 
-    def _write_block(self, block: Any, indent_level: int) -> None:
-        """Write a statement block with proper indentation."""
-        indent = "    " * indent_level
-
-        for stmt in block:
-            self._write_statement(stmt, indent_level)
-
-    def _write_statement(self, stmt: Any, indent_level: int) -> None:
-        """Write a single statement."""
-        indent = "    " * indent_level
-
-        if hasattr(stmt, "ty"):
-            stmt_type = stmt.ty
-        else:
-            stmt_type = type(stmt).__name__
-
-        # Basic statement handling - would need full IR implementation
-        if stmt_type == "LocalVariable":
-            var_name = self.names.get(str(id(stmt)), f"local_{id(stmt)}")
-            self.out.write(f"{indent}var {var_name}")
-            if hasattr(stmt, "ty") and stmt.ty:
-                self.out.write(f": {self._type_to_string(stmt.ty)}")
-            if hasattr(stmt, "init") and stmt.init:
-                self.out.write(f" = {self._expression_to_string(stmt.init)}")
-            self.out.write(";\n")
-        elif stmt_type == "Store":
-            if hasattr(stmt, "pointer") and hasattr(stmt, "value"):
-                self.out.write(
-                    f"{indent}{self._expression_to_string(stmt.pointer)} = {self._expression_to_string(stmt.value)};\n"
-                )
-        elif stmt_type == "Return":
-            if hasattr(stmt, "value") and stmt.value:
-                self.out.write(
-                    f"{indent}return {self._expression_to_string(stmt.value)};\n"
-                )
-            else:
-                self.out.write(f"{indent}return;\n")
-        elif stmt_type == "Break":
-            self.out.write(f"{indent}break;\n")
-        elif stmt_type == "Continue":
-            self.out.write(f"{indent}continue;\n")
-        else:
-            # Unknown statement type - write placeholder
-            self.out.write(f"{indent}// TODO: Implement {stmt_type}\n")
-
-    def _expression_to_string(self, expr: Any) -> str:
-        """Convert an expression to WGSL string representation."""
-        if hasattr(expr, "ty"):
-            expr_type = expr.ty
-        else:
-            expr_type = type(expr).__name__
-
-        if expr_type == "Literal":
-            return str(expr.value)
-        elif expr_type == "Variable":
-            var_name = self.names.get(str(id(expr)), f"var_{id(expr)}")
-            return var_name
-        elif expr_type == "BinaryOperation":
-            left = self._expression_to_string(expr.left)
-            right = self._expression_to_string(expr.right)
-            op = self._binary_op_to_string(expr.op)
-            return f"({left} {op} {right})"
-        elif expr_type == "Call":
-            func_name = self.names.get(
-                str(expr.function),
-                (
-                    expr.function.name
-                    if hasattr(expr.function, "name")
-                    else f"func_{expr.function}"
-                ),
-            )
-            args = [self._expression_to_string(arg) for arg in expr.arguments]
-            return f"{func_name}({', '.join(args)})"
-        else:
-            return f"/* TODO: {expr_type} */"
-
-    def _binary_op_to_string(self, op: Any) -> str:
-        """Convert binary operation enum to string."""
-        op_map = {
-            "Add": "+",
-            "Subtract": "-",
-            "Multiply": "*",
-            "Divide": "/",
-            "Modulo": "%",
-            "Equal": "==",
-            "NotEqual": "!=",
-            "Less": "<",
-            "LessEqual": "<=",
-            "Greater": ">",
-            "GreaterEqual": ">=",
-            "And": "&",
-            "Or": "|",
-            "LogicalAnd": "&&",
-            "LogicalOr": "||",
-        }
-        return op_map.get(str(op), "?")
 
     def _type_to_string(self, ty: Any) -> str:
         """Convert a type to WGSL string representation."""
