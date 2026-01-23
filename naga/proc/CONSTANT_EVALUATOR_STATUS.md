@@ -183,11 +183,15 @@ All expression types are matched and dispatched, but most return NotImplementedE
    - `cast()` method for all type conversions
    - Abstract value to concrete conversions
    - Lossy conversion detection
+   - ⚠️ Not found in current Naga version - may not be needed
 
-10. **Advanced expressions**
-    - `select()` - full vector and scalar support
-    - `swizzle()` - pattern matching and component reordering
-    - `access()` - dynamic index handling
+10. ✅ **Advanced expressions** - **COMPLETED**
+     - ✅ `select()` - full vector and scalar support with constant folding
+     - ✅ `swizzle()` - pattern matching and component reordering
+     - ✅ `access()` - constant index handling with compose optimization
+     - ✅ `compose()` - vector/matrix/array/struct composition
+     - ✅ `splat()` - scalar to vector expansion
+     - Implemented in `naga/proc/constant_evaluator_extended.py`
 
 ## Integration Points
 

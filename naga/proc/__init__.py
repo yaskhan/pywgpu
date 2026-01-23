@@ -50,6 +50,35 @@ from .component_wise import (
 # Math function implementations
 from .constant_evaluator_math import MathFunctionEvaluator
 
+# Literal helpers and operations
+from .literal_helpers import (
+    LiteralVector,
+    literal_ty_inner,
+)
+
+from .zero_value_helpers import (
+    literal_zero,
+    eval_zero_value_impl,
+)
+
+from .literal_operations import (
+    apply_unary_op,
+    apply_binary_op,
+    LiteralOperationError,
+)
+
+# Extended constant evaluator
+from .constant_evaluator_extended import (
+    eval_unary_expression,
+    eval_binary_expression,
+    eval_zero_value_expression,
+    eval_compose_expression,
+    eval_splat_expression,
+    eval_access_index_expression,
+    eval_swizzle_expression,
+    eval_select_expression,
+)
+
 __all__ = [
     "Namer",
     "NameKey",
@@ -87,4 +116,23 @@ __all__ = [
     "MathFunctionEvaluator",
     "ResolveContext",
     "ResolveError",
+    # Literal helpers
+    "LiteralVector",
+    "literal_ty_inner",
+    # Zero value helpers
+    "literal_zero",
+    "eval_zero_value_impl",
+    # Literal operations
+    "apply_unary_op",
+    "apply_binary_op",
+    "LiteralOperationError",
+    # Extended evaluator
+    "eval_unary_expression",
+    "eval_binary_expression",
+    "eval_zero_value_expression",
+    "eval_compose_expression",
+    "eval_splat_expression",
+    "eval_access_index_expression",
+    "eval_swizzle_expression",
+    "eval_select_expression",
 ]
