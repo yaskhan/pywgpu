@@ -22,6 +22,8 @@ from .flags import (
     TypeFlags,
     ValidationFlags,
 )
+from .expression_validation import ExpressionValidator
+from .statement_validation import StatementValidator
 from .module_info import FunctionInfo, ModuleInfo
 
 
@@ -149,6 +151,7 @@ class Validator:
 
         # Initialize module info
         mod_info = ModuleInfo()
+        self._module_info = mod_info
 
         # Always compute type flags, even if we skip most validation stages.
         # This mirrors the Rust validator behavior, which always returns a usable
@@ -450,41 +453,16 @@ class Validator:
                 f"Module function arena contains unexpected value: {type(func)!r}"
             )
 
-        for arg in func.arguments:
-            ty_handle = getattr(arg, "ty", None)
-            if isinstance(ty_handle, int):
-                if ty_handle < 0 or ty_handle >= len(module.types):
-                    raise ValidationError(
-                        f"Function argument references invalid type handle {ty_handle} "
-                        f"(types={len(module.types)})"
-                    )
+        # Validate expressions
+        expr_validator = ExpressionValidator(module, self._module_info, func.expressions)
+        for expr_handle in func.expressions.keys():
+            expr_validator.validate_expression(expr_handle)
 
-        if func.result is not None:
-            result_ty = getattr(func.result, "ty", None)
-            if isinstance(result_ty, int):
-                if result_ty < 0 or result_ty >= len(module.types):
-                    raise ValidationError(
-                        f"Function result references invalid type handle {result_ty} "
-                        f"(types={len(module.types)})"
-                    )
-
-        for local in func.local_variables:
-            local_ty = getattr(local, "ty", None)
-            if isinstance(local_ty, int):
-                if local_ty < 0 or local_ty >= len(module.types):
-                    raise ValidationError(
-                        f"Local variable references invalid type handle {local_ty} "
-                        f"(types={len(module.types)})"
-                    )
-
-        # Validate named expression handles if they are integer indices.
-        for name, expr_handle in func.named_expressions.items():
-            if isinstance(expr_handle, int):
-                if expr_handle < 0 or expr_handle >= len(func.expressions):
-                    raise ValidationError(
-                        f"Named expression '{name}' references invalid expression handle "
-                        f"{expr_handle} (expressions={len(func.expressions)})"
-                    )
+        # Validate statements
+        stmt_validator = StatementValidator(module, self._module_info, func)
+        if hasattr(func, "body") and func.body:
+            for stmt in func.body:
+                stmt_validator.validate_statement(stmt)
 
         return FunctionInfo()
 

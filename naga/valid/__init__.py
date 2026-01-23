@@ -29,6 +29,8 @@ from .errors import (
     TypeError,
     ValidationError,
 )
+from .expression_validation import ExpressionValidator
+from .statement_validation import StatementValidator
 from .flags import (
     Capabilities,
     ShaderStages,
@@ -64,4 +66,6 @@ __all__ = [
     "InvalidHandleError",
     "LayoutError",
     "ComposeError",
+    "ExpressionValidator",
+    "StatementValidator",
 ]
