@@ -16,6 +16,18 @@ class ShaderStage(Enum):
     FRAGMENT = "fragment"
     COMPUTE = "compute"
 
+    def compute_like(self) -> bool:
+        """
+        Check if this is a compute-like shader stage.
+
+        Compute-like stages are Task, Mesh, and Compute shaders.
+        These stages operate on compute-like workgroups rather than graphics pipeline stages.
+
+        Returns:
+            True if this stage is Task, Mesh, or Compute; False otherwise
+        """
+        return self in (self.TASK, self.MESH, self.COMPUTE)
+
 
 @dataclass(frozen=True, slots=True)
 class BuiltInPosition:

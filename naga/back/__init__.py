@@ -105,12 +105,13 @@ class FunctionType(Enum):
     FUNCTION = "function"
     ENTRY_POINT = "entry_point"
 
-    def is_compute_like_entry_point(self, module: Any) -> bool:
+    def is_compute_like_entry_point(self, module: Any, ep_index: Optional[int] = None) -> bool:
         """
         Returns true if the function is an entry point for a compute-like shader.
 
         Args:
             module: The module to check entry points against
+            ep_index: The index of the entry point (required for ENTRY_POINT type)
 
         Returns:
             True if this is a compute-like entry point, False otherwise
@@ -118,11 +119,10 @@ class FunctionType(Enum):
         if self != FunctionType.ENTRY_POINT:
             return False
 
-        # Get the entry point stage from the module
-        # This would need to look up the actual entry point based on context
-        # For now, this is a placeholder - the actual implementation would need
-        # the entry point index or handle
-        return False
+        if ep_index is None:
+            return False
+
+        return module.entry_points[ep_index].stage.compute_like()
 
 
 class FunctionCtx:

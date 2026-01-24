@@ -167,7 +167,6 @@ class Writer:
         try:
             self._initialize_names()
             self._find_entry_point()
-            self._collect_required_features()
 
             # Write Metal includes and pragmas
             self._write_header()
@@ -217,10 +216,6 @@ class Writer:
             if ep.name == self.entry_point_name and ep.stage.value == self.shader_stage.value:
                 self.entry_point = ep
                 break
-
-    def _collect_required_features(self) -> None:
-        """Analyze module and collect required MSL features."""
-        pass
 
     def _write_header(self) -> None:
         """Write MSL file header."""
