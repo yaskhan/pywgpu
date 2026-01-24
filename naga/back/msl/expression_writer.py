@@ -1,182 +1,215 @@
-"""MSL Expression Writer
+"""MSL expression writer.
 
-Comprehensive expression writing for MSL backend.
-Handles all NAGA IR expression types and converts them to valid Metal Shading Language syntax.
+This is a lightweight translation of parts of `wgpu-trunk/naga/src/back/msl/writer.rs`.
+
+The full Metal backend is still being ported; this writer supports the
+expression variants used by the current simplified MSL backend.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING
 
-from ...ir import (
-    Expression, ExpressionType, Literal, LiteralType,
-    BinaryOperator, UnaryOperator, MathFunction
-)
 from ...error import ShaderError
+from ...ir import (
+    BinaryOperator,
+    Expression,
+    ExpressionType,
+    Literal,
+    LiteralType,
+    MathFunction,
+    RelationalFunction,
+    UnaryOperator,
+)
 
 if TYPE_CHECKING:
-    from ...arena import Handle, Arena
     from ...ir.module import Module
 
 
 class MSLExpressionWriter:
-    """Writes NAGA IR expressions as MSL code."""
-    
-    def __init__(self, module: Module, names: dict[str, str], expressions: Arena[Expression]):
-        """Initialize expression writer.
-        
-        Args:
-            module: The module being written
-            names: Name mapping for identifiers
-            expressions: The expression arena for the current function
-        """
+    """Writes Naga IR expressions as Metal Shading Language source."""
+
+    def __init__(self, module: Module, names: dict[str, str], expressions: list[Expression]):
         self.module = module
         self.names = names
         self.expressions = expressions
-    
-    def write_expression(self, expr_handle: Handle[Expression]) -> str:
-        """Write an expression to MSL string.
-        
-        Args:
-            expr_handle: Handle to the expression
-            
-        Returns:
-            MSL code for the expression
-        """
+
+    def write_expression(self, expr_handle: int) -> str:
         expr = self.expressions[expr_handle]
-        
+
         match expr.type:
             case ExpressionType.LITERAL:
+                if expr.literal is None:
+                    raise ShaderError("Malformed Literal expression")
                 return self._write_literal(expr.literal)
-            
+
             case ExpressionType.CONSTANT:
-                const = self.module.constants[expr.constant]
-                return self.names.get(f"const_{expr.constant}", const.name or f"const_{expr.constant}")
-            
+                if expr.constant is None:
+                    raise ShaderError("Malformed Constant expression")
+                constant = self.module.constants[expr.constant]
+                if constant.name is not None:
+                    return self.names.get(f"const_{expr.constant}", constant.name)
+                return self.write_expression(constant.init)
+
             case ExpressionType.ZERO_VALUE:
-                return self._write_zero_value(expr.zero_value_ty)
-            
+                if expr.zero_value is None:
+                    raise ShaderError("Malformed ZeroValue expression")
+                return f"{self._type_name(expr.zero_value)}{{}}"
+
             case ExpressionType.COMPOSE:
-                return self._write_compose(expr)
-            
+                if expr.compose_ty is None or expr.compose_components is None:
+                    raise ShaderError("Malformed Compose expression")
+                args = ", ".join(self.write_expression(h) for h in expr.compose_components)
+                return f"{self._type_name(expr.compose_ty)}({args})"
+
             case ExpressionType.SPLAT:
-                value = self.write_expression(expr.splat_value)
-                return f"{self._type_name(expr.splat_type)}({value})"
-            
+                if expr.splat_size is None or expr.splat_value is None:
+                    raise ShaderError("Malformed Splat expression")
+                size = getattr(expr.splat_size, "value", 4)
+                return f"{self._vector_ctor(size)}({self.write_expression(expr.splat_value)})"
+
             case ExpressionType.SWIZZLE:
+                if (
+                    expr.swizzle_vector is None
+                    or expr.swizzle_size is None
+                    or expr.swizzle_pattern is None
+                ):
+                    raise ShaderError("Malformed Swizzle expression")
                 vector = self.write_expression(expr.swizzle_vector)
-                pattern = self._swizzle_pattern(expr.swizzle_pattern)
+                size = getattr(expr.swizzle_size, "value", 4)
+                pattern = self._swizzle_pattern(expr.swizzle_pattern, size)
                 return f"{vector}.{pattern}"
-            
+
             case ExpressionType.ACCESS:
+                if expr.access_base is None or expr.access_index is None:
+                    raise ShaderError("Malformed Access expression")
                 base = self.write_expression(expr.access_base)
                 index = self.write_expression(expr.access_index)
                 return f"{base}[{index}]"
-            
+
             case ExpressionType.ACCESS_INDEX:
+                if expr.access_base is None or expr.access_index_value is None:
+                    raise ShaderError("Malformed AccessIndex expression")
                 base = self.write_expression(expr.access_base)
-                index = expr.access_index
-                return f"{base}[{index}]"
-            
-            case ExpressionType.GLOBAL_VARIABLE:
-                var = self.module.global_variables[expr.global_variable]
-                return self.names.get(f"global_{expr.global_variable}", var.name or f"global_{expr.global_variable}")
-            
-            case ExpressionType.LOCAL_VARIABLE:
-                return self.names.get(f"local_{expr.local_variable}", f"local_{expr.local_variable}")
-            
+                return f"{base}[{expr.access_index_value}]"
+
             case ExpressionType.FUNCTION_ARGUMENT:
+                if expr.function_argument is None:
+                    raise ShaderError("Malformed FunctionArgument expression")
                 return self.names.get(f"arg_{expr.function_argument}", f"arg_{expr.function_argument}")
-            
+
+            case ExpressionType.GLOBAL_VARIABLE:
+                if expr.global_variable is None:
+                    raise ShaderError("Malformed GlobalVariable expression")
+                var = self.module.global_variables[expr.global_variable]
+                return self.names.get(
+                    f"global_{expr.global_variable}",
+                    getattr(var, "name", None) or f"global_{expr.global_variable}",
+                )
+
+            case ExpressionType.LOCAL_VARIABLE:
+                if expr.local_variable is None:
+                    raise ShaderError("Malformed LocalVariable expression")
+                return self.names.get(f"local_{expr.local_variable}", f"local_{expr.local_variable}")
+
             case ExpressionType.LOAD:
-                pointer = self.write_expression(expr.load_pointer)
-                return pointer
-            
+                if expr.load_pointer is None:
+                    raise ShaderError("Malformed Load expression")
+                return self.write_expression(expr.load_pointer)
+
             case ExpressionType.UNARY:
-                return self._write_unary(expr)
-            
+                if expr.unary_op is None or expr.unary_expr is None:
+                    raise ShaderError("Malformed Unary expression")
+                operand = self.write_expression(expr.unary_expr)
+                return self._write_unary(expr.unary_op, operand)
+
             case ExpressionType.BINARY:
-                return self._write_binary(expr)
-            
+                if expr.binary_op is None or expr.binary_left is None or expr.binary_right is None:
+                    raise ShaderError("Malformed Binary expression")
+                left = self.write_expression(expr.binary_left)
+                right = self.write_expression(expr.binary_right)
+                return self._write_binary(expr.binary_op, left, right)
+
             case ExpressionType.SELECT:
-                return self._write_select(expr)
-            
-            case ExpressionType.MATH:
-                return self._write_math(expr)
-            
+                if (
+                    expr.select_condition is None
+                    or expr.select_accept is None
+                    or expr.select_reject is None
+                ):
+                    raise ShaderError("Malformed Select expression")
+                condition = self.write_expression(expr.select_condition)
+                accept = self.write_expression(expr.select_accept)
+                reject = self.write_expression(expr.select_reject)
+                return f"({condition} ? {accept} : {reject})"
+
             case ExpressionType.RELATIONAL:
-                return self._write_relational(expr)
-            
+                if expr.relational_fun is None or expr.relational_argument is None:
+                    raise ShaderError("Malformed Relational expression")
+                fun = self._relational_function_name(expr.relational_fun)
+                arg = self.write_expression(expr.relational_argument)
+                return f"{fun}({arg})"
+
+            case ExpressionType.MATH:
+                if expr.math_fun is None or expr.math_arg is None:
+                    raise ShaderError("Malformed Math expression")
+                fun = self._math_function_name(expr.math_fun)
+                args = [self.write_expression(expr.math_arg)]
+                for extra in (expr.math_arg1, expr.math_arg2, expr.math_arg3):
+                    if extra is not None:
+                        args.append(self.write_expression(extra))
+                return f"{fun}({', '.join(args)})"
+
             case ExpressionType.CALL_RESULT:
+                if expr.call_result is None:
+                    raise ShaderError("Malformed CallResult expression")
                 return self.names.get(f"call_{expr.call_result}", f"call_{expr.call_result}")
-            
-            case ExpressionType.IMAGE_SAMPLE:
-                return self._write_image_sample(expr)
-            
-            case ExpressionType.IMAGE_LOAD:
-                return self._write_image_load(expr)
-            
-            case ExpressionType.ATOMIC:
-                return self._write_atomic(expr)
-            
+
+            case ExpressionType.ATOMIC_RESULT | ExpressionType.WORKGROUP_UNIFORM_LOAD_RESULT:
+                return f"_e{expr_handle}"
+
             case _:
                 raise ShaderError(f"Unsupported MSL expression: {expr.type}")
-    
-    def _write_literal(self, lit: Literal) -> str:
-        """Write a literal value."""
-        match lit.type:
-            case LiteralType.F64:
-                return f"{lit.f64}"
-            case LiteralType.F32:
-                # MSL f32 literal
-                res = str(lit.f32)
-                if "." not in res and "e" not in res:
-                    res += ".0"
-                return f"{res}f"
-            case LiteralType.F16:
-                return f"{lit.f16}h"
-            case LiteralType.U32:
-                return f"{lit.u32}u"
-            case LiteralType.I32:
-                return f"{lit.i32}"
-            case LiteralType.BOOL:
-                return "true" if lit.bool else "false"
-            case _:
-                return "0"
-    
-    def _write_zero_value(self, ty_handle: int) -> str:
-        """Write a zero value for a type."""
-        # MSL uses {} for zero initialization
-        return f"{self._type_name(ty_handle)}{{}}"
 
-    def _write_compose(self, expr: Expression) -> str:
-        """Write a compose expression."""
-        ty_name = self._type_name(expr.compose_ty)
-        components = [
-            self.write_expression(comp)
-            for comp in expr.compose_components
-        ]
-        return f"{ty_name}({', '.join(components)})"
-    
-    def _write_unary(self, expr: Expression) -> str:
-        """Write a unary operation."""
-        operand = self.write_expression(expr.unary_expr)
-        
-        match expr.unary_op:
+    def _write_literal(self, lit: Literal) -> str:
+        value = lit.value
+        match lit.type:
+            case LiteralType.F16:
+                return f"{value}h"
+            case LiteralType.F32:
+                text = str(value)
+                if "." not in text and "e" not in text and "E" not in text:
+                    text += ".0"
+                return f"{text}f"
+            case LiteralType.F64:
+                return str(value)
+            case LiteralType.U32:
+                return f"{int(value)}u"
+            case LiteralType.I32:
+                return str(int(value))
+            case LiteralType.BOOL:
+                return "true" if bool(value) else "false"
+            case LiteralType.U64:
+                return f"{int(value)}ul"
+            case LiteralType.I64:
+                return f"{int(value)}l"
+            case LiteralType.ABSTRACT_INT | LiteralType.ABSTRACT_FLOAT:
+                raise ShaderError(
+                    "Abstract types should not appear in IR presented to backends"
+                )
+
+        raise ShaderError(f"Unsupported literal type: {lit.type}")
+
+    def _write_unary(self, op: UnaryOperator, operand: str) -> str:
+        match op:
             case UnaryOperator.NEGATE:
                 return f"(-{operand})"
             case UnaryOperator.LOGICAL_NOT:
                 return f"(!{operand})"
             case UnaryOperator.BITWISE_NOT:
                 return f"(~{operand})"
-            case _:
-                return f"(/* unary */ {operand})"
-    
-    def _write_binary(self, expr: Expression) -> str:
-        """Write a binary operation."""
-        left = self.write_expression(expr.binary_left)
-        right = self.write_expression(expr.binary_right)
-        
+        raise ShaderError(f"Unsupported unary operator: {op}")
+
+    def _write_binary(self, op: BinaryOperator, left: str, right: str) -> str:
         op_map = {
             BinaryOperator.ADD: "+",
             BinaryOperator.SUBTRACT: "-",
@@ -189,149 +222,46 @@ class MSLExpressionWriter:
             BinaryOperator.LESS_EQUAL: "<=",
             BinaryOperator.GREATER: ">",
             BinaryOperator.GREATER_EQUAL: ">=",
+            BinaryOperator.AND: "&",
+            BinaryOperator.EXCLUSIVE_OR: "^",
+            BinaryOperator.INCLUSIVE_OR: "|",
             BinaryOperator.LOGICAL_AND: "&&",
             BinaryOperator.LOGICAL_OR: "||",
-            BinaryOperator.AND: "&",
-            BinaryOperator.INCLUSIVE_OR: "|",
-            BinaryOperator.EXCLUSIVE_OR: "^",
             BinaryOperator.SHIFT_LEFT: "<<",
             BinaryOperator.SHIFT_RIGHT: ">>",
         }
-        
-        op = op_map.get(expr.binary_op, "?")
-        return f"({left} {op} {right})"
-    
-    def _write_select(self, expr: Expression) -> str:
-        """Write a select (ternary) expression."""
-        condition = self.write_expression(expr.select_condition)
-        accept = self.write_expression(expr.select_accept)
-        reject = self.write_expression(expr.select_reject)
-        
-        return f"({condition} ? {accept} : {reject})"
-    
-    def _write_math(self, expr: Expression) -> str:
-        """Write a math function call."""
-        func_name = self._math_function_name(expr.math_fun)
-        
-        args = [self.write_expression(expr.math_arg)]
-        
-        if hasattr(expr, 'math_arg1') and expr.math_arg1 is not None:
-            args.append(self.write_expression(expr.math_arg1))
-        if hasattr(expr, 'math_arg2') and expr.math_arg2 is not None:
-            args.append(self.write_expression(expr.math_arg2))
-        if hasattr(expr, 'math_arg3') and expr.math_arg3 is not None:
-            args.append(self.write_expression(expr.math_arg3))
-        
-        return f"{func_name}({', '.join(args)})"
-    
-    def _write_relational(self, expr: Expression) -> str:
-        """Write a relational function call."""
-        func_name = self._relational_function_name(expr.relational_fun)
-        arg = self.write_expression(expr.relational_argument)
-        return f"{func_name}({arg})"
+        symbol = op_map.get(op)
+        if symbol is None:
+            raise ShaderError(f"Unsupported binary operator: {op}")
+        return f"({left} {symbol} {right})"
 
-    def _write_image_sample(self, expr: Expression) -> str:
-        """Write an image sampling expression."""
-        image = self.write_expression(expr.image_sample_image)
-        sampler = self.write_expression(expr.image_sample_sampler)
-        coord = self.write_expression(expr.image_sample_coordinate)
-        
-        # MSL: texture.sample(sampler, coordinate)
-        return f"{image}.sample({sampler}, {coord})"
-
-    def _write_image_load(self, expr: Expression) -> str:
-        """Write an image load expression."""
-        image = self.write_expression(expr.image_load_image)
-        coord = self.write_expression(expr.image_load_coordinate)
-        
-        # MSL: texture.read(coordinate)
-        return f"{image}.read({coord})"
-
-    def _write_atomic(self, expr: Expression) -> str:
-        """Write an atomic operation."""
-        from ...ir import AtomicFunction
-        pointer = self.write_expression(expr.atomic_pointer)
-        value = self.write_expression(expr.atomic_value)
-        
-        func_map = {
-            AtomicFunction.ADD: "atomic_fetch_add",
-            AtomicFunction.SUBTRACT: "atomic_fetch_sub",
-            AtomicFunction.AND: "atomic_fetch_and",
-            AtomicFunction.EXCLUSIVE_OR: "atomic_fetch_xor",
-            AtomicFunction.INCLUSIVE_OR: "atomic_fetch_or",
-            AtomicFunction.MIN: "atomic_fetch_min",
-            AtomicFunction.MAX: "atomic_fetch_max",
-            AtomicFunction.EXCHANGE: "atomic_exchange",
-        }
-        
-        func = func_map.get(expr.atomic_fun, "atomic_fetch_add")
-        # Metal atomic functions take pointer and value
-        return f"{func}({pointer}, {value})"
-    
     def _math_function_name(self, func: MathFunction) -> str:
-        """Get MSL name for math function."""
-        func_map = {
-            MathFunction.ABS: "abs",
-            MathFunction.MIN: "min",
-            MathFunction.MAX: "max",
-            MathFunction.CLAMP: "clamp",
-            MathFunction.COS: "cos",
-            MathFunction.SIN: "sin",
-            MathFunction.TAN: "tan",
-            MathFunction.ACOS: "acos",
-            MathFunction.ASIN: "asin",
-            MathFunction.ATAN: "atan",
-            MathFunction.ATAN2: "atan2",
-            MathFunction.EXP: "exp",
-            MathFunction.EXP2: "exp2",
-            MathFunction.LOG: "log",
-            MathFunction.LOG2: "log2",
-            MathFunction.POW: "pow",
-            MathFunction.DOT: "dot",
-            MathFunction.CROSS: "cross",
-            MathFunction.DISTANCE: "distance",
-            MathFunction.LENGTH: "length",
-            MathFunction.NORMALIZE: "normalize",
-            MathFunction.FACE_FORWARD: "faceforward",
-            MathFunction.REFLECT: "reflect",
-            MathFunction.REFRACT: "refract",
-            MathFunction.SIGN: "sign",
-            MathFunction.MIX: "mix",
-            MathFunction.STEP: "step",
-            MathFunction.SMOOTH_STEP: "smoothstep",
-            MathFunction.SQRT: "sqrt",
-            MathFunction.INVERSE_SQRT: "rsqrt",
-            MathFunction.TRANSPOSE: "transpose",
-            MathFunction.DETERMINANT: "determinant",
-            MathFunction.INVERSE: "inverse",
-        }
-        return func_map.get(func, str(func).lower())
-    
-    def _relational_function_name(self, func: Any) -> str:
-        """Get MSL name for relational function."""
-        func_map = {
-            "All": "all",
-            "Any": "any",
-            "IsNan": "isnan",
-            "IsInf": "isinf",
-        }
-        return func_map.get(str(func), str(func).lower())
-    
-    def _type_name(self, ty_handle: int | Any) -> str:
-        """Get MSL type name."""
-        if isinstance(ty_handle, int):
-            if ty_handle >= len(self.module.types):
-                return "unknown"
-            ty = self.module.types[ty_handle]
-            if hasattr(ty, 'name') and ty.name:
-                return ty.name
-            return f"Type{ty_handle}"
-        return str(ty_handle).lower()
+        return str(func.value)
 
-    def _swizzle_pattern(self, pattern: list) -> str:
-        """Generate swizzle pattern string."""
+    def _relational_function_name(self, func: RelationalFunction) -> str:
+        return str(func.value)
+
+    def _swizzle_pattern(self, pattern: list[object], size: int) -> str:
         component_map = {0: "x", 1: "y", 2: "z", 3: "w"}
-        return "".join(component_map.get(c, "x") for c in pattern)
+        out: list[str] = []
+        for i in range(size):
+            if i < len(pattern):
+                component = pattern[i]
+                index = component.value if hasattr(component, "value") else int(component)
+                out.append(component_map.get(index, "x"))
+            else:
+                out.append("x")
+        return "".join(out)
+
+    def _type_name(self, ty_handle: int) -> str:
+        if hasattr(self.module, "types") and 0 <= ty_handle < len(self.module.types):
+            ty = self.module.types[ty_handle]
+            if getattr(ty, "name", None):
+                return str(ty.name)
+        return self.names.get(f"type_{ty_handle}", f"Type{ty_handle}")
+
+    def _vector_ctor(self, size: int) -> str:
+        return f"float{size}"
 
 
-__all__ = ['MSLExpressionWriter']
+__all__ = ["MSLExpressionWriter"]

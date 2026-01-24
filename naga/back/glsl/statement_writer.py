@@ -230,7 +230,7 @@ class GLSLStatementWriter:
 
         fun_map = {
             AtomicFunction.ADD: "imageAtomicAdd",
-            AtomicFunction.SUBTRACT: "imageAtomicAdd",  # GLSL doesn't provide subtract; use add of negated value if needed
+            AtomicFunction.SUBTRACT: "imageAtomicAdd",
             AtomicFunction.AND: "imageAtomicAnd",
             AtomicFunction.EXCLUSIVE_OR: "imageAtomicXor",
             AtomicFunction.INCLUSIVE_OR: "imageAtomicOr",
@@ -244,9 +244,6 @@ class GLSLStatementWriter:
             raise ShaderError(f"Unsupported GLSL image atomic function: {stmt.image_atomic_fun}")
 
         call = f"{fun_name}({image}, {coord}, {value})"
-        if getattr(stmt, "image_atomic_result", None) is not None:
-            result_expr = self.expression_writer.write_expression(stmt.image_atomic_result)
-            return f"{indent}{result_expr} = {call};\n"
         return f"{indent}{call};\n"
 
 

@@ -223,9 +223,30 @@ class WGSLStatementWriter:
 
     def _write_atomic(self, stmt: Statement, indent: str) -> str:
         """Write an atomic statement."""
-        # Simple atomic call as expression-like statement
-        expr = self.expression_writer._write_atomic(stmt) # Re-use expression writer logic
-        return f"{indent}{expr};\n"
+        pointer = self.expression_writer.write_expression(stmt.atomic_pointer)
+        value = self.expression_writer.write_expression(stmt.atomic_value)
+
+        fun_map = {
+            AtomicFunction.ADD: "atomicAdd",
+            AtomicFunction.SUBTRACT: "atomicSub",
+            AtomicFunction.AND: "atomicAnd",
+            AtomicFunction.EXCLUSIVE_OR: "atomicXor",
+            AtomicFunction.INCLUSIVE_OR: "atomicOr",
+            AtomicFunction.MIN: "atomicMin",
+            AtomicFunction.MAX: "atomicMax",
+            AtomicFunction.EXCHANGE: "atomicExchange",
+        }
+
+        fun_name = fun_map.get(stmt.atomic_fun)
+        if fun_name is None:
+            raise ShaderError(f"Unsupported WGSL atomic function: {stmt.atomic_fun}")
+
+        call = f"{fun_name}({pointer}, {value})"
+        if getattr(stmt, "atomic_result", None) is not None:
+            res_name = f"_e{stmt.atomic_result}"
+            return f"{indent}let {res_name} = {call};\n"
+
+        return f"{indent}{call};\n"
 
     def _write_image_atomic(self, stmt: Statement, indent: str) -> str:
         """Write an image atomic statement."""
@@ -234,24 +255,27 @@ class WGSLStatementWriter:
         value = self.expression_writer.write_expression(stmt.image_atomic_value)
 
         fun_map = {
-            AtomicFunction.ADD: "textureAtomicAdd",
-            AtomicFunction.SUBTRACT: "textureAtomicSub",
-            AtomicFunction.AND: "textureAtomicAnd",
-            AtomicFunction.EXCLUSIVE_OR: "textureAtomicXor",
-            AtomicFunction.INCLUSIVE_OR: "textureAtomicOr",
-            AtomicFunction.MIN: "textureAtomicMin",
-            AtomicFunction.MAX: "textureAtomicMax",
-            AtomicFunction.EXCHANGE: "textureAtomicExchange",
+            AtomicFunction.ADD: "Add",
+            AtomicFunction.SUBTRACT: "Sub",
+            AtomicFunction.AND: "And",
+            AtomicFunction.EXCLUSIVE_OR: "Xor",
+            AtomicFunction.INCLUSIVE_OR: "Or",
+            AtomicFunction.MIN: "Min",
+            AtomicFunction.MAX: "Max",
+            AtomicFunction.EXCHANGE: "Exchange",
         }
 
-        fun_name = fun_map.get(stmt.image_atomic_fun)
-        if fun_name is None:
+        suffix = fun_map.get(stmt.image_atomic_fun)
+        if suffix is None:
             raise ShaderError(f"Unsupported WGSL image atomic function: {stmt.image_atomic_fun}")
 
-        call = f"{fun_name}({image}, {coord}, {value})"
-        if getattr(stmt, "image_atomic_result", None) is not None:
-            result_expr = self.expression_writer.write_expression(stmt.image_atomic_result)
-            return f"{indent}{result_expr} = {call};\n"
+        array_index = getattr(stmt, "image_atomic_array_index", None)
+        if array_index is not None:
+            array_index_expr = self.expression_writer.write_expression(array_index)
+            call = f"textureAtomic{suffix}({image}, {coord}, {array_index_expr}, {value})"
+        else:
+            call = f"textureAtomic{suffix}({image}, {coord}, {value})"
+
         return f"{indent}{call};\n"
 
 
