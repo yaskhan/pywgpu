@@ -173,3 +173,19 @@ class Statement:
     @classmethod
     def new_switch(cls, selector: int, cases: List[SwitchCase], default: Optional[Any] = None) -> "Statement":
         return cls(type=StatementType.SWITCH, switch_selector=selector, switch_cases=cases, switch_default=default)
+
+    def is_terminator(self) -> bool:
+        """
+        Returns true if the statement directly terminates the current block.
+
+        Used to decide whether case blocks require an explicit `break`.
+
+        Returns:
+            True if this is a terminator statement
+        """
+        return self.type in (
+            StatementType.BREAK,
+            StatementType.CONTINUE,
+            StatementType.RETURN,
+            StatementType.KILL,
+        )

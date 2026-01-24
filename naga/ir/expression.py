@@ -205,6 +205,34 @@ class Expression:
     def new_unary(cls, op: Any, expr: int) -> 'Expression':
         return cls(type=ExpressionType.UNARY, unary_op=op, unary_expr=expr)
 
+    def bake_ref_count(self) -> int:
+        """
+        Returns the ref count, upon reaching which this expression
+        should be considered for baking.
+
+        Note: we have to cache any expressions that depend on the control flow,
+        or otherwise they may be moved into a non-uniform control flow, accidentally.
+
+        Returns:
+            The reference count threshold for baking this expression
+        """
+        # accesses are never cached, only loads are
+        if self.type in (ExpressionType.ACCESS, ExpressionType.ACCESS_INDEX):
+            return float('inf')  # usize::MAX equivalent
+        # sampling may use the control flow, and image ops look better by themselves
+        if self.type in (ExpressionType.IMAGE_SAMPLE, ExpressionType.IMAGE_LOAD):
+            return 1
+        # derivatives use the control flow
+        if self.type == ExpressionType.DERIVATIVE:
+            return 1
+        # TODO: We need a better fix for named `Load` expressions
+        # More info - https://github.com/gfx-rs/naga/pull/914
+        # And https://github.com/gfx-rs/naga/issues/910
+        if self.type == ExpressionType.LOAD:
+            return 1
+        # cache expressions that are referenced multiple times
+        return 2
+
 
 __all__ = [
     "Expression",

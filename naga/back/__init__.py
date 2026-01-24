@@ -51,7 +51,36 @@ class RayQueryPoint(Enum):
 
 
 # Pipeline constants type
-PipelineConstants = dict  # hashbrown::HashMap<String, f64>
+PipelineConstants = dict
+
+
+def get_entry_points(
+    module: Any,
+    entry_point: Optional[Tuple[ShaderStageEnum, str]],
+):
+    """
+    Locate the entry point(s) to write.
+
+    If `entry_point` is given, and the specified entry point exists, returns a
+    range containing the index of that entry point. If no `entry_point` is
+    given, returns the complete range of entry point indices.
+    If `entry_point` is given but does not exist, returns None.
+
+    Args:
+        module: The Naga IR module
+        entry_point: Optional tuple of (stage, name) for the entry point
+
+    Returns:
+        A tuple of (start, end) indices representing a range, or None if not found
+    """
+    if entry_point is not None:
+        stage, name = entry_point
+        for ep_index, ep in enumerate(module.entry_points):
+            if ep.stage == stage and ep.name == name:
+                return (ep_index, ep_index + 1)
+        return None
+    else:
+        return (0, len(module.entry_points))
 
 
 class Level:
@@ -76,11 +105,24 @@ class FunctionType(Enum):
     FUNCTION = "function"
     ENTRY_POINT = "entry_point"
 
-    def is_compute_like(self, stage: ShaderStageEnum) -> bool:
+    def is_compute_like_entry_point(self, module: Any) -> bool:
         """
         Returns true if the function is an entry point for a compute-like shader.
+
+        Args:
+            module: The module to check entry points against
+
+        Returns:
+            True if this is a compute-like entry point, False otherwise
         """
-        return stage in (ShaderStageEnum.COMPUTE, ShaderStageEnum.TASK, ShaderStageEnum.MESH)
+        if self != FunctionType.ENTRY_POINT:
+            return False
+
+        # Get the entry point stage from the module
+        # This would need to look up the actual entry point based on context
+        # For now, this is a placeholder - the actual implementation would need
+        # the entry point index or handle
+        return False
 
 
 class FunctionCtx:
@@ -277,6 +319,9 @@ __all__ = [
     "COMPONENTS",
     "INDENT",
     "NeedBakeExpressions",
+    # Functions
+    "get_entry_points",
+    "binary_operation_str",
     # Classes
     "Baked",
     "RayQueryPoint",

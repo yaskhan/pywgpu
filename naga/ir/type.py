@@ -429,6 +429,19 @@ class TypeInner:
     def new_binding_array(cls, base: int, size: ArraySize) -> "TypeInner":
         return cls(type=TypeInnerType.BINDING_ARRAY, binding_array=BindingArray(base, size))
 
+    def is_handle(self) -> bool:
+        """
+        Returns true if a variable of this type is a handle.
+
+        Returns:
+            True if this type is a handle type (Image, Sampler, or AccelerationStructure)
+        """
+        return self.type in (
+            TypeInnerType.IMAGE,
+            TypeInnerType.SAMPLER,
+            TypeInnerType.ACCELERATION_STRUCTURE,
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class Type:
