@@ -67,8 +67,9 @@ class FunctionTracer:
 
     def trace_block(self, block: Any) -> None:
         """Trace a block of statements."""
-        # Placeholder implementation
-        pass
+        from .statements import StatementTracer
+        tracer = StatementTracer(self)
+        tracer.trace_block(block)
 
     def as_expression(self) -> ExpressionTracer:
         """Get an expression tracer for this function."""
