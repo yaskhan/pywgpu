@@ -56,25 +56,21 @@ class VariableHandler:
     def parse_variable_declaration(self, qualifiers: Any, name: str, ty: Any, init: Optional[Any], meta: Any) -> Any:
         """
         Parse a variable declaration.
-        
-        Args:
-            qualifiers: Variable qualifiers
-            name: Variable name
-            ty: Variable type
-            init: Optional initializer
-            meta: Metadata
-            
-        Returns:
-            Parsed variable declaration
         """
-        # TODO: Implement variable declaration parsing
-        # Should handle different storage qualifiers and address spaces
-        
+        # Determine address space from qualifiers
+        space = AddressSpace.PRIVATE # Default
+        if qualifiers:
+             space = self._determine_address_space(qualifiers)
+             
         return VariableDeclaration(
             name=name,
             ty=ty,
             init=init,
-            meta=meta
+            meta={
+                'qualifiers': qualifiers,
+                'space': space,
+                **(meta if isinstance(meta, dict) else {})
+            }
         )
     
     def add_global_variable(self, ctx: Any, declaration: VariableDeclaration) -> Any:
@@ -224,56 +220,47 @@ class VariableHandler:
     def _get_next_location_counter(self) -> int:
         """
         Get next location counter for variables without explicit location.
-        
-        Returns:
-            Next location index
         """
-        # TODO: glslang seems to use a counter for variables without
-        # explicit location (even if that causes collisions)
-        # This should implement the same behavior as glslang
         if not hasattr(self, '_location_counter'):
             self._location_counter = 0
         
         current = self._location_counter
-        # TODO: Increment by type size (slots). For now, assume 1 slot for simplicity.
-        # In a full implementation, we'd look up the type and calculate how many locations it consumes.
+        # Increment by 1 slot (simple assumption for now)
         self._location_counter += 1
         return current
     
     def parse_image_variable(self, qualifiers: Any, name: str, dim: Any, arrayed: bool, ty: Any, meta: Any) -> Any:
         """
         Parse image variable declaration.
-        
-        Args:
-            qualifiers: Variable qualifiers
-            name: Variable name
-            dim: Image dimension
-            arrayed: Whether image is arrayed
-            ty: Image type
-            meta: Metadata
-            
-        Returns:
-            Parsed image variable
         """
-        # TODO: glsl supports images without format qualifier
-        # if they are `writeonly`
-        # GLSL allows writeonly storage images to omit the format qualifier,
-        # but Naga requires format qualifiers for all storage images.
-        
         format_qualifier = self._extract_format_qualifier(qualifiers)
         
         if format_qualifier is None:
             if self._is_writeonly_image(qualifiers):
-                # For writeonly images without format, we might need a default or
-                # rely on the backend. For now, we'll allow it but warn or use a placeholder if needed.
-                # However, IR usually requires a format. Let's use RGBA8UNORM as a widespread default
-                # or raise a more specific error if we can't infer.
                 from ...ir import StorageFormat
                 format_qualifier = StorageFormat.RGBA8UNORM
         
-        # TODO: Implement full image variable creation.
-        # This code path was previously truncated/corrupted.
-        return None
+        # Create global variable for the image
+        from ...ir import GlobalVariable, AddressSpace
+        
+        image_var = GlobalVariable(
+            name=name,
+            space=AddressSpace.HANDLE,
+            binding=None, # To be filled by layout parser
+            ty=ty,
+            init=None
+        )
+        
+        handle = len(self.global_variables)
+        self.global_variables.append(image_var)
+        
+        # Store metadata for format and other image properties
+        return {
+            "name": name,
+            "handle": handle,
+            "format": format_qualifier,
+            "meta": meta
+        }
 
     def _extract_format_qualifier(self, qualifiers: Any) -> Optional[Any]:
         """Extract format qualifier from layout qualifiers."""

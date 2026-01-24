@@ -184,7 +184,13 @@ def _parse_float_number(text: str, suffix: Optional[str], span: Tuple[int, int])
             return Number(value, NumberType.F32, span)
         elif suffix == 'h':
             # f16 - check if extension is enabled
-            # TODO: Validate f16 range
+            # Validate f16 range: [-65504.0, 65504.0]
+            if value < -65504.0 or value > 65504.0:
+                 raise ParseError(
+                    message="f16 literal is out of range [-65504.0, 65504.0]",
+                    labels=[(span[0], span[1], "")],
+                    notes=[]
+                )
             return Number(value, NumberType.F16, span)
         elif suffix in ('i', 'u'):
             raise ParseError(

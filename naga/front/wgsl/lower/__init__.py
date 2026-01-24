@@ -98,9 +98,9 @@ class Lowerer:
             # Lower pipeline-overridable constant
             override_handle = self._lower_override(decl.kind)
             # Store in module.overrides
-            if self.module:
-                # TODO: Add to module.overrides when IR supports it
-                pass
+            if self.module and override_handle is not None:
+                self.module.overrides.append(self.module.global_expressions[override_handle].override)
+                # Note: This is an architectural simplification, usually we'd have a separate arena
         
         elif isinstance(decl.kind, VarDecl):
             # Lower global variable
@@ -338,9 +338,13 @@ class Lowerer:
     def _lower_const(self, ast_const: Any) -> Any:
         """Lower constant declaration."""
         from ....ir import Constant
-        # TODO: Evaluate constant expression
-        # For now, just create a placeholder constant
-        const = Constant(name=ast_const.name.name, ty=self._lower_type(ast_const.type_), init=None)
+        
+        # Evaluate constant expression
+        from .context import ExpressionContext
+        ctx = ExpressionContext(self.module)
+        init = self._lower_expression(ast_const.initializer, ctx)
+        
+        const = Constant(name=ast_const.name.name, ty=self._lower_type(ast_const.type_), init=init)
         if self.module:
             self.module.constants.append(const)
             return len(self.module.constants) - 1
@@ -348,7 +352,32 @@ class Lowerer:
     
     def _lower_override(self, ast_override: Any) -> Any:
         """Lower pipeline-overridable constant."""
-        # TODO: Create override in NAGA IR (OverridableConstant)
+        from ....ir import Override, Expression, ExpressionType
+        
+        # Pipeline-overridable constants (overrides)
+        ty = self._lower_type(ast_override.type_)
+        
+        init = None
+        if ast_override.initializer:
+            from .context import ExpressionContext
+            ctx = ExpressionContext(self.module)
+            init = self._lower_expression(ast_override.initializer, ctx)
+            
+        override = Override(
+            name=ast_override.name.name,
+            id=None, # Set by attributes if present
+            ty=ty,
+            init=init
+        )
+        
+        # Overrides reside in module.overrides but are referenced via Expression.Override
+        if self.module:
+            self.module.overrides.append(override)
+            handle = len(self.module.overrides) - 1
+            
+            expr = Expression(type=ExpressionType.OVERRIDE, override=handle)
+            return self.module.global_expressions.append(expr, (0, 0))
+            
         return None
     
     def _lower_global_var(self, ast_var: Any) -> Any:

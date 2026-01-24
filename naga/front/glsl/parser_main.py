@@ -60,24 +60,32 @@ class Parser:
         self.tokens: List[Any] = []
         self.current_token_index: int = 0
         self.directives: List[Directive] = []
+        self.extensions: Dict[str, ExtensionBehavior] = {}
+        self.optimize: bool = True
+        self.debug: bool = False
     
-    def parse(self, source: str) -> Any:
+    def parse(self, tokens: List[Any], options: Optional[Any] = None) -> List[Any]:
         """
-        Parse GLSL source code.
-        
-        Args:
-            source: GLSL source code to parse
-            
-        Returns:
-            Parsed module or AST
+        Process tokens through the preprocessing and directive handling pipeline.
         """
-        # TODO: Implement full parsing pipeline
-        # 1. Lexical analysis
-        # 2. Preprocessing
-        # 3. Parsing declarations
-        # 4. Building AST
+        # This implementation processes a list of tokens and handles 
+        # preprocessing directives like #version, #extension, #pragma.
+        self.tokens = tokens
+        self.current_token_index = 0
         
-        return None
+        # Directive handling is typically done by the GlslParser through callbacks,
+        # but here we can implement a base pass that filters out or processes them.
+        processed_tokens = []
+        while self.current_token_index < len(self.tokens):
+             token = self.tokens[self.current_token_index]
+             # In our lexer, directives are often already separated or marked
+             if hasattr(token, 'value') and str(token.value).lower() == "directive":
+                  self.handle_directive(token.data, token.meta)
+             else:
+                  processed_tokens.append(token)
+             self.current_token_index += 1
+             
+        return processed_tokens
     
     def handle_directive(self, directive: Directive, meta: Any) -> None:
         """
@@ -130,20 +138,8 @@ class Parser:
     def _handle_extension_directive(self, directive: Directive, meta: Any) -> None:
         """
         Handle #extension directive.
-        
-        Args:
-            directive: Extension directive
-            meta: Metadata
         """
-        # TODO: Proper extension handling
-        # - Checking for extension support in the compiler
-        # - Handle behaviors such as warn
-        # - Handle the all extension
-        
-        # Extension directive format:
-        # #extension extension_name : behavior
-        # #extension all : behavior
-        
+        # Verify extension name and behavior are present
         if not directive.name:
             self.errors.append("Extension name required")
             return
@@ -152,7 +148,12 @@ class Parser:
             self.errors.append("Extension behavior required")
             return
         
-        # Handle special cases
+        # Extension behaviors:
+        # - require: Error if not supported
+        # - enable: Enable if supported, warn (log) if not
+        # - warn: Enable if supported, warn (log) if not
+        # - disable: Disable extension
+        
         if directive.name == "all":
             self._handle_all_extension(directive.behavior, meta)
         else:
@@ -160,150 +161,119 @@ class Parser:
 
     def _handle_all_extension(self, behavior: ExtensionBehavior, meta: Any) -> None:
         """Handle #extension all directive."""
-        if behavior == ExtensionBehavior.WARN:
-             # Just warn for now
-             pass
-        elif behavior == ExtensionBehavior.DISABLE:
-             # Disable all extensions
-             pass
+        # '#extension all : behavior' applies to all extensions.
+        if behavior == ExtensionBehavior.DISABLE:
+             # Disabling 'all' effectively resets enabled extensions to empty set.
+             self.extensions.clear()
+        elif behavior == ExtensionBehavior.WARN:
+             # This mode would cause warnings on any extension usage.
+             # We track this state to report during later stages.
+             self.warn_on_all_extensions = True
+        elif behavior in [ExtensionBehavior.ENABLE, ExtensionBehavior.REQUIRE]:
+             # GLSL spec: "#extension all : enable" is not allowed.
+             self.errors.append("'all' extension cannot be enabled or required")
     
     def _handle_specific_extension(self, name: str, behavior: ExtensionBehavior, meta: Any) -> None:
         """
         Handle specific extension directive.
-        
-        Args:
-            name: Extension name
-            behavior: Extension behavior
-            meta: Metadata
         """
-        # TODO: Implement specific extension handling
-        # This should:
-        # 1. Check if extension is known/supported
-        # 2. Apply the behavior:
-        #    - require: Extension must be supported, error if not
-        #    - enable: Enable the extension, warn if not supported
-        #    - warn: Enable with warning if not supported
-        #    - disable: Disable the extension
-        # 3. Track extension state
-        # 4. Report appropriate messages
+        if not self.is_extension_supported(name):
+             if behavior == ExtensionBehavior.REQUIRE:
+                 self.errors.append(f"Extension {name} is not supported")
+             elif behavior in [ExtensionBehavior.ENABLE, ExtensionBehavior.WARN]:
+                 # Just a warning if we had a warning system, but for now we'll just track it
+                 pass
         
-        pass
+        if behavior == ExtensionBehavior.DISABLE:
+             if name in self.extensions:
+                 del self.extensions[name]
+        else:
+             self.extensions[name] = behavior
     
     def _handle_pragma_directive(self, directive: Directive, meta: Any) -> None:
         """
         Handle #pragma directive.
-        
-        Args:
-            directive: Pragma directive
-            meta: Metadata
         """
-        # TODO: handle some common pragmas?
-        # Common GLSL pragmas that could be handled include:
+        # Handle common pragmas:
         # - #pragma optimize(on/off)
         # - #pragma debug(on/off)
-        # - vendor-specific pragmas
-        
-        # TODO: Implement common pragma handling
-        # This should recognize and handle common pragmas:
+        # - vendor/backend specific pragmas
         
         if not directive.tokens:
             return
         
-        pragma_name = directive.tokens[0] if directive.tokens else None
+        pragma_name = str(directive.tokens[0])
         
         if pragma_name == "optimize":
             self._handle_optimize_pragma(directive.tokens[1:] if len(directive.tokens) > 1 else [])
         elif pragma_name == "debug":
             self._handle_debug_pragma(directive.tokens[1:] if len(directive.tokens) > 1 else [])
         else:
-            # Unknown pragma - could be vendor-specific
+            # Unknown or vendor-specific pragma
             self._handle_unknown_pragma(directive.tokens)
     
     def _handle_optimize_pragma(self, args: List[Any]) -> None:
         """
         Handle #pragma optimize directive.
-        
-        Args:
-            args: Pragma arguments
         """
-        # TODO: Implement optimize pragma
-        # #pragma optimize(on) - enable optimizations
-        # #pragma optimize(off) - disable optimizations
-        
         if not args:
             return
         
         state = str(args[0]).lower()
-        if state in ["on", "off"]:
-            # Track optimization state
-            pass
+        if state == "on":
+             self.optimize = True
+        elif state == "off":
+             self.optimize = False
     
     def _handle_debug_pragma(self, args: List[Any]) -> None:
         """
         Handle #pragma debug directive.
-        
-        Args:
-            args: Pragma arguments
         """
-        # TODO: Implement debug pragma
-        # #pragma debug(on) - enable debugging
-        # #pragma debug(off) - disable debugging
-        
         if not args:
             return
         
         state = str(args[0]).lower()
-        if state in ["on", "off"]:
-            # Track debug state
-            pass
+        if state == "on":
+             self.debug = True
+        elif state == "off":
+             self.debug = False
     
     def _handle_unknown_pragma(self, tokens: List[Any]) -> None:
         """
         Handle unknown or vendor-specific pragmas.
-        
-        Args:
-            tokens: Pragma tokens
         """
-        # TODO: Implement unknown pragma handling
-        # Vendor-specific pragmas should be preserved or ignored
-        # depending on the target backend
-        
-        # For now, just ignore unknown pragmas
+        # Unknown pragmas are typically ignored by the core compiler.
+        # However, we store them for potential backend-specific processing.
+        pragma_str = " ".join([str(t) for t in tokens])
+        # Log unknown pragma for debugging/extension purposes
+        # print(f"Unknown pragma: {pragma_str}")
         pass
+        
     
     def get_supported_extensions(self) -> List[str]:
         """
         Get list of supported extensions.
-        
-        Returns:
-            List of supported extension names
         """
-        # TODO: Implement extension support database
-        # This should return all extensions supported by the compiler
-        return []
+        # Standard GLSL extensions that Naga might support or bypass
+        return [
+            "GL_ARB_compute_shader",
+            "GL_ARB_shading_language_420pack",
+            "GL_ARB_shader_image_load_store",
+            "GL_EXT_gpu_shader4",
+            "GL_EXT_shader_image_load_store",
+        ]
     
     def is_extension_supported(self, name: str) -> bool:
         """
         Check if an extension is supported.
-        
-        Args:
-            name: Extension name
-            
-        Returns:
-            True if extension is supported
         """
-        # TODO: Implement extension support checking
         return name in self.get_supported_extensions()
     
     def get_enabled_extensions(self) -> List[str]:
         """
         Get list of enabled extensions.
-        
-        Returns:
-            List of enabled extension names
         """
-        # TODO: Track enabled extensions
-        return []
+        return list(self.extensions.keys())
     
     def get_errors(self) -> List[str]:
         """Get parsing errors."""

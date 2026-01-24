@@ -43,6 +43,8 @@ class Builtins:
         self._initialize_math_functions()
         self._initialize_vector_functions()
         self._initialize_matrix_functions()
+        self._initialize_geometry_functions()
+        self._initialize_fragment_functions()
     
     def _initialize_texture_functions(self) -> None:
         """Initialize texture builtin functions."""
@@ -101,7 +103,7 @@ class Builtins:
         vector_functions = [
             "lessThan", "greaterThan", "lessThanEqual", "greaterThanEqual",
             "equal", "notEqual", "any", "all", "not",
-            " radians", "degrees",
+            "radians", "degrees",
         ]
         
         for func_name in vector_functions:
@@ -111,27 +113,85 @@ class Builtins:
     def _initialize_matrix_functions(self) -> None:
         """Initialize matrix builtin functions."""
         matrix_functions = [
-            "matrixCompMult", "transpose", "determinant", "inverse",
+            "matrixCompMult", "outerProduct", "transpose", "determinant", "inverse",
         ]
         
         for func_name in matrix_functions:
             if func_name not in self.builtin_functions:
                 self.builtin_functions[func_name] = []
+            
+            # TODO: Add variations for different matrix dimensions
+            # For now, just add a placeholder or common ones
+            self._add_matrix_variations(func_name)
+
+    def _initialize_geometry_functions(self) -> None:
+        """Initialize geometry builtin functions."""
+        # Such as EmitVertex, EndPrimitive for geometry shaders
+        geometry_functions = ["EmitVertex", "EndPrimitive"]
+        for func_name in geometry_functions:
+            self.builtin_functions[func_name] = [
+                BuiltinFunction(name=func_name, kind=BuiltinKind.GEOMETRY, parameters=[], return_type="void", description="Geometry builtin")
+            ]
+
+    def _initialize_fragment_functions(self) -> None:
+        """Initialize fragment builtin functions."""
+        fragment_functions = ["dFdx", "dFdy", "fwidth", "dFdxFine", "dFdyFine", "fwidthFine", "dFdxCoarse", "dFdyCoarse", "fwidthCoarse"]
+        for func_name in fragment_functions:
+            self.builtin_functions[func_name] = []
+            self._add_fragment_variations(func_name)
     
     def _add_texture_variations(self, func_name: str) -> None:
         """Add texture function variations."""
-        # TODO: Add support for different texture dimensions
-        # - 1D textures (sampler1D, sampler1DArray)
-        # - 2D textures (sampler2D, sampler2DArray, sampler2DMS, sampler2DMSArray)
-        # - 3D textures (sampler3D)
-        # - Cube textures (samplerCube, samplerCubeArray)
-        # - Shadow samplers (sampler2DShadow, samplerCubeShadow, etc.)
+        # Simplified variations for common texture types
+        # In a full implementation, this would iterate over all supported texture dimensions and classes
         
-        # TODO: Add support for multisampled textures
-        # - sampler2DMS, sampler2DMSArray
-        # - Different sample counts
+        texture_types = ["sampler2D", "sampler3D", "samplerCube", "sampler2DShadow", "samplerCubeShadow", "sampler2DArray", "sampler2DMS"]
+        coord_types = {"sampler2D": "vec2", "sampler3D": "vec3", "samplerCube": "vec3", "sampler2DShadow": "vec3", "samplerCubeShadow": "vec4", "sampler2DArray": "vec3", "sampler2DMS": "vec2"}
         
-        pass
+        if func_name in ["texture", "textureLod", "textureProj"]:
+             for tex in texture_types:
+                 coord = coord_types.get(tex, "vec2")
+                 params = [tex, coord]
+                 if func_name == "textureLod":
+                     params.append("float")
+                 
+                 self.add_builtin_overload(func_name, BuiltinFunction(
+                     name=func_name, kind=BuiltinKind.TEXTURE, parameters=params, return_type="vec4",
+                     description=f"{func_name} for {tex}"
+                 ))
+                 
+        elif func_name == "textureSize":
+             for tex in texture_types:
+                 params = [tex, "int"]
+                 self.add_builtin_overload("textureSize", BuiltinFunction(
+                     name="textureSize", kind=BuiltinKind.TEXTURE, parameters=params, return_type="ivec2",
+                     description="Texture size"
+                 ))
+        
+        elif func_name == "texelFetch":
+             for tex in ["sampler2D", "sampler3D", "sampler2DArray", "sampler2DMS"]:
+                 coord = "ivec2" if "2D" in tex else "ivec3"
+                 params = [tex, coord, "int"]
+                 self.add_builtin_overload("texelFetch", BuiltinFunction(
+                     name="texelFetch", kind=BuiltinKind.TEXTURE, parameters=params, return_type="vec4",
+                     description=f"texelFetch for {tex}"
+                 ))
+                 
+        elif func_name in ["imageLoad", "imageStore"]:
+             # Image types: image2D, uimage2D, iimage2D
+             for prefix in ["", "u", "i"]:
+                 img = f"{prefix}image2D"
+                 coord = "ivec2"
+                 if func_name == "imageLoad":
+                     self.add_builtin_overload("imageLoad", BuiltinFunction(
+                         name="imageLoad", kind=BuiltinKind.TEXTURE, parameters=[img, coord], return_type="vec4",
+                         description="Image load"
+                     ))
+                 else:
+                     self.add_builtin_overload("imageStore", BuiltinFunction(
+                         name="imageStore", kind=BuiltinKind.TEXTURE, parameters=[img, coord, "vec4"], return_type="void",
+                         description="Image store"
+                     ))
     
     def _add_math_variations(self, func_name: str) -> None:
         """Add math function variations for different types."""
@@ -175,6 +235,30 @@ class Builtins:
                     name=func_name, kind=BuiltinKind.MATH, parameters=[ty, ty, ty], return_type=ty,
                     description=f"{func_name} overload"
                 ))
+
+    def _add_matrix_variations(self, func_name: str) -> None:
+        """Add matrix function variations."""
+        matrix_types = ["mat2", "mat3", "mat4", "mat2x3", "mat2x4", "mat3x2", "mat3x4", "mat4x2", "mat4x3"]
+        for mat in matrix_types:
+            if func_name == "transpose":
+                self.add_builtin_overload(func_name, BuiltinFunction(
+                    name=func_name, kind=BuiltinKind.MATRIX, parameters=[mat], return_type=mat, # transposing might change type if non-square
+                    description=f"{func_name} for {mat}"
+                ))
+            else:
+                self.add_builtin_overload(func_name, BuiltinFunction(
+                    name=func_name, kind=BuiltinKind.MATRIX, parameters=[mat, mat], return_type=mat,
+                    description=f"{func_name} for {mat}"
+                ))
+
+    def _add_fragment_variations(self, func_name: str) -> None:
+        """Add fragment function variations (derivatives)."""
+        types = ["float", "vec2", "vec3", "vec4"]
+        for ty in types:
+            self.add_builtin_overload(func_name, BuiltinFunction(
+                name=func_name, kind=BuiltinKind.FRAGMENT, parameters=[ty], return_type=ty,
+                description=f"{func_name} for {ty}"
+            ))
     
     def _add_unimplemented_functions(self, func_names: List[str]) -> None:
         """Mark functions as unimplemented due to known issues."""
@@ -288,23 +372,23 @@ class Builtins:
         
         return False
     
-    def resolve_builtin_call(self, name: str, args: List[Any]) -> Optional[Any]:
+    def resolve_builtin_call(self, name: str, args: List[Any], arg_types: List[Any]) -> Optional[BuiltinFunction]:
         """
         Resolve a builtin function call to its implementation.
         
         Args:
             name: Function name
             args: Function arguments
+            arg_types: Argument types
             
         Returns:
             Resolved builtin call information or None
         """
-        # TODO: Implement builtin call resolution
-        # This should:
-        # 1. Find the matching builtin function
-        # 2. Check argument compatibility
-        # 3. Apply implicit conversions if needed
-        # 4. Return the resolved call
+        builtin = self.get_builtin_function(name, arg_types)
+        if builtin:
+             # Apply implicit conversions if needed (already mostly handled by get_builtin_function's match_type)
+             # but here we could return a specific structure for the caller
+             return builtin
         
         return None
     

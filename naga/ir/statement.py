@@ -31,6 +31,16 @@ class StatementType(Enum):
 
 
 @dataclass(frozen=True, slots=True)
+class SwitchCase:
+    """
+    A single case in a switch statement.
+    """
+    value: Optional[int]
+    body: Any  # Block
+    fall_through: bool
+
+
+@dataclass(frozen=True, slots=True)
 class Statement:
     """
     An IR statement that can be executed.
@@ -159,3 +169,7 @@ class Statement:
     @classmethod
     def new_loop(cls, body: Any, continuing: Any, break_if: Optional[int] = None) -> "Statement":
         return cls(type=StatementType.LOOP, loop_body=body, loop_continuing=continuing, loop_break_if=break_if)
+
+    @classmethod
+    def new_switch(cls, selector: int, cases: List[SwitchCase], default: Optional[Any] = None) -> "Statement":
+        return cls(type=StatementType.SWITCH, switch_selector=selector, switch_cases=cases, switch_default=default)

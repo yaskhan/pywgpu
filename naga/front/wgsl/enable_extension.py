@@ -154,18 +154,23 @@ def validate_extension_requirements(
     Validate that extension requirements are met.
     
     Some extensions may require other extensions to be enabled first.
-    
-    Args:
-        extension: Extension to validate
-        enabled_extensions: Currently enabled extensions
-        span: Source location
-        
-    Raises:
-        ParseError: If requirements are not met
     """
-    # TODO: Add extension dependency checking
-    # For example, some extensions might require f16 to be enabled
-    pass
+    from ..error import ParseError
+    
+    # Define dependencies
+    # Key: Extension being enabled, Value: List of required extensions
+    dependencies = {
+        # Example: ImplementedEnableExtension.SOME_EXT: [ImplementedEnableExtension.F16]
+    }
+    
+    requirements = dependencies.get(extension, [])
+    for req in requirements:
+        if not enabled_extensions.is_enabled(req):
+            raise ParseError(
+                message=f"extension '{extension.value}' requires extension '{req.value}' to be enabled",
+                labels=[(span[0], span[1], "")],
+                notes=[f"Add 'enable {req.value};' before this directive"]
+            )
 
 
 def get_extension_features(extension: ImplementedEnableExtension) -> Set[str]:

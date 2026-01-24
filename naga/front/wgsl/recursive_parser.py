@@ -282,10 +282,10 @@ class WgslRecursiveParser:
                     if self.peek() and self.peek().kind == TokenKind.PAREN_RIGHT:
                         break
                     
-                    # TODO: Parse expression for argument
-                    arg_token = self.advance()
-                    if arg_token:
-                        args.append(arg_token.value)
+                    # Parse expression for argument
+                    arg_expr = self.expr_parser.parse_expression()
+                    if arg_expr:
+                        args.append(arg_expr)
                     
                     if self.peek() and self.peek().kind == TokenKind.COMMA:
                         self.advance()

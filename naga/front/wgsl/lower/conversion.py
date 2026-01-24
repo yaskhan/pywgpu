@@ -108,8 +108,15 @@ class TypeConverter:
             elif type_name == 'array':
                 if type_params:
                     base_handle, base_inner = self.convert_type(type_params[0])
-                    # TODO: Resolve array size (constant or dynamic)
-                    type_inner = self.convert_array(base_handle, ArraySize.dynamic())
+                    size = ArraySize.new_dynamic()
+                    if len(type_params) > 1:
+                        # Resolve constant array size if present
+                        size_ast = type_params[1]
+                        if isinstance(size_ast, int):
+                            size = ArraySize.new_constant(size_ast)
+                        elif isinstance(size_ast, dict) and 'value' in size_ast:
+                            size = ArraySize.new_constant(size_ast['value'])
+                    type_inner = self.convert_array(base_handle, size)
             
             # Pointer types
             elif type_name == 'ptr':

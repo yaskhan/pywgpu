@@ -205,82 +205,52 @@ class GlslParser(Parser):
                     break
         
         if self.errors:
-            # Report errors
-            pass
+             # Check for errors and report
+             error_messages = [str(e) for e in self.errors]
+             raise ValueError(f"GLSL parsing failed with {len(self.errors)} error(s): {error_messages}")
             
-        return self.module
-        #    - Collect errors during parsing
-        #    - Return errors if parsing fails
-        
-        # Use the module populated during parsing
-        module = self.module
-        
         # Initialize builtin functions
-        self._initialize_builtin_functions(module)
+        self._initialize_builtin_functions(self.module)
         
-        # TODO: Parse the source and build the module
-        # This would involve:
-        # - Tokenizing the source
-        # - Parsing declarations
-        # - Building the AST
-        # - Converting to IR
-        
-        # Check for errors
-        if self.errors:
-            error_messages = [str(e) for e in self.errors]
-            raise ValueError(f"GLSL parsing failed with {len(self.errors)} error(s): {error_messages}")
-
-        return module
+        return self.module
 
     def _initialize_builtin_functions(self, module: Module) -> None:
         """Initialize builtin functions in the module."""
-        # TODO: Initialize all builtin functions
-        # This should populate the lookup_function table with:
-        # - Texture functions (texture, textureSize, etc.)
-        # - Math functions (sin, cos, sqrt, etc.)
-        # - Vector functions (dot, cross, normalize, etc.)
-        # - Matrix functions (matrixCompMult, transpose, etc.)
-        
-        pass
+        for name in self.builtins.builtin_functions:
+            self.lookup_function[name] = True # Mark as builtin for easier resolution
 
     def handle_directive(self, directive: Any, meta: Any) -> None:
         """
         Handle preprocessing directives like #version, #extension, #pragma.
-
-        Args:
-            directive: The directive to handle
-            meta: Metadata about the directive location
         """
-        # TODO: Implement directive handling
-        # This should handle:
-        # - #version: Set metadata.version and metadata.profile
-        # - #extension: Add to metadata.extensions
-        # - #pragma: Handle pragma directives
-        
-        # Use the main parser for directive handling
+        # 1. Delegate to main parser for processing
         self.main_parser.handle_directive(directive, meta)
         
-        # Sync metadata
+        # 2. Update local metadata from main parser's state
         if hasattr(self.main_parser, 'version'):
             self.metadata.version = self.main_parser.version
         if hasattr(self.main_parser, 'profile') and self.main_parser.profile:
             self.metadata.profile = self.main_parser.profile
+        
+        # 3. Synchronize extensions
+        for ext, behavior in self.main_parser.extensions.items():
+             self.metadata.extensions.add(ext)
 
     def add_entry_point(self, function_handle: Any, ctx: Any) -> None:
         """
         Add an entry point to the module.
-
-        Args:
-            function_handle: Handle to the function to use as entry point
-            ctx: Parsing context
         """
-        # TODO: Implement entry point addition
-        # This should:
-        # 1. Create EntryPoint from function
-        # 2. Set up entry point arguments from self.entry_args
-        # 3. Add to module.entry_points
-
-        pass
+        from ...ir.module import EntryPoint
+        stage = self.options.stage.value if self.options and self.options.stage else "fragment"
+        
+        # Handle is expected to be a Function object here from FunctionParser
+        ep = EntryPoint(name="main", stage=stage, function=function_handle)
+        
+        # Set workgroup size for compute shaders if available in metadata
+        if self.metadata.stage == ShaderStage.COMPUTE:
+             ep.workgroup_size = self.metadata.workgroup_size
+             
+        self.module.entry_points.append(ep)
 
     def add_global_var(self, ctx: Any, declaration: Any) -> Any:
         """
@@ -304,21 +274,9 @@ class GlslParser(Parser):
     def add_local_var(self, ctx: Any, declaration: Any) -> Any:
         """
         Add a local variable to the current function.
-
-        Args:
-            ctx: Parsing context
-            declaration: Variable declaration
-
-        Returns:
-            Expression handle for the local variable
         """
-        # TODO: Implement local variable addition
-        # This should handle:
-        # - Local variable declarations
-        # - Function parameter handling
-        # - Variable initialization
-
-        return None
+        # declaration is VariableDeclaration from variables.py
+        return ctx.add_local_variable(declaration.name, declaration.ty, declaration.init)
 
     def get_metadata(self) -> ShaderMetadata:
         """

@@ -129,7 +129,6 @@ class StructLayout(Enum):
     STD430 = "std430"
 
 
-# TODO: Encode precision hints in the IR
 # A precision hint used in GLSL declarations.
 #
 # Precision hints can be used to either speed up shader execution or control
@@ -286,21 +285,23 @@ class DeclNode:
 
 class VarDecl(DeclNode):
     """Variable declaration node."""
-    def __init__(self, type_spec: Any, name: str, init: Optional[ExprNode] = None):
+    def __init__(self, type_spec: Any, name: str, init: Optional[ExprNode] = None, precision: Optional[Precision] = None):
         super().__init__()
         self.type_spec = type_spec
         self.name = name
         self.init = init
+        self.precision = precision
 
 
 class FuncDecl(DeclNode):
     """Function declaration node."""
-    def __init__(self, return_type: Any, name: str, params: List[Any], body: Optional['BlockStmt'] = None):
+    def __init__(self, return_type: Any, name: str, params: List[Any], body: Optional['BlockStmt'] = None, precision: Optional[Precision] = None):
         super().__init__()
         self.return_type = return_type
         self.name = name
         self.params = params
         self.body = body
+        self.precision = precision
 
 
 class StructDecl(DeclNode):

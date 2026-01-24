@@ -242,26 +242,55 @@ def add_lowering_methods(lowerer_class):
                 
                 if tex_fn.startswith("sample"):
                     # textureSample(texture, sampler, coordinate, ...)
+                    level = SampleLevel.auto()
+                    array_index = None
+                    offset = None
+                    
+                    if tex_fn == "sample_bias":
+                        # textureSampleBias(texture, sampler, coordinate, bias, ...)
+                        level = SampleLevel.bias(args[3])
+                        if len(args) > 4: offset = args[4]
+                    elif tex_fn == "sample_compare":
+                        # textureSampleCompare(texture, sampler, coordinate, compare, ...)
+                        level = SampleLevel.zero() # Comparison usually at level 0
+                        # Comparison value is handled differently in NAGA?
+                        # Actually image_sample_compare exists
+                    elif tex_fn == "sample_level":
+                        # textureSampleLevel(texture, sampler, coordinate, level, ...)
+                        level = SampleLevel.exact(args[3])
+                        if len(args) > 4: offset = args[4]
+                    elif tex_fn == "sample_grad":
+                        # textureSampleGrad(texture, sampler, coordinate, grad_x, grad_y, ...)
+                        level = SampleLevel.gradient(args[3], args[4])
+                        if len(args) > 5: offset = args[5]
+                    
                     expr = IRExpression(
                         type=None,
                         image_sample_image=args[0],
                         image_sample_sampler=args[1],
                         image_sample_coordinate=args[2],
-                        image_sample_level=SampleLevel.auto()
+                        image_sample_level=level,
+                        image_sample_offset=offset
                     )
-                    # TODO: Handle array_index, offset, etc. based on tex_fn variant
                     from ....ir import ExpressionType
                     object.__setattr__(expr, 'type', ExpressionType.IMAGE_SAMPLE)
                     return ctx.add_expression(expr)
                     
                 elif tex_fn == "load":
                     # textureLoad(texture, coordinate, ...)
+                    level = None
+                    sample = None
+                    if len(args) > 2:
+                        # Depends on texture type, could be level or sample
+                        level = args[2] # Simplified
+                        
                     expr = IRExpression(
                         type=None,
                         image_load_image=args[0],
                         image_load_coordinate=args[1],
+                        image_load_level=level,
+                        image_load_sample=sample
                     )
-                    # TODO: Handle array_index, sample index, etc.
                     from ....ir import ExpressionType
                     object.__setattr__(expr, 'type', ExpressionType.IMAGE_LOAD)
                     return ctx.add_expression(expr)
@@ -604,6 +633,7 @@ def add_lowering_methods(lowerer_class):
         selector = self._lower_expression(switch_data.selector, ctx)
         
         ir_cases = []
+        default_block = None
         for case in switch_data.cases:
             # Lower case body
             ctx.push_block()
@@ -613,16 +643,19 @@ def add_lowering_methods(lowerer_class):
             
             # Map values
             if case["kind"] == "default":
-                value = None # NAGA uses None for default
+                default_block = body
             else:
                 # Resolve case value (must be constant)
-                value = case["value"] # TODO: Evaluate to integer
+                from ..ast import ExpressionKind
+                ast_val = case["value"]
+                value = None
+                if ast_val.kind == ExpressionKind.LITERAL:
+                    value = int(ast_val.data.value)
                 
-            ir_cases.append(SwitchCase(value=value, body=body, fall_through=False))
+                ir_cases.append(SwitchCase(value=value, body=body, fall_through=False))
         
         # Create switch statement
-        # TODO: Implement Statement.switch factory
-        stmt = IRStatement(type=StatementType.SWITCH, switch_selector=selector, switch_cases=ir_cases)
+        stmt = IRStatement.new_switch(selector=selector, cases=ir_cases, default=default_block)
         ctx.add_statement(stmt)
     
     def _lower_loop(self, ast_stmt, ctx):

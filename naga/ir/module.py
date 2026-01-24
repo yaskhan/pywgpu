@@ -45,6 +45,7 @@ class Module:
     def __init__(self) -> None:
         self.types: List[Type] = []
         self.constants: List[Constant] = []
+        self.overrides: List[Any] = [] # Pipeline-overridable constants
         self.global_variables: List[Any] = []
         self.global_expressions: List[Any] = []
         self.functions: List[Function] = []

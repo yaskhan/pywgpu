@@ -196,18 +196,38 @@ class TestLowerer:
     
     def test_type_conversion(self):
         """Test type conversion."""
-        # TODO: Implement when lowerer is ready
-        pass
-    
+        source = "struct S { a: f32, b: array<i32, 4> }"
+        module = parse_str(source)
+        # Struct S and f32, i32, array<i32, 4>
+        assert len(module.types) >= 4
+        
     def test_expression_lowering(self):
         """Test expression lowering."""
-        # TODO: Implement when lowerer is ready
-        pass
-    
+        source = """
+        fn dummy() {
+            let x = 1.0 + 2.0;
+            let y = abs(-x);
+        }
+        """
+        module = parse_str(source)
+        func = module.functions[0]
+        # Should have several expressions for literals, binary, and math call
+        assert len(func.expressions) >= 5
+        
     def test_statement_lowering(self):
         """Test statement lowering."""
-        # TODO: Implement when lowerer is ready
-        pass
+        source = """
+        fn dummy() {
+            if (true) {
+                return;
+            }
+        }
+        """
+        module = parse_str(source)
+        func = module.functions[0]
+        # Should have an If statement
+        from ...ir import StatementType
+        assert func.body[0].type == StatementType.IF
 
 
 # Integration tests

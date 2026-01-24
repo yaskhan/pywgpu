@@ -139,7 +139,7 @@ def first_trailing_bit(value: int, *, signed: bool = False) -> int:
     return trailing_zeros
 
 
-def first_leading_bit(value: int, *, signed: bool = False) -> int:
+def first_leading_bit(value: int, *, signed: bool = False, bit_width: int = 32) -> int:
     """Find the index of the first leading (most significant) bit.
 
     For signed integers, considers the absolute value for determining
@@ -148,6 +148,7 @@ def first_leading_bit(value: int, *, signed: bool = False) -> int:
     Args:
         value: Integer value to analyze
         signed: Whether the value is signed
+        bit_width: The bit width of the integer type (default 32)
 
     Returns:
         Index of first leading bit (0 for LSB), or -1 if value is 0
@@ -166,8 +167,6 @@ def first_leading_bit(value: int, *, signed: bool = False) -> int:
         value = abs(value)
 
     leading_zeros = 0
-    bit_width = 32 if not signed else 32  # TODO: Use actual bit width
-
     while value & (1 << (bit_width - 1)) == 0:
         value <<= 1
         leading_zeros += 1

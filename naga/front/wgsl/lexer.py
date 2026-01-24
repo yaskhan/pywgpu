@@ -253,13 +253,54 @@ class Lexer:
     
     def _read_number(self, start: int) -> Token:
         """Read number literal."""
-        # TODO: Implement full number parsing (hex, float, etc.)
-        while self.position < len(self.source):
-            char = self.source[self.position]
-            if char.isdigit() or char in '.eE+-xXabcdefABCDEFuifh':
+        # 1. Check for hex
+        if self.source[self.position:self.position+2].lower() == '0x':
+            self.position += 2
+            # Read hex digits
+            while self.position < len(self.source) and self.source[self.position] in '0123456789abcdefABCDEF':
                 self.position += 1
-            else:
-                break
+            
+            # Check for hex float
+            if self.position < len(self.source) and self.source[self.position] in '.pP':
+                if self.source[self.position] == '.':
+                    self.position += 1
+                    while self.position < len(self.source) and self.source[self.position] in '0123456789abcdefABCDEF':
+                        self.position += 1
+                
+                if self.position < len(self.source) and self.source[self.position] in 'pP':
+                    self.position += 1
+                    if self.position < len(self.source) and self.source[self.position] in '+-':
+                        self.position += 1
+                    while self.position < len(self.source) and self.source[self.position].isdigit():
+                        self.position += 1
+            
+            # Suffix
+            if self.position < len(self.source) and self.source[self.position] in 'uifh':
+                self.position += 1
+        else:
+            # 2. Decimal (int or float)
+            while self.position < len(self.source) and self.source[self.position].isdigit():
+                self.position += 1
+            
+            # Float part
+            is_float = False
+            if self.position < len(self.source) and self.source[self.position] == '.':
+                is_float = True
+                self.position += 1
+                while self.position < len(self.source) and self.source[self.position].isdigit():
+                    self.position += 1
+            
+            if self.position < len(self.source) and self.source[self.position] in 'eE':
+                is_float = True
+                self.position += 1
+                if self.position < len(self.source) and self.source[self.position] in '+-':
+                    self.position += 1
+                while self.position < len(self.source) and self.source[self.position].isdigit():
+                    self.position += 1
+            
+            # Suffix
+            if self.position < len(self.source) and self.source[self.position] in 'uifh':
+                self.position += 1
         
         value = self.source[start:self.position]
         return Token(TokenKind.NUMBER, value, (start, self.position))
