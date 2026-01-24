@@ -108,14 +108,116 @@ def upgrade_atomics(module: Module, upgrades: Upgrades) -> None:
     Args:
         module: The module to upgrade
         upgrades: Information about which variables and fields need upgrading
+        
+    Raises:
+        GlobalInitUnsupportedError: If a global variable that needs upgrading has an initializer
     """
-    # Placeholder implementation
-    # In a full implementation, this would:
-    # 1. Iterate through globals in upgrades.globals
-    # 2. For each global, upgrade its type to atomic
-    # 3. For struct fields in upgrades.fields, create new struct types
-    #    with atomic fields and replace the old types
-    pass
+    # Map from old types to their upgraded versions
+    upgraded_types: dict[Handle[Type], Handle[Type]] = {}
+    
+    def upgrade_type(ty: Handle[Type]) -> Handle[Type]:
+        """
+        Get a type equivalent to `ty`, but with Scalar leaves upgraded to Atomic scalars.
+        
+        If such a type already exists in the module, return its handle.
+        Otherwise, construct a new one and return that handle.
+        """
+        # If we've already upgraded this type, return the cached handle
+        if ty in upgraded_types:
+            return upgraded_types[ty]
+        
+        old_type = module.types[ty]
+        inner_type = type(old_type.inner).__name__
+        
+        # Base case: upgrade Scalar to Atomic
+        if inner_type == "Scalar":
+            # Create an Atomic type with the same scalar
+            from ..ir import TypeInner
+            new_inner = TypeInner.Atomic(scalar=old_type.inner.scalar)
+            new_type = Type(name=old_type.name, inner=new_inner)
+            new_handle = module.types.append(new_type, old_type.span)
+            upgraded_types[ty] = new_handle
+            return new_handle
+        
+        # Recursive cases: recurse into composite types
+        elif inner_type == "Pointer":
+            new_base = upgrade_type(old_type.inner.base)
+            if new_base == old_type.inner.base:
+                # No change needed
+                return ty
+            from ..ir import TypeInner
+            new_inner = TypeInner.Pointer(base=new_base, space=old_type.inner.space)
+            new_type = Type(name=old_type.name, inner=new_inner)
+            new_handle = module.types.append(new_type, old_type.span)
+            upgraded_types[ty] = new_handle
+            return new_handle
+        
+        elif inner_type == "Array":
+            new_base = upgrade_type(old_type.inner.base)
+            if new_base == old_type.inner.base:
+                return ty
+            from ..ir import TypeInner
+            new_inner = TypeInner.Array(
+                base=new_base,
+                size=old_type.inner.size,
+                stride=old_type.inner.stride
+            )
+            new_type = Type(name=old_type.name, inner=new_inner)
+            new_handle = module.types.append(new_type, old_type.span)
+            upgraded_types[ty] = new_handle
+            return new_handle
+        
+        elif inner_type == "BindingArray":
+            new_base = upgrade_type(old_type.inner.base)
+            if new_base == old_type.inner.base:
+                return ty
+            from ..ir import TypeInner
+            new_inner = TypeInner.BindingArray(base=new_base, size=old_type.inner.size)
+            new_type = Type(name=old_type.name, inner=new_inner)
+            new_handle = module.types.append(new_type, old_type.span)
+            upgraded_types[ty] = new_handle
+            return new_handle
+        
+        elif inner_type == "Struct":
+            # Only upgrade fields that have been accessed atomically
+            if ty not in upgrades.fields:
+                # No fields in this struct were accessed atomically
+                return ty
+            
+            # Clone members and upgrade the accessed fields
+            new_members = old_type.inner.members.copy()
+            fields_to_upgrade = upgrades.fields[ty]
+            for field_index in fields_to_upgrade:
+                new_members[field_index].ty = upgrade_type(new_members[field_index].ty)
+            
+            from ..ir import TypeInner
+            new_inner = TypeInner.Struct(members=new_members, span=old_type.inner.span)
+            new_type = Type(name=old_type.name, inner=new_inner)
+            new_handle = module.types.append(new_type, old_type.span)
+            upgraded_types[ty] = new_handle
+            return new_handle
+        
+        # No upgrade needed for other types
+        else:
+            return ty
+    
+    # Upgrade all global variables
+    for global_handle in upgrades.globals.iter():
+        global_var = module.global_variables[global_handle]
+        
+        # Check for initializers (not supported for atomic variables)
+        if hasattr(global_var, 'init') and global_var.init is not None:
+            raise GlobalInitUnsupportedError(
+                f"Global variable {global_var.name} has an initializer, "
+                "which is not supported for atomic variables"
+            )
+        
+        # Upgrade the type
+        old_ty = global_var.ty
+        new_ty = upgrade_type(old_ty)
+        
+        if new_ty != old_ty:
+            module.global_variables[global_handle].ty = new_ty
 
 
 __all__ = [

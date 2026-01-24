@@ -588,9 +588,29 @@ class ModuleMap:
         Args:
             ty: The type to adjust
         """
-        # This is implemented in types.py TypeCompactor
-        # For now, placeholder
-        pass
+        type_inner = type(ty.inner).__name__
+        
+        # Types that do not contain handles
+        if type_inner in [
+            "Scalar", "Vector", "Matrix", "CooperativeMatrix",
+            "Atomic", "ValuePointer", "Image", "Sampler",
+            "AccelerationStructure", "RayQuery"
+        ]:
+            return
+        
+        # Types that contain handles
+        if type_inner == "Pointer":
+            self.types.adjust(ty.inner.base)
+        
+        elif type_inner in ["Array", "BindingArray"]:
+            self.types.adjust(ty.inner.base)
+            # Adjust array size if it's a pending override
+            if hasattr(ty.inner.size, 'pending'):
+                self.overrides.adjust(ty.inner.size.pending)
+        
+        elif type_inner == "Struct":
+            for member in ty.inner.members:
+                self.types.adjust(member.ty)
 
     def adjust_expression(self, expr: Any, operand_map: HandleMap) -> None:
         """
@@ -603,9 +623,145 @@ class ModuleMap:
             expr: The expression to adjust
             operand_map: The handle map for expression operands
         """
-        # This is implemented in expressions.py ExpressionCompactor
-        # For now, placeholder
-        pass
+        expr_type = type(expr).__name__
+        
+        # Expressions that do not contain handles
+        if expr_type in [
+            "Literal", "FunctionArgument", "LocalVariable",
+            "SubgroupBallotResult", "RayQueryProceedResult"
+        ]:
+            return
+        
+        # Expressions that contain handles
+        if expr_type == "Constant":
+            self.constants.adjust(expr.constant)
+        
+        elif expr_type == "Override":
+            self.overrides.adjust(expr.override)
+        
+        elif expr_type == "ZeroValue":
+            self.types.adjust(expr.ty)
+        
+        elif expr_type == "Compose":
+            self.types.adjust(expr.ty)
+            for component in expr.components:
+                operand_map.adjust(component)
+        
+        elif expr_type == "Access":
+            operand_map.adjust(expr.base)
+            operand_map.adjust(expr.index)
+        
+        elif expr_type == "AccessIndex":
+            operand_map.adjust(expr.base)
+        
+        elif expr_type == "Splat":
+            operand_map.adjust(expr.value)
+        
+        elif expr_type == "Swizzle":
+            operand_map.adjust(expr.vector)
+        
+        elif expr_type == "GlobalVariable":
+            self.globals.adjust(expr.handle)
+        
+        elif expr_type == "Load":
+            operand_map.adjust(expr.pointer)
+        
+        elif expr_type == "ImageSample":
+            operand_map.adjust(expr.image)
+            operand_map.adjust(expr.sampler)
+            operand_map.adjust(expr.coordinate)
+            operand_map.adjust_option(expr.array_index)
+            operand_map.adjust_option(expr.offset)
+            self._adjust_sample_level(expr.level, operand_map)
+            operand_map.adjust_option(expr.depth_ref)
+        
+        elif expr_type == "ImageLoad":
+            operand_map.adjust(expr.image)
+            operand_map.adjust(expr.coordinate)
+            operand_map.adjust_option(expr.array_index)
+            operand_map.adjust_option(expr.sample)
+            operand_map.adjust_option(expr.level)
+        
+        elif expr_type == "ImageQuery":
+            operand_map.adjust(expr.image)
+            self._adjust_image_query(expr.query, operand_map)
+        
+        elif expr_type == "Unary":
+            operand_map.adjust(expr.expr)
+        
+        elif expr_type == "Binary":
+            operand_map.adjust(expr.left)
+            operand_map.adjust(expr.right)
+        
+        elif expr_type == "Select":
+            operand_map.adjust(expr.condition)
+            operand_map.adjust(expr.accept)
+            operand_map.adjust(expr.reject)
+        
+        elif expr_type == "Derivative":
+            operand_map.adjust(expr.expr)
+        
+        elif expr_type == "Relational":
+            operand_map.adjust(expr.argument)
+        
+        elif expr_type == "Math":
+            operand_map.adjust(expr.arg)
+            operand_map.adjust_option(expr.arg1)
+            operand_map.adjust_option(expr.arg2)
+            operand_map.adjust_option(expr.arg3)
+        
+        elif expr_type == "As":
+            operand_map.adjust(expr.expr)
+        
+        elif expr_type == "CallResult":
+            self.functions.adjust(expr.function)
+        
+        elif expr_type == "AtomicResult":
+            self.types.adjust(expr.ty)
+        
+        elif expr_type == "WorkGroupUniformLoadResult":
+            self.types.adjust(expr.ty)
+        
+        elif expr_type == "SubgroupOperationResult":
+            self.types.adjust(expr.ty)
+        
+        elif expr_type == "ArrayLength":
+            operand_map.adjust(expr.expr)
+        
+        elif expr_type == "RayQueryGetIntersection":
+            operand_map.adjust(expr.query)
+        
+        elif expr_type == "RayQueryVertexPositions":
+            operand_map.adjust(expr.query)
+        
+        elif expr_type == "CooperativeLoad":
+            operand_map.adjust(expr.data.pointer)
+            operand_map.adjust(expr.data.stride)
+        
+        elif expr_type == "CooperativeMultiplyAdd":
+            operand_map.adjust(expr.a)
+            operand_map.adjust(expr.b)
+            operand_map.adjust(expr.c)
+
+    def _adjust_sample_level(self, level: Any, operand_map: HandleMap) -> None:
+        """Adjust handles in a sample level."""
+        level_type = type(level).__name__
+        
+        if level_type in ["Auto", "Zero"]:
+            return
+        elif level_type in ["Exact", "Bias"]:
+            operand_map.adjust(level.expr)
+        elif level_type == "Gradient":
+            operand_map.adjust(level.x)
+            operand_map.adjust(level.y)
+
+    def _adjust_image_query(self, query: Any, operand_map: HandleMap) -> None:
+        """Adjust handles in an image query."""
+        query_type = type(query).__name__
+        
+        if query_type == "Size" and hasattr(query, 'level'):
+            operand_map.adjust_option(query.level)
+        # NumLevels, NumLayers, NumSamples don't have handles
 
 
 class FunctionMap:
@@ -647,6 +803,58 @@ class FunctionMap:
             module_map: The module map for adjusting handles
             reuse: Reused named expressions storage
         """
-        # This is implemented in functions.py FunctionCompactor
-        # For now, placeholder
-        pass
+        assert len(reuse) == 0, "reuse dictionary should be empty"
+
+        # Adjust function arguments
+        for argument in function.arguments:
+            module_map.types.adjust(argument.ty)
+
+        # Adjust function result
+        if function.result is not None:
+            module_map.types.adjust(function.result.ty)
+
+        # Adjust local variables
+        for local in function.local_variables:
+            log.trace(f"adjusting local variable {local.name!r}")
+            module_map.types.adjust(local.ty)
+            if local.init is not None:
+                self.expressions.adjust(local.init)
+
+        # Drop unused expressions, reusing existing storage
+        function.expressions.retain_mut(
+            lambda handle, expr: self._retain_expression(handle, expr, module_map)
+        )
+
+        # Adjust named expressions
+        old_named = function.named_expressions
+        function.named_expressions = {}
+        for handle, name in old_named.items():
+            self.expressions.adjust(handle)
+            reuse[handle] = name
+        function.named_expressions = reuse.copy()
+        reuse.clear()
+
+        # Adjust statements
+        self.adjust_body(function, module_map.functions)
+
+    def _retain_expression(self, handle: Handle, expr: Any, module_map: ModuleMap) -> bool:
+        """Helper to retain and adjust expression."""
+        if self.expressions.used(handle):
+            module_map.adjust_expression(expr, self.expressions)
+            return True
+        return False
+
+    def adjust_body(self, function: Any, function_map: HandleMap) -> None:
+        """
+        Adjust statements in the body of `function`.
+        
+        Adjusts expressions using `self.expressions`, and adjusts calls to other
+        functions using `function_map`.
+        
+        Args:
+            function: The function whose body to adjust
+            function_map: The handle map for function calls
+        """
+        from .statements import StatementCompactor
+        compactor = StatementCompactor(self.expressions, function_map)
+        compactor.adjust_body(function.body)
