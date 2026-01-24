@@ -327,7 +327,7 @@ class Writer:
                 return "SamplerState"
 
             case _:
-                return f"/* TODO: {inner.type} */"
+                raise ShaderError(f"Unsupported HLSL type: {inner.type}")
 
     def finish(self) -> str:
         """Finish writing and return the complete output."""

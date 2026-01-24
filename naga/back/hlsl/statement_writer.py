@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, List, Optional
 
 from ...ir import Statement, StatementType, Barrier, AtomicFunction
+from ...error import ShaderError
 from .expression_writer import HLSLExpressionWriter
 
 if TYPE_CHECKING:
@@ -118,7 +119,7 @@ class HLSLStatementWriter:
                 return self._write_call(stmt, indent)
             
             case _:
-                return f"{indent}// TODO: Implement {stmt.type}\n"
+                raise ShaderError(f"Unsupported HLSL statement: {stmt.type}")
     
     def _write_if(self, stmt: Statement, indent: str) -> str:
         """Write an if statement."""

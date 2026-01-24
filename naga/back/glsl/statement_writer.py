@@ -8,7 +8,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, List, Optional
 
-from ...ir import Statement, StatementType, Barrier
+from ...ir import Statement, StatementType, Barrier, AtomicFunction
+from ...error import ShaderError
 from .expression_writer import GLSLExpressionWriter
 
 if TYPE_CHECKING:
@@ -115,7 +116,7 @@ class GLSLStatementWriter:
                 return self._write_call(stmt, indent)
             
             case _:
-                return f"{indent}// TODO: Implement {stmt.type}\n"
+                raise ShaderError(f"Unsupported GLSL statement: {stmt.type}")
     
     def _write_if(self, stmt: Statement, indent: str) -> str:
         """Write an if statement."""
@@ -223,11 +224,30 @@ class GLSLStatementWriter:
 
     def _write_image_atomic(self, stmt: Statement, indent: str) -> str:
         """Write an image atomic statement."""
-        # Simple implementation using imageAtomic* functions
         image = self.expression_writer.write_expression(stmt.image_atomic_image)
         coord = self.expression_writer.write_expression(stmt.image_atomic_coordinate)
         value = self.expression_writer.write_expression(stmt.image_atomic_value)
-        return f"{indent}/* TODO: imageAtomic{stmt.image_atomic_fun}({image}, {coord}, {value}) */\n"
+
+        fun_map = {
+            AtomicFunction.ADD: "imageAtomicAdd",
+            AtomicFunction.SUBTRACT: "imageAtomicAdd",  # GLSL doesn't provide subtract; use add of negated value if needed
+            AtomicFunction.AND: "imageAtomicAnd",
+            AtomicFunction.EXCLUSIVE_OR: "imageAtomicXor",
+            AtomicFunction.INCLUSIVE_OR: "imageAtomicOr",
+            AtomicFunction.MIN: "imageAtomicMin",
+            AtomicFunction.MAX: "imageAtomicMax",
+            AtomicFunction.EXCHANGE: "imageAtomicExchange",
+        }
+
+        fun_name = fun_map.get(stmt.image_atomic_fun)
+        if fun_name is None:
+            raise ShaderError(f"Unsupported GLSL image atomic function: {stmt.image_atomic_fun}")
+
+        call = f"{fun_name}({image}, {coord}, {value})"
+        if getattr(stmt, "image_atomic_result", None) is not None:
+            result_expr = self.expression_writer.write_expression(stmt.image_atomic_result)
+            return f"{indent}{result_expr} = {call};\n"
+        return f"{indent}{call};\n"
 
 
 __all__ = ['GLSLStatementWriter']

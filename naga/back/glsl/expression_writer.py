@@ -12,6 +12,7 @@ from ...ir import (
     Expression, ExpressionType, Literal, LiteralType,
     BinaryOperator, UnaryOperator, MathFunction
 )
+from ...error import ShaderError
 
 if TYPE_CHECKING:
     from ...arena import Handle, Arena
@@ -122,7 +123,7 @@ class GLSLExpressionWriter:
                 return self._write_atomic(expr)
             
             case _:
-                return f"/* TODO: {expr.type} */"
+                raise ShaderError(f"Unsupported GLSL expression: {expr.type}")
     
     def _write_literal(self, lit: Literal) -> str:
         """Write a literal value."""

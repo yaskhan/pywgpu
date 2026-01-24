@@ -168,7 +168,7 @@ These Python backends are direct ports of the Rust implementations found in:
 
 ## Testing
 
-Each backend includes placeholder implementations that can be extended with comprehensive test suites. The implementations provide basic structure for:
+Each backend includes baseline implementations that can be extended with comprehensive test suites. The implementations provide basic structure for:
 
 - Type translation correctness
 - Shader stage-specific output

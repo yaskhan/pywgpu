@@ -12,6 +12,7 @@ from ...ir import (
     Expression, ExpressionType, Literal, LiteralType,
     BinaryOperator, UnaryOperator, MathFunction
 )
+from ...error import ShaderError
 
 if TYPE_CHECKING:
     from ...arena import Handle, Arena
@@ -119,7 +120,7 @@ class HLSLExpressionWriter:
                 return self._write_atomic(expr)
             
             case _:
-                return f"/* TODO: {expr.type} */"
+                raise ShaderError(f"Unsupported HLSL expression: {expr.type}")
     
     def _write_literal(self, lit: Literal) -> str:
         """Write a literal value."""
@@ -254,14 +255,7 @@ class HLSLExpressionWriter:
 
     def _write_atomic(self, expr: Expression) -> str:
         """Write an atomic operation."""
-        # HLSL interlocked functions are statements and don't return values directly.
-        # This is tricky for expressions. We might need to use a temporary or assume it's okay.
-        # NAGA ATOMIC expression usually means the result of the atomic op.
-        pointer = self.write_expression(expr.atomic_pointer)
-        value = self.write_expression(expr.atomic_value)
-        
-        # Placeholder for result-returning atomic
-        return f"/* ATOMIC RESULT TODO */"
+        raise ShaderError("Atomic operations must be emitted as statements in HLSL")
     
     def _math_function_name(self, func: MathFunction) -> str:
         """Get HLSL name for math function."""

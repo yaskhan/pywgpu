@@ -8,7 +8,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, List, Optional
 
-from ...ir import Statement, StatementType, Barrier
+from ...ir import Statement, StatementType, Barrier, AtomicFunction
+from ...error import ShaderError
 from .expression_writer import WGSLExpressionWriter
 
 if TYPE_CHECKING:
@@ -120,7 +121,7 @@ class WGSLStatementWriter:
                 return self._write_call(stmt, indent)
             
             case _:
-                return f"{indent}// TODO: Implement {stmt.type}\n"
+                raise ShaderError(f"Unsupported WGSL statement: {stmt.type}")
     
     def _write_if(self, stmt: Statement, indent: str) -> str:
         """Write an if statement."""
@@ -228,7 +229,30 @@ class WGSLStatementWriter:
 
     def _write_image_atomic(self, stmt: Statement, indent: str) -> str:
         """Write an image atomic statement."""
-        return f"{indent}/* TODO: WGSL textureAtomic{stmt.image_atomic_fun} */\n"
+        image = self.expression_writer.write_expression(stmt.image_atomic_image)
+        coord = self.expression_writer.write_expression(stmt.image_atomic_coordinate)
+        value = self.expression_writer.write_expression(stmt.image_atomic_value)
+
+        fun_map = {
+            AtomicFunction.ADD: "textureAtomicAdd",
+            AtomicFunction.SUBTRACT: "textureAtomicSub",
+            AtomicFunction.AND: "textureAtomicAnd",
+            AtomicFunction.EXCLUSIVE_OR: "textureAtomicXor",
+            AtomicFunction.INCLUSIVE_OR: "textureAtomicOr",
+            AtomicFunction.MIN: "textureAtomicMin",
+            AtomicFunction.MAX: "textureAtomicMax",
+            AtomicFunction.EXCHANGE: "textureAtomicExchange",
+        }
+
+        fun_name = fun_map.get(stmt.image_atomic_fun)
+        if fun_name is None:
+            raise ShaderError(f"Unsupported WGSL image atomic function: {stmt.image_atomic_fun}")
+
+        call = f"{fun_name}({image}, {coord}, {value})"
+        if getattr(stmt, "image_atomic_result", None) is not None:
+            result_expr = self.expression_writer.write_expression(stmt.image_atomic_result)
+            return f"{indent}{result_expr} = {call};\n"
+        return f"{indent}{call};\n"
 
 
 __all__ = ['WGSLStatementWriter']

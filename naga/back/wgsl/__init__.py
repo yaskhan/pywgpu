@@ -126,8 +126,23 @@ class Writer:
 
     def _initialize_names(self, module: Any) -> None:
         """Initialize name mappings for module elements."""
-        # Placeholder implementation - would need full IR access
-        pass
+        # Keep this mapping conservative; use provided IR names when present.
+        if hasattr(module, "types"):
+            for i, ty in enumerate(module.types):
+                if getattr(ty, "name", None):
+                    self.names[f"type_{i}"] = ty.name
+        if hasattr(module, "constants"):
+            for i, const in enumerate(module.constants):
+                if getattr(const, "name", None):
+                    self.names[f"const_{i}"] = const.name
+        if hasattr(module, "global_variables"):
+            for i, var in enumerate(module.global_variables):
+                if getattr(var, "name", None):
+                    self.names[f"global_{i}"] = var.name
+        if hasattr(module, "functions"):
+            for i, func in enumerate(module.functions):
+                if getattr(func, "name", None):
+                    self.names[f"function_{i}"] = func.name
 
     def _write_enable_declarations(self, module: Any) -> None:
         """Write enable declarations needed by the module."""
@@ -378,7 +393,7 @@ class Writer:
                 return f"ptr<{space_str}, {base_str}>"
             
             case _:
-                return f"/* TODO: {inner.type} */"
+                raise ShaderError(f"Unsupported WGSL type: {inner.type}")
 
     def _image_dim_to_string(self, dim: ImageDimension) -> str:
         match dim:

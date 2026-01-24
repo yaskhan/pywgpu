@@ -361,9 +361,8 @@ class Writer:
 
     def _analyze_module(self) -> None:
         """Analyze module to determine required types and capabilities."""
-        # Placeholder implementation
-        # Would analyze module types, functions, etc.
-        pass
+        # This simplified writer does not currently perform module feature analysis.
+        return
 
     def _generate_types(self) -> None:
         """Generate SPIR-V type definitions."""
@@ -430,9 +429,8 @@ class Writer:
 
     def _generate_instructions(self) -> None:
         """Generate function and instruction definitions."""
-        # Placeholder implementation
-        # Would generate actual function bodies, expressions, etc.
-        pass
+        # This simplified writer only emits type and variable declarations.
+        return
 
     def _create_spirv_binary(self) -> bytes:
         """Create the final SPIR-V binary."""

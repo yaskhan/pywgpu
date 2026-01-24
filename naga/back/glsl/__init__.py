@@ -602,9 +602,7 @@ class Writer:
 
     def _collect_required_features(self) -> None:
         """Analyze module and collect required GLSL features."""
-        # Placeholder implementation
-        # Would analyze module types, expressions, etc.
-        pass
+        self.features.clear()
 
     def _write_version_directive(self) -> None:
         """Write GLSL version directive."""
@@ -777,7 +775,7 @@ class Writer:
                 return "/* struct */"
             
             case _:
-                return f"/* TODO: {inner.type} */"
+                raise ShaderError(f"Unsupported GLSL type: {inner.type}")
 
     def _get_variable_name(self, var: Any) -> str:
         """Get the GLSL variable name."""
