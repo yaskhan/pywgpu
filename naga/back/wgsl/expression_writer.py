@@ -1,184 +1,258 @@
-"""WGSL Expression Writer
+"""WGSL expression writer.
 
-Comprehensive expression writing for WGSL backend.
-Handles all NAGA IR expression types and converts them to valid WGSL syntax.
+This module provides a small subset of the full `naga` WGSL backend expression
+writer, translated from `wgpu-trunk/naga/src/back/wgsl/writer.rs`.
+
+The project-wide WGSL backend is still under active porting; this writer focuses
+on the expression variants exercised by the current Python IR and backends.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
+from ...error import ShaderError
 from ...ir import (
-    Expression, ExpressionType, Literal, LiteralType,
-    BinaryOperator, UnaryOperator, MathFunction
+    BinaryOperator,
+    Expression,
+    ExpressionType,
+    Literal,
+    LiteralType,
+    MathFunction,
+    RelationalFunction,
+    UnaryOperator,
 )
 
 if TYPE_CHECKING:
-    from ...arena import Handle, Arena
     from ...ir.module import Module
 
 
 class WGSLExpressionWriter:
-    """Writes NAGA IR expressions as WGSL code."""
-    
-    def __init__(self, module: Module, names: dict[str, str], expressions: Arena[Expression]):
-        """Initialize expression writer.
-        
-        Args:
-            module: The module being written
-            names: Name mapping for identifiers
-            expressions: The expression arena for the current function
-        """
+    """Writes Naga IR expressions as WGSL source."""
+
+    def __init__(self, module: Module, names: dict[str, str], expressions: list[Expression]):
         self.module = module
         self.names = names
         self.expressions = expressions
-    
-    def write_expression(self, expr_handle: Handle[Expression]) -> str:
-        """Write an expression to WGSL string.
-        
-        Args:
-            expr_handle: Handle to the expression
-            
-        Returns:
-            WGSL code for the expression
-        """
+
+    def write_expression(self, expr_handle: int) -> str:
         expr = self.expressions[expr_handle]
-        
+
         match expr.type:
             case ExpressionType.LITERAL:
+                if expr.literal is None:
+                    raise ShaderError("Malformed Literal expression")
                 return self._write_literal(expr.literal)
-            
+
             case ExpressionType.CONSTANT:
-                const = self.module.constants[expr.constant]
-                return self.names.get(f"const_{expr.constant}", const.name or f"const_{expr.constant}")
-            
+                if expr.constant is None:
+                    raise ShaderError("Malformed Constant expression")
+                constant = self.module.constants[expr.constant]
+                if constant.name is not None:
+                    return self.names.get(f"const_{expr.constant}", constant.name)
+                return self.write_expression(constant.init)
+
+            case ExpressionType.OVERRIDE:
+                if expr.override is None:
+                    raise ShaderError("Malformed Override expression")
+                return self.names.get(f"override_{expr.override}", f"override_{expr.override}")
+
             case ExpressionType.ZERO_VALUE:
-                ty_name = self._type_name(expr.zero_value_ty)
-                return f"{ty_name}()"
-            
+                if expr.zero_value is None:
+                    raise ShaderError("Malformed ZeroValue expression")
+                return f"{self._type_name(expr.zero_value)}()"
+
             case ExpressionType.COMPOSE:
-                return self._write_compose(expr, expressions)
-            
+                if expr.compose_ty is None or expr.compose_components is None:
+                    raise ShaderError("Malformed Compose expression")
+                args = ", ".join(self.write_expression(h) for h in expr.compose_components)
+                return f"{self._type_name(expr.compose_ty)}({args})"
+
             case ExpressionType.SPLAT:
-                size = expr.splat_size
-                value = self.write_expression(expr.splat_value)
-                # vec3<f32>(value) for splat
-                return f"vec{self._vector_size_to_int(size)}({value})"
-            
+                if expr.splat_size is None or expr.splat_value is None:
+                    raise ShaderError("Malformed Splat expression")
+                size = getattr(expr.splat_size, "value", 4)
+                return f"vec{size}({self.write_expression(expr.splat_value)})"
+
             case ExpressionType.SWIZZLE:
+                if (
+                    expr.swizzle_vector is None
+                    or expr.swizzle_size is None
+                    or expr.swizzle_pattern is None
+                ):
+                    raise ShaderError("Malformed Swizzle expression")
                 vector = self.write_expression(expr.swizzle_vector)
-                pattern = self._swizzle_pattern(expr.swizzle_pattern, expr.swizzle_size)
+                size = getattr(expr.swizzle_size, "value", 4)
+                pattern = self._swizzle_pattern(expr.swizzle_pattern, size)
                 return f"{vector}.{pattern}"
-            
+
             case ExpressionType.ACCESS:
+                if expr.access_base is None or expr.access_index is None:
+                    raise ShaderError("Malformed Access expression")
                 base = self.write_expression(expr.access_base)
                 index = self.write_expression(expr.access_index)
                 return f"{base}[{index}]"
-            
+
             case ExpressionType.ACCESS_INDEX:
+                if expr.access_base is None or expr.access_index_value is None:
+                    raise ShaderError("Malformed AccessIndex expression")
                 base = self.write_expression(expr.access_base)
-                index = expr.access_index
-                return f"{base}[{index}]"
-            
-            case ExpressionType.GLOBAL_VARIABLE:
-                var = self.module.global_variables[expr.global_variable]
-                return self.names.get(f"global_{expr.global_variable}", var.name or f"global_{expr.global_variable}")
-            
-            case ExpressionType.LOCAL_VARIABLE:
-                return self.names.get(f"local_{expr.local_variable}", f"local_{expr.local_variable}")
-            
+                return f"{base}[{expr.access_index_value}]"
+
             case ExpressionType.FUNCTION_ARGUMENT:
+                if expr.function_argument is None:
+                    raise ShaderError("Malformed FunctionArgument expression")
                 return self.names.get(f"arg_{expr.function_argument}", f"arg_{expr.function_argument}")
-            
+
+            case ExpressionType.GLOBAL_VARIABLE:
+                if expr.global_variable is None:
+                    raise ShaderError("Malformed GlobalVariable expression")
+                var = self.module.global_variables[expr.global_variable]
+                return self.names.get(
+                    f"global_{expr.global_variable}",
+                    getattr(var, "name", None) or f"global_{expr.global_variable}",
+                )
+
+            case ExpressionType.LOCAL_VARIABLE:
+                if expr.local_variable is None:
+                    raise ShaderError("Malformed LocalVariable expression")
+                return self.names.get(f"local_{expr.local_variable}", f"local_{expr.local_variable}")
+
             case ExpressionType.LOAD:
-                pointer = self.write_expression(expr.load_pointer)
-                return f"(*{pointer})"  # Dereference in WGSL
-            
+                if expr.load_pointer is None:
+                    raise ShaderError("Malformed Load expression")
+                # WGSL loads are implicit for non-pointer-typed expressions in this simplified IR.
+                return self.write_expression(expr.load_pointer)
+
             case ExpressionType.UNARY:
-                return self._write_unary(expr)
-            
+                if expr.unary_op is None or expr.unary_expr is None:
+                    raise ShaderError("Malformed Unary expression")
+                operand = self.write_expression(expr.unary_expr)
+                return self._write_unary(expr.unary_op, operand)
+
             case ExpressionType.BINARY:
-                return self._write_binary(expr)
-            
+                if expr.binary_op is None or expr.binary_left is None or expr.binary_right is None:
+                    raise ShaderError("Malformed Binary expression")
+                left = self.write_expression(expr.binary_left)
+                right = self.write_expression(expr.binary_right)
+                return self._write_binary(expr.binary_op, left, right)
+
             case ExpressionType.SELECT:
-                return self._write_select(expr)
-            
-            case ExpressionType.MATH:
-                return self._write_math(expr)
-            
+                if (
+                    expr.select_condition is None
+                    or expr.select_accept is None
+                    or expr.select_reject is None
+                ):
+                    raise ShaderError("Malformed Select expression")
+                condition = self.write_expression(expr.select_condition)
+                accept = self.write_expression(expr.select_accept)
+                reject = self.write_expression(expr.select_reject)
+                return f"select({reject}, {accept}, {condition})"
+
             case ExpressionType.RELATIONAL:
-                return self._write_relational(expr)
-            
+                if expr.relational_fun is None or expr.relational_argument is None:
+                    raise ShaderError("Malformed Relational expression")
+                fun = self._relational_function_name(expr.relational_fun)
+                arg = self.write_expression(expr.relational_argument)
+                return f"{fun}({arg})"
+
+            case ExpressionType.MATH:
+                if expr.math_fun is None or expr.math_arg is None:
+                    raise ShaderError("Malformed Math expression")
+                fun = self._math_function_name(expr.math_fun)
+                args = [self.write_expression(expr.math_arg)]
+                for extra in (expr.math_arg1, expr.math_arg2, expr.math_arg3):
+                    if extra is not None:
+                        args.append(self.write_expression(extra))
+                return f"{fun}({', '.join(args)})"
+
+            case ExpressionType.AS:
+                if expr.as_expr is None or expr.as_kind is None:
+                    raise ShaderError("Malformed As expression")
+                value = self.write_expression(expr.as_expr)
+                # WGSL casts are written as `T(value)`.
+                return f"{str(expr.as_kind.value)}({value})"
+
             case ExpressionType.CALL_RESULT:
-                # Function call result - just reference it
+                if expr.call_result is None:
+                    raise ShaderError("Malformed CallResult expression")
                 return self.names.get(f"call_{expr.call_result}", f"call_{expr.call_result}")
-            
+
+            case ExpressionType.ATOMIC_RESULT | ExpressionType.WORKGROUP_UNIFORM_LOAD_RESULT:
+                return f"_e{expr_handle}"
+
+            case ExpressionType.ARRAY_LENGTH:
+                if expr.array_length is None:
+                    raise ShaderError("Malformed ArrayLength expression")
+                base = self.write_expression(expr.array_length)
+                return f"arrayLength(&{base})"
+
             case ExpressionType.IMAGE_SAMPLE:
-                return self._write_image_sample(expr)
-            
+                if (
+                    expr.image_sample_image is None
+                    or expr.image_sample_sampler is None
+                    or expr.image_sample_coordinate is None
+                ):
+                    raise ShaderError("Malformed ImageSample expression")
+                image = self.write_expression(expr.image_sample_image)
+                sampler = self.write_expression(expr.image_sample_sampler)
+                coord = self.write_expression(expr.image_sample_coordinate)
+                return f"textureSample({image}, {sampler}, {coord})"
+
             case ExpressionType.IMAGE_LOAD:
-                return self._write_image_load(expr)
-            
-            case ExpressionType.ATOMIC:
-                return self._write_atomic(expr)
-            
+                if expr.image_load_image is None or expr.image_load_coordinate is None:
+                    raise ShaderError("Malformed ImageLoad expression")
+                image = self.write_expression(expr.image_load_image)
+                coord = self.write_expression(expr.image_load_coordinate)
+                level = "0"
+                if expr.image_load_level is not None:
+                    level = self.write_expression(expr.image_load_level)
+                return f"textureLoad({image}, {coord}, {level})"
+
             case _:
-                return f"/* TODO: {expr.type} */"
-    
+                raise ShaderError(f"Unsupported WGSL expression: {expr.type}")
+
     def _write_literal(self, lit: Literal) -> str:
-        """Write a literal value."""
+        value = lit.value
         match lit.type:
-            case LiteralType.F64:
-                return f"{lit.f64}"
-            case LiteralType.F32:
-                return f"{lit.f32}f"
             case LiteralType.F16:
-                return f"{lit.f16}h"
+                return f"{value}h"
+            case LiteralType.F32:
+                return f"{value}f"
             case LiteralType.U32:
-                return f"{lit.u32}u"
+                return f"{value}u"
             case LiteralType.I32:
-                return f"{lit.i32}"
-            case LiteralType.U64:
-                return f"{lit.u64}ul"
-            case LiteralType.I64:
-                return f"{lit.i64}l"
+                if int(value) == -(2**31):
+                    return f"i32({value})"
+                return f"{value}i"
             case LiteralType.BOOL:
-                return "true" if lit.bool else "false"
-            case LiteralType.ABSTRACT_INT:
-                return f"{lit.abstract_int}"
-            case LiteralType.ABSTRACT_FLOAT:
-                return f"{lit.abstract_float}"
-            case _:
-                return "0"
-    
-    def _write_compose(self, expr: Expression) -> str:
-        """Write a compose expression."""
-        ty_name = self._type_name(expr.compose_ty)
-        components = [
-            self.write_expression(comp)
-            for comp in expr.compose_components
-        ]
-        return f"{ty_name}({', '.join(components)})"
-    
-    def _write_unary(self, expr: Expression) -> str:
-        """Write a unary operation."""
-        operand = self.write_expression(expr.unary_expr)
-        
-        match expr.unary_op:
+                return "true" if bool(value) else "false"
+            case LiteralType.F64:
+                return f"{value}lf"
+            case LiteralType.I64:
+                if int(value) == -(2**63):
+                    return f"i64({int(value) + 1} - 1)"
+                return f"{value}li"
+            case LiteralType.U64:
+                return f"{value}lu"
+            case LiteralType.ABSTRACT_INT | LiteralType.ABSTRACT_FLOAT:
+                raise ShaderError(
+                    "Abstract types should not appear in IR presented to backends"
+                )
+
+        raise ShaderError(f"Unsupported literal type: {lit.type}")
+
+    def _write_unary(self, op: UnaryOperator, operand: str) -> str:
+        match op:
             case UnaryOperator.NEGATE:
                 return f"(-{operand})"
             case UnaryOperator.LOGICAL_NOT:
                 return f"(!{operand})"
             case UnaryOperator.BITWISE_NOT:
                 return f"(~{operand})"
-            case _:
-                return f"(/* unary */ {operand})"
-    
-    def _write_binary(self, expr: Expression) -> str:
-        """Write a binary operation."""
-        left = self.write_expression(expr.binary_left)
-        right = self.write_expression(expr.binary_right)
-        
+        raise ShaderError(f"Unsupported unary operator: {op}")
+
+    def _write_binary(self, op: BinaryOperator, left: str, right: str) -> str:
         op_map = {
             BinaryOperator.ADD: "+",
             BinaryOperator.SUBTRACT: "-",
@@ -191,203 +265,46 @@ class WGSLExpressionWriter:
             BinaryOperator.LESS_EQUAL: "<=",
             BinaryOperator.GREATER: ">",
             BinaryOperator.GREATER_EQUAL: ">=",
+            BinaryOperator.AND: "&",
+            BinaryOperator.EXCLUSIVE_OR: "^",
+            BinaryOperator.INCLUSIVE_OR: "|",
             BinaryOperator.LOGICAL_AND: "&&",
             BinaryOperator.LOGICAL_OR: "||",
-            BinaryOperator.AND: "&",
-            BinaryOperator.INCLUSIVE_OR: "|",
-            BinaryOperator.EXCLUSIVE_OR: "^",
             BinaryOperator.SHIFT_LEFT: "<<",
             BinaryOperator.SHIFT_RIGHT: ">>",
         }
-        
-        op = op_map.get(expr.binary_op, "?")
-        return f"({left} {op} {right})"
-    
-    def _write_select(self, expr: Expression) -> str:
-        """Write a select (ternary) expression."""
-        condition = self.write_expression(expr.select_condition)
-        accept = self.write_expression(expr.select_accept)
-        reject = self.write_expression(expr.select_reject)
-        
-        # WGSL uses select(reject, accept, condition)
-        return f"select({reject}, {accept}, {condition})"
-    
-    def _write_math(self, expr: Expression) -> str:
-        """Write a math function call."""
-        func_name = self._math_function_name(expr.math_fun)
-        
-        args = [self.write_expression(expr.math_arg)]
-        
-        if hasattr(expr, 'math_arg1') and expr.math_arg1 is not None:
-            args.append(self.write_expression(expr.math_arg1))
-        if hasattr(expr, 'math_arg2') and expr.math_arg2 is not None:
-            args.append(self.write_expression(expr.math_arg2))
-        if hasattr(expr, 'math_arg3') and expr.math_arg3 is not None:
-            args.append(self.write_expression(expr.math_arg3))
-        
-        return f"{func_name}({', '.join(args)})"
-    
-    def _write_relational(self, expr: Expression) -> str:
-        """Write a relational function call."""
-        func_name = self._relational_function_name(expr.relational_fun)
-        arg = self.write_expression(expr.relational_argument)
-        return f"{func_name}({arg})"
+        symbol = op_map.get(op)
+        if symbol is None:
+            raise ShaderError(f"Unsupported binary operator: {op}")
+        return f"({left} {symbol} {right})"
 
-    def _write_image_sample(self, expr: Expression) -> str:
-        """Write an image sampling expression."""
-        image = self.write_expression(expr.image_sample_image)
-        sampler = self.write_expression(expr.image_sample_sampler)
-        coord = self.write_expression(expr.image_sample_coordinate)
-        
-        # WGSL textureSample(image, sampler, coord)
-        return f"textureSample({image}, {sampler}, {coord})"
-
-    def _write_image_load(self, expr: Expression) -> str:
-        """Write an image load expression."""
-        image = self.write_expression(expr.image_load_image)
-        coord = self.write_expression(expr.image_load_coordinate)
-        # WGSL textureLoad(image, coord, level)
-        level = "0" # Default level
-        if hasattr(expr, 'image_load_level') and expr.image_load_level is not None:
-            level = self.write_expression(expr.image_load_level)
-        return f"textureLoad({image}, {coord}, {level})"
-
-    def _write_atomic(self, expr: Expression) -> str:
-        """Write an atomic operation."""
-        from ...ir import AtomicFunction
-        pointer = self.write_expression(expr.atomic_pointer)
-        value = self.write_expression(expr.atomic_value)
-        
-        func_map = {
-            AtomicFunction.ADD: "atomicAdd",
-            AtomicFunction.SUBTRACT: "atomicSub",
-            AtomicFunction.AND: "atomicAnd",
-            AtomicFunction.EXCLUSIVE_OR: "atomicXor",
-            AtomicFunction.INCLUSIVE_OR: "atomicOr",
-            AtomicFunction.MIN: "atomicMin",
-            AtomicFunction.MAX: "atomicMax",
-            AtomicFunction.EXCHANGE: "atomicExchange",
-        }
-        
-        func = func_map.get(expr.atomic_fun, "atomicAdd")
-        return f"{func}({pointer}, {value})"
-    
     def _math_function_name(self, func: MathFunction) -> str:
-        """Get WGSL name for math function."""
-        # Most math functions have the same name in WGSL
-        func_map = {
-            MathFunction.ABS: "abs",
-            MathFunction.MIN: "min",
-            MathFunction.MAX: "max",
-            MathFunction.CLAMP: "clamp",
-            MathFunction.SATURATE: "saturate",
-            MathFunction.COS: "cos",
-            MathFunction.COSH: "cosh",
-            MathFunction.SIN: "sin",
-            MathFunction.SINH: "sinh",
-            MathFunction.TAN: "tan",
-            MathFunction.TANH: "tanh",
-            MathFunction.ACOS: "acos",
-            MathFunction.ASIN: "asin",
-            MathFunction.ATAN: "atan",
-            MathFunction.ATAN2: "atan2",
-            MathFunction.ASINH: "asinh",
-            MathFunction.ACOSH: "acosh",
-            MathFunction.ATANH: "atanh",
-            MathFunction.RADIANS: "radians",
-            MathFunction.DEGREES: "degrees",
-            MathFunction.CEIL: "ceil",
-            MathFunction.FLOOR: "floor",
-            MathFunction.ROUND: "round",
-            MathFunction.FRACT: "fract",
-            MathFunction.TRUNC: "trunc",
-            MathFunction.MODF: "modf",
-            MathFunction.FREXP: "frexp",
-            MathFunction.LDEXP: "ldexp",
-            MathFunction.EXP: "exp",
-            MathFunction.EXP2: "exp2",
-            MathFunction.LOG: "log",
-            MathFunction.LOG2: "log2",
-            MathFunction.POW: "pow",
-            MathFunction.DOT: "dot",
-            MathFunction.OUTER: "outerProduct",
-            MathFunction.CROSS: "cross",
-            MathFunction.DISTANCE: "distance",
-            MathFunction.LENGTH: "length",
-            MathFunction.NORMALIZE: "normalize",
-            MathFunction.FACE_FORWARD: "faceForward",
-            MathFunction.REFLECT: "reflect",
-            MathFunction.REFRACT: "refract",
-            MathFunction.SIGN: "sign",
-            MathFunction.FMA: "fma",
-            MathFunction.MIX: "mix",
-            MathFunction.STEP: "step",
-            MathFunction.SMOOTH_STEP: "smoothstep",
-            MathFunction.SQRT: "sqrt",
-            MathFunction.INVERSE_SQRT: "inverseSqrt",
-            MathFunction.INVERSE: "inverse",
-            MathFunction.TRANSPOSE: "transpose",
-            MathFunction.DETERMINANT: "determinant",
-            MathFunction.QUANTIZE_TO_F16: "quantizeToF16",
-            MathFunction.COUNT_TRAILING_ZEROS: "countTrailingZeros",
-            MathFunction.COUNT_LEADING_ZEROS: "countLeadingZeros",
-            MathFunction.COUNT_ONE_BITS: "countOneBits",
-            MathFunction.REVERSE_BITS: "reverseBits",
-            MathFunction.EXTRACT_BITS: "extractBits",
-            MathFunction.INSERT_BITS: "insertBits",
-            MathFunction.FIRST_TRAILING_BIT: "firstTrailingBit",
-            MathFunction.FIRST_LEADING_BIT: "firstLeadingBit",
-        }
-        return func_map.get(func, str(func).lower())
-    
-    def _relational_function_name(self, func: Any) -> str:
-        """Get WGSL name for relational function."""
-        func_map = {
-            "All": "all",
-            "Any": "any",
-            "IsNan": "isNan",
-            "IsInf": "isInf",
-            "IsFinite": "isFinite",
-            "IsNormal": "isNormal",
-        }
-        return func_map.get(str(func), str(func).lower())
-    
-    def _type_name(self, ty_handle: int) -> str:
-        """Get WGSL type name."""
-        if ty_handle >= len(self.module.types):
-            return "unknown"
-        
-        ty = self.module.types[ty_handle]
-        
-        # Simplified type name generation
-        if hasattr(ty, 'name') and ty.name:
-            return ty.name
-        
-        return f"Type{ty_handle}"
-    
-    def _vector_size_to_int(self, size: Any) -> int:
-        """Convert VectorSize to integer."""
-        size_map = {
-            "BI": 2,
-            "TRI": 3,
-            "QUAD": 4,
-        }
-        return size_map.get(str(size), 4)
-    
-    def _swizzle_pattern(self, pattern: list, size: Any) -> str:
-        """Generate swizzle pattern string."""
+        # Most function names match WGSL.
+        return str(func.value)
+
+    def _relational_function_name(self, func: RelationalFunction) -> str:
+        return str(func.value)
+
+    def _swizzle_pattern(self, pattern: list[object], size: int) -> str:
         component_map = {0: "x", 1: "y", 2: "z", 3: "w"}
-        size_int = self._vector_size_to_int(size)
-        
-        components = []
-        for i in range(size_int):
+        out: list[str] = []
+        for i in range(size):
             if i < len(pattern):
-                comp_idx = pattern[i] if isinstance(pattern[i], int) else 0
-                components.append(component_map.get(comp_idx, "x"))
+                component = pattern[i]
+                index = component.value if hasattr(component, "value") else int(component)
+                out.append(component_map.get(index, "x"))
             else:
-                components.append("x")
-        
-        return "".join(components)
+                out.append("x")
+        return "".join(out)
+
+    def _type_name(self, ty_handle: int) -> str:
+        # The full backend uses the type arena and the naming pass. Keep a
+        # predictable fallback for now.
+        if hasattr(self.module, "types") and 0 <= ty_handle < len(self.module.types):
+            ty = self.module.types[ty_handle]
+            if getattr(ty, "name", None):
+                return str(ty.name)
+        return self.names.get(f"type_{ty_handle}", f"Type{ty_handle}")
 
 
-__all__ = ['WGSLExpressionWriter']
+__all__ = ["WGSLExpressionWriter"]

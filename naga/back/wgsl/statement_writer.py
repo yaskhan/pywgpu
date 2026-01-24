@@ -8,7 +8,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, List, Optional
 
-from ...ir import Statement, StatementType, Barrier
+from ...ir import Statement, StatementType, Barrier, AtomicFunction
+from ...error import ShaderError
 from .expression_writer import WGSLExpressionWriter
 
 if TYPE_CHECKING:
@@ -120,7 +121,7 @@ class WGSLStatementWriter:
                 return self._write_call(stmt, indent)
             
             case _:
-                return f"{indent}// TODO: Implement {stmt.type}\n"
+                raise ShaderError(f"Unsupported WGSL statement: {stmt.type}")
     
     def _write_if(self, stmt: Statement, indent: str) -> str:
         """Write an if statement."""
@@ -222,13 +223,60 @@ class WGSLStatementWriter:
 
     def _write_atomic(self, stmt: Statement, indent: str) -> str:
         """Write an atomic statement."""
-        # Simple atomic call as expression-like statement
-        expr = self.expression_writer._write_atomic(stmt) # Re-use expression writer logic
-        return f"{indent}{expr};\n"
+        pointer = self.expression_writer.write_expression(stmt.atomic_pointer)
+        value = self.expression_writer.write_expression(stmt.atomic_value)
+
+        fun_map = {
+            AtomicFunction.ADD: "atomicAdd",
+            AtomicFunction.SUBTRACT: "atomicSub",
+            AtomicFunction.AND: "atomicAnd",
+            AtomicFunction.EXCLUSIVE_OR: "atomicXor",
+            AtomicFunction.INCLUSIVE_OR: "atomicOr",
+            AtomicFunction.MIN: "atomicMin",
+            AtomicFunction.MAX: "atomicMax",
+            AtomicFunction.EXCHANGE: "atomicExchange",
+        }
+
+        fun_name = fun_map.get(stmt.atomic_fun)
+        if fun_name is None:
+            raise ShaderError(f"Unsupported WGSL atomic function: {stmt.atomic_fun}")
+
+        call = f"{fun_name}({pointer}, {value})"
+        if getattr(stmt, "atomic_result", None) is not None:
+            res_name = f"_e{stmt.atomic_result}"
+            return f"{indent}let {res_name} = {call};\n"
+
+        return f"{indent}{call};\n"
 
     def _write_image_atomic(self, stmt: Statement, indent: str) -> str:
         """Write an image atomic statement."""
-        return f"{indent}/* TODO: WGSL textureAtomic{stmt.image_atomic_fun} */\n"
+        image = self.expression_writer.write_expression(stmt.image_atomic_image)
+        coord = self.expression_writer.write_expression(stmt.image_atomic_coordinate)
+        value = self.expression_writer.write_expression(stmt.image_atomic_value)
+
+        fun_map = {
+            AtomicFunction.ADD: "Add",
+            AtomicFunction.SUBTRACT: "Sub",
+            AtomicFunction.AND: "And",
+            AtomicFunction.EXCLUSIVE_OR: "Xor",
+            AtomicFunction.INCLUSIVE_OR: "Or",
+            AtomicFunction.MIN: "Min",
+            AtomicFunction.MAX: "Max",
+            AtomicFunction.EXCHANGE: "Exchange",
+        }
+
+        suffix = fun_map.get(stmt.image_atomic_fun)
+        if suffix is None:
+            raise ShaderError(f"Unsupported WGSL image atomic function: {stmt.image_atomic_fun}")
+
+        array_index = getattr(stmt, "image_atomic_array_index", None)
+        if array_index is not None:
+            array_index_expr = self.expression_writer.write_expression(array_index)
+            call = f"textureAtomic{suffix}({image}, {coord}, {array_index_expr}, {value})"
+        else:
+            call = f"textureAtomic{suffix}({image}, {coord}, {value})"
+
+        return f"{indent}{call};\n"
 
 
 __all__ = ['WGSLStatementWriter']

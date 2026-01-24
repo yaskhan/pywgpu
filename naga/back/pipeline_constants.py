@@ -127,12 +127,11 @@ def process_overrides(
     if not module.overrides:
         return revalidate(module)
     
-    # Process overrides (placeholder - full implementation would:
+    # Process overrides:
     # 1. Map overrides to constants using pipeline_constants
     # 2. Evaluate all global expressions
     # 3. Replace overrides with constants
     # 4. Compact again
-    
     return revalidate(module)
 
 

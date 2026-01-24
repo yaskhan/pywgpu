@@ -340,7 +340,7 @@ class Writer:
                 return "sampler"
 
             case _:
-                return f"/* TODO: {inner.type} */"
+                raise ShaderError(f"Unsupported MSL type: {inner.type}")
 
     def finish(self) -> str:
         """Finish writing and return the complete output."""
