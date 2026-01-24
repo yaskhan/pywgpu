@@ -30,9 +30,38 @@ class ShaderStage(IntEnum):
 class Options:
     """MSL writer options."""
 
-    def __init__(self):
-        """Initialize MSL writer options."""
-        pass
+    def __init__(
+        self,
+        lang_version: tuple[int, int] = (1, 0),
+        per_entry_point_map: Optional[Dict[str, Any]] = None,
+        inline_samplers: Optional[List[Any]] = None,
+        spirv_cross_compatibility: bool = False,
+        fake_missing_bindings: bool = True,
+        bounds_check_policies: Optional[Any] = None,
+        zero_initialize_workgroup_memory: bool = True,
+        force_loop_bounding: bool = True,
+    ):
+        """
+        Initialize MSL writer options.
+        
+        Args:
+            lang_version: (Major, Minor) target version of the Metal Shading Language
+            per_entry_point_map: Map of entry-point resources, indexed by entry point function name, to slots
+            inline_samplers: Samplers to be inlined into the code
+            spirv_cross_compatibility: Make it possible to link different stages via SPIRV-Cross
+            fake_missing_bindings: Don't panic on missing bindings, instead generate invalid MSL
+            bounds_check_policies: Bounds checking policies
+            zero_initialize_workgroup_memory: Should workgroup variables be zero initialized (by polyfilling)
+            force_loop_bounding: If set, loops will have code injected into them, forcing the compiler to think the number of iterations is bounded
+        """
+        self.lang_version = lang_version
+        self.per_entry_point_map = per_entry_point_map or {}
+        self.inline_samplers = inline_samplers or []
+        self.spirv_cross_compatibility = spirv_cross_compatibility
+        self.fake_missing_bindings = fake_missing_bindings
+        self.bounds_check_policies = bounds_check_policies
+        self.zero_initialize_workgroup_memory = zero_initialize_workgroup_memory
+        self.force_loop_bounding = force_loop_bounding
 
     def supports_ray_tracing(self) -> bool:
         """Check if Metal version supports ray tracing."""
