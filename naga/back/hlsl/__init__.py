@@ -11,6 +11,16 @@ import io
 
 from .expression_writer import HLSLExpressionWriter
 from .statement_writer import HLSLStatementWriter
+from .conv import (
+    hlsl_scalar,
+    hlsl_cast,
+    hlsl_built_in,
+    hlsl_storage_format,
+    hlsl_interpolation,
+    hlsl_sampling,
+    hlsl_atomic_suffix,
+)
+from .keywords import RESERVED_CASE_INSENSITIVE, RESERVED_KEYWORD_SET
 from ...error import ShaderError
 from ...ir.type import (
     Type, TypeInner, TypeInnerType, ScalarKind, VectorSize, Matrix, ArraySizeType
