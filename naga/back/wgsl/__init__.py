@@ -11,6 +11,7 @@ import io
 
 from .expression_writer import WGSLExpressionWriter
 from .statement_writer import WGSLStatementWriter
+from .polyfill import InversePolyfill, find_inverse_polyfill
 from ...error import ShaderError
 from ...common.diagnostic_debug import DiagnosticDebug
 from ...ir.type import (
