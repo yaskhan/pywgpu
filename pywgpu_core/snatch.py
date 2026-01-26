@@ -12,10 +12,11 @@ textures, and other GPU resources.
 
 from __future__ import annotations
 
-from typing import Any, Generic, Optional, TypeVar
+import threading
+from typing import TYPE_CHECKING, Generic, Optional, TypeVar
 
-from .lock import RankData, RwLock, RwLockReadGuard, RwLockWriteGuard
-
+if TYPE_CHECKING:
+    from .lock import RankData, RwLock, RwLockReadGuard, RwLockWriteGuard
 
 T = TypeVar("T")
 
@@ -30,11 +31,13 @@ class SnatchGuard:
 
     Attributes:
         _guard: The underlying read guard.
+        _lock_trace: Optional lock trace for debugging.
     """
 
-    def __init__(self, guard: RwLockReadGuard) -> None:
+    def __init__(self, guard: RwLockReadGuard, lock_trace: Optional["_LockTrace"] = None) -> None:
         """Initialize the snatch guard."""
         self._guard = guard
+        self._lock_trace = lock_trace
 
     @staticmethod
     def forget(guard: SnatchGuard) -> RankData:
@@ -50,12 +53,20 @@ class SnatchGuard:
         Returns:
             The rank data for the lock.
         """
+        # Cancel the drop by extracting rank data and not calling __del__
         # Extract rank data from the guard's lock
-        if hasattr(guard._guard, "rank_data"):
-            return guard._guard.rank_data
+        if hasattr(guard._guard, "forget"):
+            return guard._guard.forget()
 
         # Fallback: create empty rank data
+        from .lock import RankData
+
         return RankData()
+
+    def __del__(self) -> None:
+        """Call lock trace exit when the guard is dropped."""
+        if self._lock_trace is not None:
+            self._lock_trace.exit()
 
 
 class ExclusiveSnatchGuard:
@@ -67,11 +78,18 @@ class ExclusiveSnatchGuard:
 
     Attributes:
         _guard: The underlying write guard.
+        _lock_trace: Optional lock trace for debugging.
     """
 
-    def __init__(self, guard: RwLockWriteGuard) -> None:
+    def __init__(self, guard: RwLockWriteGuard, lock_trace: Optional["_LockTrace"] = None) -> None:
         """Initialize the exclusive snatch guard."""
         self._guard = guard
+        self._lock_trace = lock_trace
+
+    def __del__(self) -> None:
+        """Call lock trace exit when the guard is dropped."""
+        if self._lock_trace is not None:
+            self._lock_trace.exit()
 
 
 class Snatchable(Generic[T]):
@@ -83,31 +101,54 @@ class Snatchable(Generic[T]):
     SnatchGuard and snatched with an ExclusiveSnatchGuard.
 
     Attributes:
-        value: The underlying value, stored in an UnsafeCell.
+        value: The underlying value, wrapped in a thread-safe container.
     """
 
-    def __init__(self, val: T) -> None:
+    def __init__(self, val: Optional[T]) -> None:
         """Initialize the snatchable with a value."""
         self.value: Optional[T] = val
 
-    def get(self, guard: SnatchGuard) -> Optional[T]:
+    @classmethod
+    def new(cls, val: T) -> "Snatchable[T]":
+        """
+        Create a new snatchable with a value.
+
+        Args:
+            val: The value to store.
+
+        Returns:
+            A new snatchable containing the value.
+        """
+        return cls(val)
+
+    @classmethod
+    def empty(cls) -> "Snatchable[T]":
+        """
+        Create an empty snatchable with no value.
+
+        Returns:
+            A new empty snatchable.
+        """
+        return cls(None)
+
+    def get(self, _guard: SnatchGuard) -> Optional[T]:
         """
         Get read access to the value.
 
         Args:
-            guard: The snatch guard.
+            _guard: The snatch guard.
 
         Returns:
             The value, or None if it has been snatched.
         """
         return self.value
 
-    def snatch(self, guard: ExclusiveSnatchGuard) -> Optional[T]:
+    def snatch(self, _guard: ExclusiveSnatchGuard) -> Optional[T]:
         """
         Take the value.
 
         Args:
-            guard: The exclusive snatch guard.
+            _guard: The exclusive snatch guard.
 
         Returns:
             The value that was snatched, or None if already snatched.
@@ -130,6 +171,58 @@ class Snatchable(Generic[T]):
         self.value = None
         return old_value
 
+    def __repr__(self) -> str:
+        """Get a debug representation."""
+        return "<snatchable>"
+
+
+class _LockTrace:
+    """
+    Lock trace for debugging snatch lock usage.
+
+    This is only used in debug mode to detect recursive lock acquisition.
+    """
+
+    _local_storage = threading.local()
+
+    def __init__(self, purpose: str) -> None:
+        """
+        Initialize the lock trace.
+
+        Args:
+            purpose: The purpose of acquiring this lock.
+        """
+        self.purpose = purpose
+        self._previous: Optional[_LockTrace] = None
+
+    def enter(self) -> None:
+        """Enter the lock trace."""
+        prev = getattr(_LockTrace._local_storage, "current", None)
+        if prev is not None:
+            import traceback
+
+            raise RuntimeError(
+                f"Attempted to acquire snatch lock recursively.\n"
+                f"Currently trying to acquire a {self.purpose} lock\n"
+                f"Previously acquired a {prev.purpose} lock\n"
+                f"Backtrace:\n{traceback.format_stack()}"
+            )
+        self._previous = prev
+        _LockTrace._local_storage.current = self
+
+    def exit(self) -> None:
+        """Exit the lock trace."""
+        _LockTrace._local_storage.current = self._previous
+
+    def __enter__(self) -> "_LockTrace":
+        """Context manager entry."""
+        self.enter()
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        """Context manager exit."""
+        self.exit()
+
 
 class SnatchLock:
     """
@@ -142,7 +235,7 @@ class SnatchLock:
         lock: The underlying RwLock.
     """
 
-    def __init__(self, rank: Any) -> None:
+    def __init__(self, rank: object) -> None:
         """
         Create a new snatch lock.
 
@@ -153,6 +246,8 @@ class SnatchLock:
         deadlocks. The only place this should be called is when creating
         a device.
         """
+        from .lock import RwLock
+
         self.lock = RwLock(rank, ())
 
     def read(self) -> SnatchGuard:
@@ -162,7 +257,9 @@ class SnatchLock:
         Returns:
             A snatch guard.
         """
-        return SnatchGuard(self.lock.read())
+        trace = _LockTrace("read")
+        trace.enter()
+        return SnatchGuard(self.lock.read(), trace)
 
     def write(self) -> ExclusiveSnatchGuard:
         """
@@ -173,7 +270,9 @@ class SnatchLock:
         Returns:
             An exclusive snatch guard.
         """
-        return ExclusiveSnatchGuard(self.lock.write())
+        trace = _LockTrace("write")
+        trace.enter()
+        return ExclusiveSnatchGuard(self.lock.write(), trace)
 
     def force_unlock_read(self, data: RankData) -> None:
         """
@@ -186,10 +285,16 @@ class SnatchLock:
             data: The rank data for the lock.
         """
         # Force unlock the underlying RwLock
-        # This is dangerous and should only be used in exceptional cases
         if hasattr(self.lock, "force_unlock_read"):
             self.lock.force_unlock_read(data)
         else:
-            # Fallback: try to manually unlock
-            # This is implementation-specific and may not work
+            # Fallback: not implemented
             pass
+
+
+__all__ = [
+    "SnatchGuard",
+    "ExclusiveSnatchGuard",
+    "Snatchable",
+    "SnatchLock",
+]

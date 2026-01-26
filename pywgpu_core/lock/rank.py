@@ -10,8 +10,79 @@ This prevents deadlocks by ensuring threads always acquire locks in a
 consistent order.
 """
 
-from typing import Set
+from typing import Set, TYPE_CHECKING
 from dataclasses import dataclass
+
+if TYPE_CHECKING:
+    pass
+
+
+class LockRankSet:
+    """
+    A bitflags type representing a set of lock ranks.
+
+    This is a Python implementation of the Rust bitflags! macro.
+    """
+
+    def __init__(self, value: int = 0) -> None:
+        """Initialize the lock rank set with a bit mask."""
+        self._value: int = value
+
+    @property
+    def value(self) -> int:
+        """Get the underlying value."""
+        return self._value
+
+    def union(self, other: "LockRankSet") -> "LockRankSet":
+        """
+        Union with another set (bitwise OR).
+
+        Args:
+            other: Another LockRankSet.
+
+        Returns:
+            A new LockRankSet with bits from both.
+        """
+        return LockRankSet(self._value | other._value)
+
+    def contains(self, other: "LockRankSet") -> bool:
+        """
+        Check if this set contains another (bitwise AND).
+
+        Args:
+            other: Another LockRankSet.
+
+        Returns:
+            True if all bits in other are set in this.
+        """
+        return (self._value & other._value) == other._value
+
+    def is_empty(self) -> bool:
+        """Check if the set is empty."""
+        return self._value == 0
+
+    def __or__(self, other: "LockRankSet") -> "LockRankSet":
+        """Bitwise OR."""
+        return LockRankSet(self._value | other._value)
+
+    def __and__(self, other: "LockRankSet") -> "LockRankSet":
+        """Bitwise AND."""
+        return LockRankSet(self._value & other._value)
+
+    def __eq__(self, other: object) -> bool:
+        """Equality check."""
+        if isinstance(other, LockRankSet):
+            return self._value == other._value
+        return False
+
+    def __repr__(self) -> str:
+        """Debug representation."""
+        return f"LockRankSet({self._value:#x})"
+
+    @staticmethod
+    def empty() -> "LockRankSet":
+        """Create an empty lock rank set."""
+        return LockRankSet(0)
 
 
 @dataclass(frozen=True)
@@ -20,17 +91,16 @@ class LockRank:
     The rank of a lock.
 
     Attributes:
-        name: Human-readable name of this rank.
-        bit: Unique bit representing this lock.
-        followers: Set of ranks that can be acquired after this one.
+        bit: The bit representing this lock.
+        followers: A bitmask of permitted successor ranks.
     """
 
-    name: str
-    bit: int
-    followers: Set[int]
+    bit: LockRankSet
+    followers: LockRankSet
 
     def __repr__(self) -> str:
-        return f"LockRank({self.name})"
+        """Debug representation."""
+        return f"LockRank({self.bit!r})"
 
 
 # Define all lock ranks used in wgpu-core
@@ -38,152 +108,211 @@ class LockRank:
 
 # Command buffer locks
 COMMAND_BUFFER_DATA = LockRank(
-    name="CommandBuffer::data", bit=1 << 0, followers=set()  # Will be populated below
+    bit=LockRankSet(1 << 0),
+    followers=LockRankSet.empty()
+    | DEVICE_SNATCHABLE_LOCK.bit
+    | DEVICE_USAGE_SCOPES.bit
+    | SHARED_TRACKER_INDEX_ALLOCATOR_INNER.bit
+    | BUFFER_MAP_STATE.bit,
 )
 
 # Device locks
 DEVICE_SNATCHABLE_LOCK = LockRank(
-    name="Device::snatchable_lock", bit=1 << 1, followers=set()
+    bit=LockRankSet(1 << 1),
+    followers=LockRankSet.empty()
+    | SHARED_TRACKER_INDEX_ALLOCATOR_INNER.bit
+    | DEVICE_TRACE.bit
+    | BUFFER_MAP_STATE.bit,
 )
 
-DEVICE_USAGE_SCOPES = LockRank(name="Device::usage_scopes", bit=1 << 2, followers=set())
+DEVICE_USAGE_SCOPES = LockRank(
+    bit=LockRankSet(1 << 2),
+    followers=LockRankSet.empty(),
+)
 
-DEVICE_TRACE = LockRank(name="Device::trace", bit=1 << 3, followers=set())
+DEVICE_TRACE = LockRank(
+    bit=LockRankSet(1 << 3),
+    followers=LockRankSet.empty(),
+)
 
-DEVICE_TRACKERS = LockRank(name="Device::trackers", bit=1 << 4, followers=set())
+DEVICE_TRACKERS = LockRank(
+    bit=LockRankSet(1 << 4),
+    followers=LockRankSet.empty(),
+)
 
-DEVICE_FENCE = LockRank(name="Device::fence", bit=1 << 5, followers=set())
+DEVICE_FENCE = LockRank(
+    bit=LockRankSet(1 << 5),
+    followers=LockRankSet.empty(),
+)
 
 DEVICE_COMMAND_INDICES = LockRank(
-    name="Device::command_indices", bit=1 << 6, followers=set()
+    bit=LockRankSet(1 << 6),
+    followers=LockRankSet.empty(),
 )
 
 DEVICE_DEFERRED_DESTROY = LockRank(
-    name="Device::deferred_destroy", bit=1 << 7, followers=set()
+    bit=LockRankSet(1 << 7),
+    followers=LockRankSet.empty(),
 )
 
 DEVICE_LOST_CLOSURE = LockRank(
-    name="Device::device_lost_closure", bit=1 << 8, followers=set()
+    bit=LockRankSet(1 << 8),
+    followers=LockRankSet.empty(),
 )
 
 # Buffer locks
-BUFFER_MAP_STATE = LockRank(name="Buffer::map_state", bit=1 << 9, followers=set())
-
-BUFFER_BIND_GROUPS = LockRank(name="Buffer::bind_groups", bit=1 << 10, followers=set())
+BUFFER_BIND_GROUPS = LockRank(
+    bit=LockRankSet(1 << 9),
+    followers=LockRankSet.empty(),
+)
 
 BUFFER_INITIALIZATION_STATUS = LockRank(
-    name="Buffer::initialization_status", bit=1 << 11, followers=set()
+    bit=LockRankSet(1 << 10),
+    followers=LockRankSet.empty(),
+)
+
+BUFFER_MAP_STATE = LockRank(
+    bit=LockRankSet(1 << 11),
+    followers=LockRankSet.empty()
+    | QUEUE_PENDING_WRITES.bit
+    | SHARED_TRACKER_INDEX_ALLOCATOR_INNER.bit
+    | DEVICE_TRACE.bit,
 )
 
 # Queue locks
 QUEUE_PENDING_WRITES = LockRank(
-    name="Queue::pending_writes", bit=1 << 12, followers=set()
+    bit=LockRankSet(1 << 12),
+    followers=LockRankSet.empty()
+    | COMMAND_ALLOCATOR_FREE_ENCODERS.bit
+    | SHARED_TRACKER_INDEX_ALLOCATOR_INNER.bit
+    | QUEUE_LIFE_TRACKER.bit,
 )
 
-QUEUE_LIFE_TRACKER = LockRank(name="Queue::life_tracker", bit=1 << 13, followers=set())
+QUEUE_LIFE_TRACKER = LockRank(
+    bit=LockRankSet(1 << 13),
+    followers=LockRankSet.empty()
+    | COMMAND_ALLOCATOR_FREE_ENCODERS.bit
+    | DEVICE_TRACE.bit,
+)
 
 # Command allocator
 COMMAND_ALLOCATOR_FREE_ENCODERS = LockRank(
-    name="CommandAllocator::free_encoders", bit=1 << 14, followers=set()
+    bit=LockRankSet(1 << 14),
+    followers=LockRankSet.empty() | SHARED_TRACKER_INDEX_ALLOCATOR_INNER.bit,
 )
 
 # Shared tracker
 SHARED_TRACKER_INDEX_ALLOCATOR_INNER = LockRank(
-    name="SharedTrackerIndexAllocator::inner", bit=1 << 15, followers=set()
+    bit=LockRankSet(1 << 15),
+    followers=LockRankSet.empty(),
 )
 
 # Registry and pools
-REGISTRY_STORAGE = LockRank(name="Registry::storage", bit=1 << 16, followers=set())
+REGISTRY_STORAGE = LockRank(
+    bit=LockRankSet(1 << 16),
+    followers=LockRankSet.empty(),
+)
 
-RESOURCE_POOL_INNER = LockRank(name="ResourcePool::inner", bit=1 << 17, followers=set())
+RESOURCE_POOL_INNER = LockRank(
+    bit=LockRankSet(1 << 17),
+    followers=LockRankSet.empty(),
+)
 
 IDENTITY_MANAGER_VALUES = LockRank(
-    name="IdentityManager::values", bit=1 << 18, followers=set()
+    bit=LockRankSet(1 << 18),
+    followers=LockRankSet.empty(),
 )
 
 # Surface
 SURFACE_PRESENTATION = LockRank(
-    name="Surface::presentation", bit=1 << 19, followers=set()
+    bit=LockRankSet(1 << 19),
+    followers=LockRankSet.empty(),
 )
 
 # Texture locks
 TEXTURE_BIND_GROUPS = LockRank(
-    name="Texture::bind_groups", bit=1 << 20, followers=set()
+    bit=LockRankSet(1 << 20),
+    followers=LockRankSet.empty(),
 )
 
 TEXTURE_INITIALIZATION_STATUS = LockRank(
-    name="Texture::initialization_status", bit=1 << 21, followers=set()
+    bit=LockRankSet(1 << 21),
+    followers=LockRankSet.empty(),
 )
 
-TEXTURE_CLEAR_MODE = LockRank(name="Texture::clear_mode", bit=1 << 22, followers=set())
+TEXTURE_CLEAR_MODE = LockRank(
+    bit=LockRankSet(1 << 22),
+    followers=LockRankSet.empty(),
+)
 
-TEXTURE_VIEWS = LockRank(name="Texture::views", bit=1 << 23, followers=set())
+TEXTURE_VIEWS = LockRank(
+    bit=LockRankSet(1 << 23),
+    followers=LockRankSet.empty(),
+)
 
 # Ray tracing
-BLAS_BUILT_INDEX = LockRank(name="Blas::built_index", bit=1 << 24, followers=set())
+BLAS_BUILT_INDEX = LockRank(
+    bit=LockRankSet(1 << 24),
+    followers=LockRankSet.empty(),
+)
 
 BLAS_COMPACTION_STATE = LockRank(
-    name="Blas::compaction_size", bit=1 << 25, followers=set()
+    bit=LockRankSet(1 << 25),
+    followers=LockRankSet.empty(),
 )
 
-TLAS_BUILT_INDEX = LockRank(name="Tlas::built_index", bit=1 << 26, followers=set())
+TLAS_BUILT_INDEX = LockRank(
+    bit=LockRankSet(1 << 26),
+    followers=LockRankSet.empty(),
+)
 
-TLAS_DEPENDENCIES = LockRank(name="Tlas::dependencies", bit=1 << 27, followers=set())
+TLAS_DEPENDENCIES = LockRank(
+    bit=LockRankSet(1 << 27),
+    followers=LockRankSet.empty(),
+)
 
 # Buffer pool
-BUFFER_POOL = LockRank(name="BufferPool::buffers", bit=1 << 28, followers=set())
-
-# Now populate followers to create the DAG
-# This defines the permitted lock acquisition order
-
-COMMAND_BUFFER_DATA.followers.update(
-    [
-        DEVICE_SNATCHABLE_LOCK.bit,
-        DEVICE_USAGE_SCOPES.bit,
-        SHARED_TRACKER_INDEX_ALLOCATOR_INNER.bit,
-        BUFFER_MAP_STATE.bit,
-    ]
+BUFFER_POOL = LockRank(
+    bit=LockRankSet(1 << 28),
+    followers=LockRankSet.empty(),
 )
-
-DEVICE_SNATCHABLE_LOCK.followers.update(
-    [
-        SHARED_TRACKER_INDEX_ALLOCATOR_INNER.bit,
-        DEVICE_TRACE.bit,
-        BUFFER_MAP_STATE.bit,
-    ]
-)
-
-BUFFER_MAP_STATE.followers.update(
-    [
-        QUEUE_PENDING_WRITES.bit,
-        SHARED_TRACKER_INDEX_ALLOCATOR_INNER.bit,
-        DEVICE_TRACE.bit,
-    ]
-)
-
-QUEUE_PENDING_WRITES.followers.update(
-    [
-        COMMAND_ALLOCATOR_FREE_ENCODERS.bit,
-        SHARED_TRACKER_INDEX_ALLOCATOR_INNER.bit,
-        QUEUE_LIFE_TRACKER.bit,
-    ]
-)
-
-QUEUE_LIFE_TRACKER.followers.update(
-    [
-        COMMAND_ALLOCATOR_FREE_ENCODERS.bit,
-        DEVICE_TRACE.bit,
-    ]
-)
-
-COMMAND_ALLOCATOR_FREE_ENCODERS.followers.update(
-    [
-        SHARED_TRACKER_INDEX_ALLOCATOR_INNER.bit,
-    ]
-)
-
-# Leaf nodes (no followers) are already empty sets
 
 
 # Convenience alias
 Rank = LockRank
+
+__all__ = [
+    "LockRankSet",
+    "LockRank",
+    "Rank",
+    # All the lock rank constants
+    "COMMAND_BUFFER_DATA",
+    "DEVICE_SNATCHABLE_LOCK",
+    "DEVICE_USAGE_SCOPES",
+    "DEVICE_TRACE",
+    "DEVICE_TRACKERS",
+    "DEVICE_FENCE",
+    "DEVICE_COMMAND_INDICES",
+    "DEVICE_DEFERRED_DESTROY",
+    "DEVICE_LOST_CLOSURE",
+    "BUFFER_BIND_GROUPS",
+    "BUFFER_INITIALIZATION_STATUS",
+    "BUFFER_MAP_STATE",
+    "QUEUE_PENDING_WRITES",
+    "QUEUE_LIFE_TRACKER",
+    "COMMAND_ALLOCATOR_FREE_ENCODERS",
+    "SHARED_TRACKER_INDEX_ALLOCATOR_INNER",
+    "REGISTRY_STORAGE",
+    "RESOURCE_POOL_INNER",
+    "IDENTITY_MANAGER_VALUES",
+    "SURFACE_PRESENTATION",
+    "TEXTURE_BIND_GROUPS",
+    "TEXTURE_INITIALIZATION_STATUS",
+    "TEXTURE_CLEAR_MODE",
+    "TEXTURE_VIEWS",
+    "BLAS_BUILT_INDEX",
+    "BLAS_COMPACTION_STATE",
+    "TLAS_BUILT_INDEX",
+    "TLAS_DEPENDENCIES",
+    "BUFFER_POOL",
+]
