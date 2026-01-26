@@ -83,7 +83,7 @@ class BindingTypeMaxCountError(Exception):
 @dataclass
 class BindingTypeMaxCountErrorKind:
     """Types of binding count errors."""
-    
+
     DYNAMIC_UNIFORM_BUFFERS = "DynamicUniformBuffers"
     DYNAMIC_STORAGE_BUFFERS = "DynamicStorageBuffers"
     SAMPLED_TEXTURES = "SampledTextures"
@@ -94,6 +94,23 @@ class BindingTypeMaxCountErrorKind:
     BINDING_ARRAY_ELEMENTS = "BindingArrayElements"
     BINDING_ARRAY_SAMPLER_ELEMENTS = "BindingArraySamplerElements"
     ACCELERATION_STRUCTURES = "AccelerationStructures"
+
+    @staticmethod
+    def to_config_str(kind: str) -> str:
+        """Convert binding type max count error kind to config string."""
+        mapping = {
+            "DynamicUniformBuffers": "max_dynamic_uniform_buffers_per_pipeline_layout",
+            "DynamicStorageBuffers": "max_dynamic_storage_buffers_per_pipeline_layout",
+            "SampledTextures": "max_sampled_textures_per_shader_stage",
+            "Samplers": "max_samplers_per_shader_stage",
+            "StorageBuffers": "max_storage_buffers_per_shader_stage",
+            "StorageTextures": "max_storage_textures_per_shader_stage",
+            "UniformBuffers": "max_uniform_buffers_per_shader_stage",
+            "BindingArrayElements": "max_binding_array_elements_per_shader_stage",
+            "BindingArraySamplerElements": "max_binding_array_sampler_elements_per_shader_stage",
+            "AccelerationStructures": "max_acceleration_structures_per_shader_stage",
+        }
+        return mapping.get(kind, "unknown_config")
 
 
 class PerStageBindingTypeCounter:
@@ -156,8 +173,28 @@ class PerStageBindingTypeCounter:
             A tuple of (stage, max_count).
         """
         max_value = max(self.vertex, self.fragment, self.compute)
-        stage = None  # Would be ShaderStages based on which stage has max
-        return (stage, max_value)
+        
+        # Determine which stage has the maximum value
+        stage_value = 0
+        try:
+            import pywgpu_types as wgt
+            if hasattr(wgt, 'ShaderStages'):
+                if max_value == self.vertex:
+                    stage_value |= getattr(wgt.ShaderStages, 'VERTEX', 1)
+                if max_value == self.fragment:
+                    stage_value |= getattr(wgt.ShaderStages, 'FRAGMENT', 2)
+                if max_value == self.compute:
+                    stage_value |= getattr(wgt.ShaderStages, 'COMPUTE', 4)
+        except ImportError:
+            # Fallback: use simple integer values
+            if max_value == self.vertex:
+                stage_value |= 1
+            if max_value == self.fragment:
+                stage_value |= 2
+            if max_value == self.compute:
+                stage_value |= 4
+        
+        return (stage_value, max_value)
 
     def merge(self, other: PerStageBindingTypeCounter) -> None:
         """
