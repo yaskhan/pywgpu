@@ -18,7 +18,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Generic, TypeVar
 
-from .id import Id, Marker
+from .id import Id, Marker, M
 from .lock import Mutex
 
 
@@ -31,8 +31,7 @@ class IdSource:
     NONE = "None"
 
 
-@dataclass
-class IdentityValues(Generic[Marker]):
+class IdentityValues(Generic[M]):
     """
     A simple structure to allocate Id identifiers.
 
@@ -69,10 +68,12 @@ class IdentityValues(Generic[Marker]):
         id_source: The source of IDs (internal or external).
     """
 
-    free: list[tuple[int, int]]
-    next_index: int
-    count: int
-    id_source: str
+    def __init__(self) -> None:
+        """Initialize identity values."""
+        self.free: list[tuple[int, int]] = []
+        self.next_index: int = 0
+        self.count: int = 0
+        self.id_source: str = IdSource.NONE
 
     def alloc(self) -> Id[Marker]:
         """
@@ -146,7 +147,7 @@ class IdentityValues(Generic[Marker]):
         return self.count
 
 
-class IdentityManager(Generic[Marker]):
+class IdentityManager(Generic[M]):
     """
     Manager for identity values.
 

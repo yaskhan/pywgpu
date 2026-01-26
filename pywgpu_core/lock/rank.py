@@ -105,24 +105,18 @@ class LockRank:
 
 # Define all lock ranks used in wgpu-core
 # Each rank has a unique bit and a set of permitted followers
+# Note: We define them first with empty followers, then set up followers after
 
 # Command buffer locks
 COMMAND_BUFFER_DATA = LockRank(
     bit=LockRankSet(1 << 0),
-    followers=LockRankSet.empty()
-    | DEVICE_SNATCHABLE_LOCK.bit
-    | DEVICE_USAGE_SCOPES.bit
-    | SHARED_TRACKER_INDEX_ALLOCATOR_INNER.bit
-    | BUFFER_MAP_STATE.bit,
+    followers=LockRankSet.empty(),
 )
 
 # Device locks
 DEVICE_SNATCHABLE_LOCK = LockRank(
     bit=LockRankSet(1 << 1),
-    followers=LockRankSet.empty()
-    | SHARED_TRACKER_INDEX_ALLOCATOR_INNER.bit
-    | DEVICE_TRACE.bit
-    | BUFFER_MAP_STATE.bit,
+    followers=LockRankSet.empty(),
 )
 
 DEVICE_USAGE_SCOPES = LockRank(
@@ -173,32 +167,24 @@ BUFFER_INITIALIZATION_STATUS = LockRank(
 
 BUFFER_MAP_STATE = LockRank(
     bit=LockRankSet(1 << 11),
-    followers=LockRankSet.empty()
-    | QUEUE_PENDING_WRITES.bit
-    | SHARED_TRACKER_INDEX_ALLOCATOR_INNER.bit
-    | DEVICE_TRACE.bit,
+    followers=LockRankSet.empty(),
 )
 
 # Queue locks
 QUEUE_PENDING_WRITES = LockRank(
     bit=LockRankSet(1 << 12),
-    followers=LockRankSet.empty()
-    | COMMAND_ALLOCATOR_FREE_ENCODERS.bit
-    | SHARED_TRACKER_INDEX_ALLOCATOR_INNER.bit
-    | QUEUE_LIFE_TRACKER.bit,
+    followers=LockRankSet.empty(),
 )
 
 QUEUE_LIFE_TRACKER = LockRank(
     bit=LockRankSet(1 << 13),
-    followers=LockRankSet.empty()
-    | COMMAND_ALLOCATOR_FREE_ENCODERS.bit
-    | DEVICE_TRACE.bit,
+    followers=LockRankSet.empty(),
 )
 
 # Command allocator
 COMMAND_ALLOCATOR_FREE_ENCODERS = LockRank(
     bit=LockRankSet(1 << 14),
-    followers=LockRankSet.empty() | SHARED_TRACKER_INDEX_ALLOCATOR_INNER.bit,
+    followers=LockRankSet.empty(),
 )
 
 # Shared tracker

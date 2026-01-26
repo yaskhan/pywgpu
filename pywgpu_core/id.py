@@ -22,6 +22,9 @@ from typing import Any, Generic, TypeVar
 
 from . import hash_utils
 
+# TypeVar for generic Id type
+M = TypeVar("M", bound="Marker")
+
 
 class Marker:
     """
@@ -194,37 +197,8 @@ class TlasMarker(Marker):
     pass
 
 
-# Type aliases for IDs
-AdapterId = Id[AdapterMarker]
-SurfaceId = Id[SurfaceMarker]
-DeviceId = Id[DeviceMarker]
-QueueId = Id[QueueMarker]
-BufferId = Id[BufferMarker]
-StagingBufferId = Id[StagingBufferMarker]
-TextureViewId = Id[TextureViewMarker]
-TextureId = Id[TextureMarker]
-ExternalTextureId = Id[ExternalTextureMarker]
-SamplerId = Id[SamplerMarker]
-BindGroupLayoutId = Id[BindGroupLayoutMarker]
-PipelineLayoutId = Id[PipelineLayoutMarker]
-BindGroupId = Id[BindGroupMarker]
-ShaderModuleId = Id[ShaderModuleMarker]
-RenderPipelineId = Id[RenderPipelineMarker]
-ComputePipelineId = Id[ComputePipelineMarker]
-PipelineCacheId = Id[PipelineCacheMarker]
-CommandEncoderId = Id[CommandEncoderMarker]
-CommandBufferId = Id[CommandBufferMarker]
-RenderPassEncoderId = Id[RenderPassEncoderMarker]
-ComputePassEncoderId = Id[ComputePassEncoderMarker]
-RenderBundleEncoderId = Id[RenderBundleEncoderMarker]
-RenderBundleId = Id[RenderBundleMarker]
-QuerySetId = Id[QuerySetMarker]
-BlasId = Id[BlasMarker]
-TlasId = Id[TlasMarker]
-
-
 @dataclass
-class Id(Generic[Marker]):
+class Id(Generic[M]):
     """
     An identifier for a wgpu object.
 
@@ -244,7 +218,7 @@ class Id(Generic[Marker]):
     _raw: int
 
     @classmethod
-    def zip(cls, index: int, epoch: int) -> Id[Marker]:
+    def zip(cls, index: int, epoch: int) -> Id[M]:
         """
         Zip together an identifier and return its raw underlying representation.
 
@@ -291,7 +265,7 @@ class Id(Generic[Marker]):
 
 
 @dataclass
-class PointerId(Generic[Marker]):
+class PointerId(Generic[M]):
     """
     Identify an object by the pointer returned by Arc::as_ptr.
 
@@ -316,3 +290,32 @@ class PointerId(Generic[Marker]):
     def __repr__(self) -> str:
         """Return a string representation of the pointer ID."""
         return f"PointerId({self.pointer})"
+
+
+# Type aliases for IDs
+AdapterId = Id[AdapterMarker]
+SurfaceId = Id[SurfaceMarker]
+DeviceId = Id[DeviceMarker]
+QueueId = Id[QueueMarker]
+BufferId = Id[BufferMarker]
+StagingBufferId = Id[StagingBufferMarker]
+TextureViewId = Id[TextureViewMarker]
+TextureId = Id[TextureMarker]
+ExternalTextureId = Id[ExternalTextureMarker]
+SamplerId = Id[SamplerMarker]
+BindGroupLayoutId = Id[BindGroupLayoutMarker]
+PipelineLayoutId = Id[PipelineLayoutMarker]
+BindGroupId = Id[BindGroupMarker]
+ShaderModuleId = Id[ShaderModuleMarker]
+RenderPipelineId = Id[RenderPipelineMarker]
+ComputePipelineId = Id[ComputePipelineMarker]
+PipelineCacheId = Id[PipelineCacheMarker]
+CommandEncoderId = Id[CommandEncoderMarker]
+CommandBufferId = Id[CommandBufferMarker]
+RenderPassEncoderId = Id[RenderPassEncoderMarker]
+ComputePassEncoderId = Id[ComputePassEncoderMarker]
+RenderBundleEncoderId = Id[RenderBundleEncoderMarker]
+RenderBundleId = Id[RenderBundleMarker]
+QuerySetId = Id[QuerySetMarker]
+BlasId = Id[BlasMarker]
+TlasId = Id[TlasMarker]
