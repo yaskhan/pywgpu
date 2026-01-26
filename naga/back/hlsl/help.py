@@ -1460,3 +1460,131 @@ def write_mod_function(scalar_type: str, components: Optional[int] = None) -> st
     {scalar_type} divisor = ((lhs == {scalar_type}(-2147483648) && rhs == -1) | (rhs == 0)) ? 1 : rhs;
     return lhs - (lhs / divisor) * divisor;
 }}"""
+
+
+def write_wrapped_zero_value_function_name(ty: Handle["Type"]) -> str:
+    """Get function name for wrapped zero value.
+    
+    Args:
+        ty: The type handle
+        
+    Returns:
+        Function name
+    """
+    from ...ir.type import TypeInnerType
+    
+    # Use the type index as an identifier
+    return f"ZeroValue{ty.index}"
+
+
+def write_wrapped_zero_value_function(module: "Module", ty: Handle["Type"]) -> str:
+    """Write wrapped zero value function.
+    
+    This is necessary since we might have a member access after the zero value expression, e.g.
+    `.y` (in practice this can come up when consuming SPIRV that's been produced by glslc).
+    
+    Args:
+        module: The module
+        ty: The type handle
+        
+    Returns:
+        HLSL function code
+    """
+    INDENT = "    "
+    
+    # Check if it's an array type
+    type_inner = module.types[ty].inner
+    
+    if hasattr(type_inner, 'type') and type_inner.type == TypeInnerType.ARRAY:
+        array = type_inner.array
+        if array is None:
+            raise ValueError("Array TypeInner missing array")
+        
+        # Generate typedef name
+        type_name = write_wrapped_zero_value_function_name(ty)
+        
+        # Try to get the base type name
+        base_ty_name = f"Type{array.base.index}"
+        size = int(array.size.constant.value) if array.size and array.size.type.value == 0 else 0
+        
+        return f"""typedef {base_ty_name} ret_{type_name}[{size}];
+ret_{type_name} {type_name}() {{
+{INDENT}return ({base_ty_name}[{size}])0;
+}}"""
+    else:
+        type_name = write_wrapped_zero_value_function_name(ty)
+        return f"""{type_name} {type_name}() {{
+{INDENT}return ({type_name})0;
+}}"""
+
+
+class StorageFormat:
+    """Storage format constants."""
+    
+    R16Float = "R16Float"
+    R32Float = "R32Float"
+    R8Unorm = "R8Unorm"
+    R16Unorm = "R16Unorm"
+    R8Snorm = "R8Snorm"
+    R16Snorm = "R16Snorm"
+    R8Uint = "R8Uint"
+    R16Uint = "R16Uint"
+    R32Uint = "R32Uint"
+    R8Sint = "R8Sint"
+    R16Sint = "R16Sint"
+    R32Sint = "R32Sint"
+    R64Uint = "R64Uint"
+    
+    @staticmethod
+    def single_component(format: str) -> bool:
+        """Check if format has single component.
+        
+        Args:
+            format: The storage format
+            
+        Returns:
+            True if format has single component
+        """
+        single_component_formats = {
+            StorageFormat.R16Float,
+            StorageFormat.R32Float,
+            StorageFormat.R8Unorm,
+            StorageFormat.R16Unorm,
+            StorageFormat.R8Snorm,
+            StorageFormat.R16Snorm,
+            StorageFormat.R8Uint,
+            StorageFormat.R16Uint,
+            StorageFormat.R32Uint,
+            StorageFormat.R8Sint,
+            StorageFormat.R16Sint,
+            StorageFormat.R32Sint,
+            StorageFormat.R64Uint,
+        }
+        return format in single_component_formats
+    
+    @staticmethod
+    def to_hlsl_str(format: str) -> str:
+        """Convert format to HLSL string.
+        
+        Args:
+            format: The storage format
+            
+        Returns:
+            HLSL format string
+        """
+        format_map = {
+            StorageFormat.R16Float: "float",
+            StorageFormat.R32Float: "float",
+            StorageFormat.R8Unorm: "unorm float",
+            StorageFormat.R16Unorm: "unorm float",
+            StorageFormat.R8Snorm: "snorm float",
+            StorageFormat.R16Snorm: "snorm float",
+            StorageFormat.R8Uint: "uint",
+            StorageFormat.R16Uint: "uint",
+            StorageFormat.R32Uint: "uint",
+            StorageFormat.R8Sint: "int",
+            StorageFormat.R16Sint: "int",
+            StorageFormat.R32Sint: "int",
+            StorageFormat.R64Uint: "uint64_t",
+        }
+        return format_map.get(format, "float")
