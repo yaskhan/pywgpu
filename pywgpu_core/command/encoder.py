@@ -51,7 +51,8 @@ class CommandEncoder:
         self.buffer_memory_init_actions: List[Any] = []
         self.texture_memory_actions = CommandBufferTextureMemoryActions()
         self._debug_scope_depth = 0
-        # Note: In a real implementation, these would be created from device
+        # In a real implementation, these would be created from device.hal_device
+        # and device.create_snatch_guard() respectively
         self._raw_encoder = None  # device.hal_device.create_command_encoder(...)
         self._snatch_guard = None  # device.create_snatch_guard()
 
@@ -358,7 +359,8 @@ class CommandEncoder:
         # Close the encoder
         if self._raw_encoder:
             # In a real implementation, this would close the HAL encoder
-            pass  # self._raw_encoder.close()
+            # self._raw_encoder.close()
+            pass  # Placeholder for HAL encoder close operation
 
         return CommandBuffer(
             device=self.device,
