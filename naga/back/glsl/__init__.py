@@ -72,8 +72,6 @@ class Profile(IntEnum):
 class VersionError(Exception):
     """Exception raised for unsupported GLSL versions."""
 
-    pass
-
 
 class Options:
     """GLSL writer options."""

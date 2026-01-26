@@ -25,7 +25,6 @@ from ..compact import compact, KeepUnused
 
 class PipelineConstantError(Exception):
     """Base class for pipeline constant errors."""
-    pass
 
 
 class MissingValueError(PipelineConstantError):
