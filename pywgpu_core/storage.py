@@ -21,7 +21,7 @@ from .id import Id, Marker
 from .resource import ResourceType
 
 
-T = TypeVar("T", bound=StorageItem)
+T = TypeVar("T", bound="StorageItem")
 
 
 @dataclass
