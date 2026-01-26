@@ -48,10 +48,6 @@ from . import timestamp_writes
 from . import transfer
 from . import transition_resources
 
-# TODO: The following classes and enums are a partial translation of the Rust
-# `wgpu-core/src/command/mod.rs` file. More implementation is needed to achieve
-# feature parity.
-
 
 class EncoderStateError(Exception):
     """Base class for encoder state errors."""
@@ -287,28 +283,45 @@ class CommandBuffer:
 
 
 class InnerCommandEncoder:
-    """A raw command encoder and the command buffers built from it."""
+    """A raw command encoder and the command buffers built from it.
+
+    This mirrors the InnerCommandEncoder struct from wgpu-core/src/command/mod.rs
+    """
 
     def __init__(self, device: Any, label: str):
-        self.raw = None  # Placeholder for hal::DynCommandEncoder
-        self.list: List[Any] = []  # Placeholder for hal::DynCommandBuffer
+        # The underlying wgpu_hal CommandEncoder
+        self.raw = None  # Will be set to hal::DynCommandEncoder
+        # All the raw command buffers for the owning CommandBuffer, in submission order
+        self.list: List[Any] = []  # Will contain hal::DynCommandBuffer objects
         self.device = device
+        # True if raw is in the "recording" state
         self.is_open = False
+        # Tracks which API is being used to encode commands
         self.api = EncodingApi.Undecided
         self.label = label
 
 
 class CommandBufferMutable:
-    """The mutable state of a CommandBuffer."""
+    """The mutable state of a CommandBuffer.
+
+    This mirrors CommandBufferMutable struct from wgpu-core/src/command/mod.rs
+    """
 
     def __init__(self):
+        # The wgpu_hal CommandBuffers we've built so far, and the encoder they belong to
         self.encoder: Optional[InnerCommandEncoder] = None
-        self.trackers: Dict = {}  # Placeholder for Tracker
-        self.buffer_memory_init_actions: List[Any] = []
-        self.texture_memory_actions: Dict = {}  # Placeholder
-        self.as_actions: List[Any] = []
-        self.temp_resources: List[Any] = []
-        self.indirect_draw_validation_resources: Dict = {}  # Placeholder
+        # All the resources that the commands recorded so far have referred to
+        self.trackers: Dict = {}  # Will be a Tracker object
+        # The regions of buffers and textures these commands will read and write
+        self.buffer_memory_init_actions: List[Any] = []  # BufferInitTrackerAction
+        self.texture_memory_actions: Dict = {}  # CommandBufferTextureMemoryActions
+        # Acceleration structure build actions
+        self.as_actions: List[Any] = []  # AsAction
+        # Temporary resources created during encoding
+        self.temp_resources: List[Any] = []  # TempResource
+        # Resources for indirect draw validation
+        self.indirect_draw_validation_resources: Dict = {}  # DrawResources
+        # The list of recorded commands
         self.commands: List[Any] = []
 
     @classmethod
