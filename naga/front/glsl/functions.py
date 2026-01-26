@@ -258,10 +258,20 @@ class FunctionHandler:
         # 4. Possible solutions or conversions
         # 5. Available overloads that might match
         
+        # Proper error handling implementation
         error_msg = f"Type error: expected '{expected}', got '{actual}'"
-        print(f"Error: {error_msg}")
-        # TODO: Add to error list with proper formatting
-        # errors.push(Error {
-        #     kind: ErrorKind::TypeError(error_msg),
-        #     meta: meta,
-        # })
+        
+        # Report error through the frontend if available
+        if hasattr(frontend, "add_error"):
+            frontend.add_error(error_msg, meta)
+        else:
+            print(f"Error: {error_msg} at {meta}")
+        
+        # Store in error list for later processing if frontend has errors list
+        if hasattr(frontend, "errors") and hasattr(frontend.errors, "append"):
+            from ... import Span
+            from .error import Error, ErrorKind
+            frontend.errors.append(Error(
+                kind=ErrorKind.SemanticError(error_msg),
+                meta=meta if meta is not None else Span(0, 0)
+            ))

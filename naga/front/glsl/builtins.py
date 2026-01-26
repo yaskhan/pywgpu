@@ -91,11 +91,9 @@ class Builtins:
             # Add scalar and vector variations
             self._add_math_variations(func_name)
         
-        # TODO: https://github.com/gfx-rs/naga/issues/2526
-        # "modf" | "frexp" => { ... }
-        # These functions split floats into parts (modf: integer and fractional,
-        # frexp: mantissa and exponent) but require multiple return values which
-        # needs special handling. See https://github.com/gfx-rs/naga/issues/2526
+        # modf and frexp require multiple return values which needs special handling
+        # See https://github.com/gfx-rs/naga/issues/2526
+        # For now, we add them as unimplemented with clear error messages
         self._add_unimplemented_functions(["modf", "frexp"])
     
     def _initialize_vector_functions(self) -> None:
