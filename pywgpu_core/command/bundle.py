@@ -338,9 +338,218 @@ def wgpu_render_bundle_set_bind_group(
 def wgpu_render_bundle_set_pipeline(
     bundle: RenderBundleEncoder, pipeline_id: RenderPipelineId
 ):
-    """Sets the pipeline for a render bundle."""
+    """Sets the pipeline for a render bundle.
+    
+    This function mirrors the Rust wgpu_render_bundle_set_pipeline function
+    from wgpu-core/src/command/bundle.rs, setting the pipeline for a render bundle
+    and checking for redundant pipeline changes.
+    """
     if not bundle.current_pipeline.set_and_check_redundant(pipeline_id):
         bundle.base.commands.append(("SetPipeline", pipeline_id))
 
 
-# ... and so on for all FFI functions, which would also have docstrings.
+def wgpu_render_bundle_draw(
+    bundle: RenderBundleEncoder,
+    vertex_count: int,
+    instance_count: int,
+    first_vertex: int,
+    first_instance: int,
+):
+    """Draws primitives for a render bundle.
+    
+    This function mirrors the Rust wgpu_render_bundle_draw function.
+    """
+    bundle.base.commands.append(("Draw", vertex_count, instance_count, first_vertex, first_instance))
+
+
+def wgpu_render_bundle_draw_indexed(
+    bundle: RenderBundleEncoder,
+    index_count: int,
+    instance_count: int,
+    first_index: int,
+    base_vertex: int,
+    first_instance: int,
+):
+    """Draws indexed primitives for a render bundle.
+    
+    This function mirrors the Rust wgpu_render_bundle_draw_indexed function.
+    """
+    bundle.base.commands.append(("DrawIndexed", index_count, instance_count, first_index, base_vertex, first_instance))
+
+
+def wgpu_render_bundle_draw_mesh_tasks(
+    bundle: RenderBundleEncoder,
+    group_count_x: int,
+    group_count_y: int,
+    group_count_z: int,
+):
+    """Draws mesh tasks for a render bundle.
+    
+    This function mirrors the Rust wgpu_render_bundle_draw_mesh_tasks function.
+    """
+    bundle.base.commands.append(("DrawMeshTasks", group_count_x, group_count_y, group_count_z))
+
+
+def wgpu_render_bundle_set_index_buffer(
+    bundle: RenderBundleEncoder,
+    buffer: BufferId,
+    index_format: Any,
+    offset: int,
+    size: int,
+):
+    """Sets the index buffer for a render bundle.
+    
+    This function mirrors the Rust wgpu_render_bundle_set_index_buffer function.
+    """
+    bundle.base.commands.append(("SetIndexBuffer", buffer, index_format, offset, size))
+
+
+def wgpu_render_bundle_set_vertex_buffer(
+    bundle: RenderBundleEncoder,
+    slot: int,
+    buffer: BufferId,
+    offset: int,
+    size: int,
+):
+    """Sets the vertex buffer for a render bundle.
+    
+    This function mirrors the Rust wgpu_render_bundle_set_vertex_buffer function.
+    """
+    bundle.base.commands.append(("SetVertexBuffer", slot, buffer, offset, size))
+
+
+def wgpu_render_bundle_set_blend_constant(
+    bundle: RenderBundleEncoder,
+    color: Tuple[float, float, float, float],
+):
+    """Sets the blend constant for a render bundle.
+    
+    This function mirrors the Rust wgpu_render_bundle_set_blend_constant function.
+    """
+    bundle.base.commands.append(("SetBlendConstant", color))
+
+
+def wgpu_render_bundle_set_stencil_reference(
+    bundle: RenderBundleEncoder,
+    value: int,
+):
+    """Sets the stencil reference value for a render bundle.
+    
+    This function mirrors the Rust wgpu_render_bundle_set_stencil_reference function.
+    """
+    bundle.base.commands.append(("SetStencilReference", value))
+
+
+def wgpu_render_bundle_set_viewport(
+    bundle: RenderBundleEncoder,
+    x: float,
+    y: float,
+    width: float,
+    height: float,
+    min_depth: float,
+    max_depth: float,
+):
+    """Sets the viewport for a render bundle.
+    
+    This function mirrors the Rust wgpu_render_bundle_set_viewport function.
+    """
+    bundle.base.commands.append(("SetViewport", (x, y, width, height), min_depth, max_depth))
+
+
+def wgpu_render_bundle_set_scissor_rect(
+    bundle: RenderBundleEncoder,
+    x: int,
+    y: int,
+    width: int,
+    height: int,
+):
+    """Sets the scissor rectangle for a render bundle.
+    
+    This function mirrors the Rust wgpu_render_bundle_set_scissor_rect function.
+    """
+    bundle.base.commands.append(("SetScissor", (x, y, width, height)))
+
+
+def wgpu_render_bundle_push_debug_group(
+    bundle: RenderBundleEncoder,
+    color: int,
+    len: int,
+    group_label: str,
+):
+    """Pushes a debug group for a render bundle.
+    
+    This function mirrors the Rust wgpu_render_bundle_push_debug_group function.
+    """
+    bundle.base.commands.append(("PushDebugGroup", color, len, group_label.encode()))
+
+
+def wgpu_render_bundle_pop_debug_group(bundle: RenderBundleEncoder):
+    """Pops a debug group for a render bundle.
+    
+    This function mirrors the Rust wgpu_render_bundle_pop_debug_group function.
+    """
+    bundle.base.commands.append(("PopDebugGroup",))
+
+
+def wgpu_render_bundle_insert_debug_marker(
+    bundle: RenderBundleEncoder,
+    color: int,
+    len: int,
+    marker_label: str,
+):
+    """Inserts a debug marker for a render bundle.
+    
+    This function mirrors the Rust wgpu_render_bundle_insert_debug_marker function.
+    """
+    bundle.base.commands.append(("InsertDebugMarker", color, len, marker_label.encode()))
+
+
+def wgpu_render_bundle_begin_occlusion_query(
+    bundle: RenderBundleEncoder,
+    query_index: int,
+):
+    """Begins an occlusion query for a render bundle.
+    
+    This function mirrors the Rust wgpu_render_bundle_begin_occlusion_query function.
+    """
+    bundle.base.commands.append(("BeginOcclusionQuery", query_index))
+
+
+def wgpu_render_bundle_end_occlusion_query(bundle: RenderBundleEncoder):
+    """Ends an occlusion query for a render bundle.
+    
+    This function mirrors the Rust wgpu_render_bundle_end_occlusion_query function.
+    """
+    bundle.base.commands.append(("EndOcclusionQuery",))
+
+
+def wgpu_render_bundle_begin_pipeline_statistics_query(
+    bundle: RenderBundleEncoder,
+    query_set: Any,
+    query_index: int,
+):
+    """Begins a pipeline statistics query for a render bundle.
+    
+    This function mirrors the Rust wgpu_render_bundle_begin_pipeline_statistics_query function.
+    """
+    bundle.base.commands.append(("BeginPipelineStatisticsQuery", query_set, query_index))
+
+
+def wgpu_render_bundle_end_pipeline_statistics_query(bundle: RenderBundleEncoder):
+    """Ends a pipeline statistics query for a render bundle.
+    
+    This function mirrors the Rust wgpu_render_bundle_end_pipeline_statistics_query function.
+    """
+    bundle.base.commands.append(("EndPipelineStatisticsQuery",))
+
+
+def wgpu_render_bundle_write_timestamp(
+    bundle: RenderBundleEncoder,
+    query_set: Any,
+    query_index: int,
+):
+    """Writes a timestamp for a render bundle.
+    
+    This function mirrors the Rust wgpu_render_bundle_write_timestamp function.
+    """
+    bundle.base.commands.append(("WriteTimestamp", query_set, query_index))

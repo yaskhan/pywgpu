@@ -45,16 +45,41 @@ class Data:
 class Trace:
     """
     Base class for trace recording.
+    
+    This trait mirrors the Rust Trace trait from wgpu-core/src/device/trace/record.rs
     """
-
+    
     def make_binary(self, kind: DataKind, data: bytes) -> Data:
-        raise NotImplementedError()
+        """Store binary data in the trace.
+        
+        Args:
+            kind: The kind of data (e.g., WGSL, SPIR-V, etc.)
+            data: The binary data to store
+            
+        Returns:
+            A Data object representing the stored data
+        """
+        raise NotImplementedError("Subclasses must implement make_binary")
 
     def make_string(self, kind: DataKind, data: str) -> Data:
-        raise NotImplementedError()
+        """Store string data in the trace.
+        
+        Args:
+            kind: The kind of data 
+            data: The string data to store
+            
+        Returns:
+            A Data object representing the stored data
+        """
+        raise NotImplementedError("Subclasses must implement make_string")
 
     def add(self, action: Dict[str, Any]) -> None:
-        raise NotImplementedError()
+        """Add an action to the trace.
+        
+        Args:
+            action: The action to record
+        """
+        raise NotImplementedError("Subclasses must implement add")
 
 
 class DiskTrace(Trace):

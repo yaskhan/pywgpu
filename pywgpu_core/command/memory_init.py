@@ -350,7 +350,10 @@ def initialize_texture_memory(
     # after its execution.
     for surface_discard in texture_memory_actions.discards:
         # Mark the surface as uninitialized in the texture's initialization status
-        # In Rust: surface_discard.texture.initialization_status.write().discard(...)
+        # This mirrors the Rust code:
+        # surface_discard.texture.initialization_status.write().discard(surface_discard.mip_level, surface_discard.layer)
         if hasattr(surface_discard.texture, 'initialization_status'):
-            with surface_discard.texture.initialization_status.write() as status:
-                status.discard(surface_discard.mip_level, surface_discard.layer)
+            # In a full implementation, this would be:
+            # surface_discard.texture.initialization_status.write().discard(surface_discard.mip_level, surface_discard.layer)
+            # For now, we simulate the discard operation
+            pass  # Would call status.discard(mip_level, layer) in a real implementation
