@@ -116,11 +116,12 @@ class RayWriter:
         self.out.write("}\n\n")
 
     def write_committed_intersection_function(self, module: Module) -> None:
+        from ...ir import Scalar, ScalarKind, TypeInner
         self.write_type(module, module.special_types.ray_intersection)  # type: ignore[attr-defined]
         self.out.write(" GetCommittedIntersection(")
-        self.write_value_type(module, {"type": "ray_query", "vertex_return": False})  # type: ignore[arg-type]
+        self.write_value_type(module, TypeInner.new_ray_query(vertex_return=False))
         self.out.write(" rq, ")
-        self.write_value_type(module, {"type": "scalar", "kind": "uint", "width": 4})  # type: ignore[arg-type]
+        self.write_value_type(module, TypeInner.new_scalar(Scalar(ScalarKind.UINT, 4)))
         self.out.write(" rq_tracker) {\n")
         self.out.write("    ")
         self.write_type(module, module.special_types.ray_intersection)  # type: ignore[attr-defined]
@@ -182,11 +183,12 @@ class RayWriter:
         self.out.write("}\n\n")
 
     def write_candidate_intersection_function(self, module: Module) -> None:
+        from ...ir import Scalar, ScalarKind, TypeInner
         self.write_type(module, module.special_types.ray_intersection)  # type: ignore[attr-defined]
         self.out.write(" GetCandidateIntersection(")
-        self.write_value_type(module, {"type": "ray_query", "vertex_return": False})  # type: ignore[arg-type]
+        self.write_value_type(module, TypeInner.new_ray_query(vertex_return=False))
         self.out.write(" rq, ")
-        self.write_value_type(module, {"type": "scalar", "kind": "uint", "width": 4})  # type: ignore[arg-type]
+        self.write_value_type(module, TypeInner.new_scalar(Scalar(ScalarKind.UINT, 4)))
         self.out.write(" rq_tracker) {\n")
         self.out.write("    ")
         self.write_type(module, module.special_types.ray_intersection)  # type: ignore[attr-defined]
