@@ -11,6 +11,7 @@ import io
 
 from .expression_writer import MSLExpressionWriter
 from .statement_writer import MSLStatementWriter
+from .keywords import RESERVED_KEYWORD_SET
 from ...error import ShaderError
 from ...ir.type import (
     Type, TypeInner, TypeInnerType, ScalarKind, VectorSize, Matrix, ArraySizeType

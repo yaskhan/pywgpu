@@ -11,10 +11,35 @@ import io
 
 from .expression_writer import GLSLExpressionWriter
 from .statement_writer import GLSLStatementWriter
+from .conv import (
+    glsl_scalar,
+    glsl_built_in,
+    glsl_storage_qualifier,
+    glsl_interpolation,
+    glsl_sampling,
+    glsl_dimension,
+    glsl_storage_format,
+)
+from .features import Features, FeaturesManager, WriterFlags
+from .keywords import RESERVED_KEYWORD_SET
 from ...error import ShaderError
 from ...ir.type import (
     Type, TypeInner, TypeInnerType, ScalarKind, VectorSize, Matrix, ArraySizeType
 )
+
+# Supported GLSL versions
+SUPPORTED_CORE_VERSIONS = [140, 150, 330, 400, 410, 420, 430, 440, 450, 460]
+SUPPORTED_ES_VERSIONS = [300, 310, 320]
+
+# Suffix for clamped LOD variable in image load bounds checking
+CLAMPED_LOD_SUFFIX = "_clamped_lod"
+
+# First instance binding constant (must match conv.rs)
+FIRST_INSTANCE_BINDING = "naga_vs_first_instance"
+
+# Modf and frexp function names
+MODF_FUNCTION = "naga_modf"
+FREXP_FUNCTION = "naga_frexp"
 
 
 class Version(IntEnum):
