@@ -494,8 +494,14 @@ class BindGroup:
             
             if hasattr(info, 'binding_type'):
                 # Determine alignment based on binding type
-                # This would normally come from device.limits
-                pass
+                binding_type = info.binding_type
+                # Check if binding_type is a BufferBindingType enum or similar
+                if hasattr(binding_type, 'Uniform') and binding_type == binding_type.Uniform:
+                    alignment = self.device.limits.min_uniform_buffer_offset_alignment
+                    limit_name = "min_uniform_buffer_offset_alignment"
+                elif hasattr(binding_type, 'Storage'):
+                    alignment = self.device.limits.min_storage_buffer_offset_alignment
+                    limit_name = "min_storage_buffer_offset_alignment"
             
             # Check alignment
             if offset % alignment != 0:
