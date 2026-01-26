@@ -1,644 +1,727 @@
-"""
-Storage buffer access support for HLSL backend.
+"""naga.back.hlsl.storage
 
-Generating accesses to ByteAddressBuffer contents.
+A port of `wgpu-trunk/naga/src/back/hlsl/storage.rs`.
 
-Naga IR globals in Storage address space are rendered as ByteAddressBuffers or
-RWByteAddressBuffers in HLSL. These buffers don't have HLSL types (structs,
-arrays, etc.); instead, they are just raw blocks of bytes, with methods to
-load and store values of specific types at particular byte offsets.
+This module implements ByteAddressBuffer / RWByteAddressBuffer addressing,
+loading and storing for Naga's Storage address space.
 
-To generate code for a Storage access:
-- Call fill_access_chain on expression referring to value. This populates
-  temp_access_chain with appropriate byte offset calculations.
-- Call write_storage_address to emit an HLSL expression for a given slice
-  of SubAccess values.
+Upstream Naga implements this as methods on the HLSL writer. In this Python
+port we expose the same logic via :class:`~StorageWriter`, which is intended to
+be used as a mixin by a full HLSL writer implementation.
+
+The implementation here mirrors the upstream control flow and emitted HLSL.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, List, Union, Optional, Dict, Any
 from dataclasses import dataclass
 from enum import Enum
-import io
+from typing import TYPE_CHECKING, Iterable, Iterator, Sequence
+
+from .. import INDENT, Level
+from ...proc import NameKey, TypeResolutionHandle, TypeResolutionValue
 
 if TYPE_CHECKING:
-    from ...ir.module import Module
-    from ...ir.expression import Expression
-    from ...ir.type import Type, TypeInner
-    from ...ir import Handle
+    from ...arena import Handle
+    from ...ir import Expression, GlobalVariable, Module, Type, TypeInner, VectorSize
+    from .. import FunctionCtx
 
 
 STORE_TEMP_NAME = "_value"
 
 
 class SubAccessType(Enum):
-    """Types of sub-access operations."""
+    """Kept for backward compatibility.
 
-    BUFFER_OFFSET = 0
-    OFFSET = 1
-    INDEX = 2
-
-
-@dataclass
-class SubAccess:
-    """One step in accessing a Storage global's component or element.
-
-    Describes how to compute byte offset of a particular element or member
-    of some global variable in Storage address space.
+    Upstream uses an enum with variants; here the actual lowering is represented
+    by :class:`SubAccess` instances.
     """
 
+    BUFFER_OFFSET = "buffer_offset"
+    OFFSET = "offset"
+    INDEX = "index"
+
+
+@dataclass(frozen=True, slots=True)
+class SubAccess:
+    """One step in accessing a Storage global's component or element."""
+
     type: SubAccessType
-    group: Optional[int] = None
-    offset: Optional[int] = None
-    value: Optional[Handle[Expression]] = None
-    stride: Optional[int] = None
+    group: int | None = None
+    offset: int | None = None
+    value: "Handle[Expression] | None" = None
+    stride: int | None = None
 
     @staticmethod
     def buffer_offset(group: int, offset: int) -> "SubAccess":
-        """Create a buffer offset access."""
-        return SubAccess(
-            type=SubAccessType.BUFFER_OFFSET,
-            group=group,
-            offset=offset
-        )
+        return SubAccess(SubAccessType.BUFFER_OFFSET, group=group, offset=offset)
 
     @staticmethod
-    def offset(offset: int) -> "SubAccess":
-        """Create a constant offset access."""
-        return SubAccess(
-            type=SubAccessType.OFFSET,
-            offset=offset
-        )
+    def offset_const(offset: int) -> "SubAccess":
+        return SubAccess(SubAccessType.OFFSET, offset=offset)
 
     @staticmethod
-    def index(value: Handle[Expression], stride: int) -> "SubAccess":
-        """Create a dynamic index access."""
-        return SubAccess(
-            type=SubAccessType.INDEX,
-            value=value,
-            stride=stride
-        )
+    def index(value: "Handle[Expression]", stride: int) -> "SubAccess":
+        return SubAccess(SubAccessType.INDEX, value=value, stride=stride)
 
 
 class StoreValueType(Enum):
-    """Types of values that can be stored."""
+    """Kept for backward compatibility."""
 
-    EXPRESSION = 0
-    ZERO = 1
+    EXPRESSION = "expression"
+    TEMP_INDEX = "temp_index"
+    TEMP_ACCESS = "temp_access"
+    TEMP_COLUMN_ACCESS = "temp_column_access"
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class StoreValue:
-    """A value to store in a storage buffer."""
+    """A value to store.
+
+    Mirrors `StoreValue` in upstream `storage.rs`.
+    """
 
     type: StoreValueType
-    expression: Optional[Handle[Expression]] = None
+
+    expression: "Handle[Expression] | None" = None
+
+    depth: int | None = None
+    index: int | None = None
+    ty: object | None = None
+
+    base: "Handle[Type] | None" = None
+    member_index: int | None = None
+
+    column: int | None = None
 
     @staticmethod
-    def from_expression(expr: Handle[Expression]) -> "StoreValue":
-        """Create a store value from an expression."""
+    def expression(expr: "Handle[Expression]") -> "StoreValue":
+        return StoreValue(StoreValueType.EXPRESSION, expression=expr)
+
+    @staticmethod
+    def temp_index(depth: int, index: int, ty: object) -> "StoreValue":
+        return StoreValue(StoreValueType.TEMP_INDEX, depth=depth, index=index, ty=ty)
+
+    @staticmethod
+    def temp_access(depth: int, base: "Handle[Type]", member_index: int) -> "StoreValue":
+        return StoreValue(StoreValueType.TEMP_ACCESS, depth=depth, base=base, member_index=member_index)
+
+    @staticmethod
+    def temp_column_access(
+        depth: int,
+        base: "Handle[Type]",
+        member_index: int,
+        column: int,
+    ) -> "StoreValue":
         return StoreValue(
-            type=StoreValueType.EXPRESSION,
-            expression=expr
+            StoreValueType.TEMP_COLUMN_ACCESS,
+            depth=depth,
+            base=base,
+            member_index=member_index,
+            column=column,
         )
-
-    @staticmethod
-    def zero() -> "StoreValue":
-        """Create a zero store value."""
-        return StoreValue(type=StoreValueType.ZERO)
-
-
-class StorageAddress:
-    """Computed address for storage buffer access."""
-
-    def __init__(self, base: str, offset: str):
-        """
-        Initialize storage address.
-
-        Args:
-            base: Base buffer expression
-            offset: Computed byte offset expression
-        """
-        self.base = base
-        self.offset = offset
-
-    def to_string(self) -> str:
-        """Convert to HLSL string representation."""
-        return f"{self.base}, {self.offset}"
 
 
 class StorageWriter:
-    """Writer for storage buffer access code in HLSL."""
+    """Implements HLSL storage buffer access helpers.
 
-    def __init__(self, out: io.StringIO, module: Module, names: Dict[str, str]):
-        """
-        Initialize storage writer.
+    This class is written in the same style as upstream `impl Writer` methods.
 
-        Args:
-            out: Output stream
-            module: The module being written
-            names: Name mapping for identifiers
-        """
-        self.out = out
-        self.module = module
-        self.names = names
-        self.temp_access_chain: List[SubAccess] = []
+    The full writer is expected to provide the following hooks:
 
-    def fill_access_chain(
+    - ``out``: text writer
+    - ``names``: mapping from :class:`~naga.proc.NameKey` to identifiers
+    - ``options``: writer options that may support dynamic buffer offsets
+    - ``temp_access_chain``: list used for temporary access lowering
+    - ``write_expr(module, expr, func_ctx)``
+    - ``write_type(module, ty_handle)``
+    - ``write_value_type(module, ty_inner)``
+    - ``write_wrapped_constructor_function_name(module, constructor)``
+    - ``write_array_size(module, base, size)``
+
+    When used as a mixin, these hooks are provided by the main writer.
+    """
+
+    def __init__(self) -> None:
+        self.temp_access_chain: list[SubAccess] = []
+
+    # ---------------------------------------------------------------------
+    # Helpers
+    # ---------------------------------------------------------------------
+
+    @staticmethod
+    def _alignment_from_vector_size(rows: "VectorSize") -> int:
+        # Matches `proc::Alignment::from(VectorSize)` in upstream.
+        # vec2 is 8-byte aligned; vec3/vec4 are 16-byte aligned.
+        v = getattr(rows, "value", rows)
+        return 8 if int(v) == 2 else 16
+
+    @staticmethod
+    def _type_resolution_inner(module: "Module", ty: object) -> "TypeInner":
+        # Accept either TypeResolutionHandle / TypeResolutionValue (Python proc)
+        # or direct TypeInner.
+        if isinstance(ty, TypeResolutionHandle):
+            return module.types[ty.handle].inner
+        if isinstance(ty, TypeResolutionValue):
+            return ty.inner
+        # Fallback
+        return ty  # type: ignore[return-value]
+
+    @staticmethod
+    def _type_resolution_handle(ty: object) -> "Handle[Type] | None":
+        if isinstance(ty, TypeResolutionHandle):
+            # This module uses `Handle[Type]` for type handles.
+            from ...arena import Handle
+
+            return Handle.from_usize_unchecked(ty.handle)
+        return None
+
+    # ---------------------------------------------------------------------
+    # Core: address
+    # ---------------------------------------------------------------------
+
+    def write_storage_address(
         self,
-        expression: Handle[Expression],
-        ctx: Any,
-        chain: Optional[List[SubAccess]] = None
+        module: "Module",
+        chain: Sequence[SubAccess],
+        func_ctx: "FunctionCtx",
     ) -> None:
-        """
-        Fill access chain for a storage access expression.
-
-        Args:
-            expression: The expression to analyze
-            ctx: Function context
-            chain: Optional existing chain to extend
-        """
-        if chain is not None:
-            self.temp_access_chain = chain.copy()
-        else:
-            self.temp_access_chain = []
-
-        # Get the expression
-        expr = self.module.expressions[expression]
-
-        from ...ir.expression import ExpressionType
-        match expr.type:
-            case ExpressionType.GLOBAL_VARIABLE:
-                # This is the base - get the buffer info
-                self._add_buffer_access(expr.global_variable)
-            case ExpressionType.ACCESS:
-                # Access operation - recurse into base, then add index
-                self.fill_access_chain(expr.base, ctx)
-                self._add_access_index(expr.index, ctx)
-            case ExpressionType.ACCESS_INDEX:
-                # AccessIndex operation - recurse into base, then add index
-                self.fill_access_chain(expr.base, ctx)
-                self._add_access_index(expr.index, ctx)
-            case _:
-                # Non-storage access - clear chain
-                self.temp_access_chain = []
-
-    def write_storage_address(self, chain: Optional[List[SubAccess]] = None) -> StorageAddress:
-        """
-        Write storage buffer address expression.
-
-        Args:
-            chain: Access chain to use (defaults to temp_access_chain)
-
-        Returns:
-            Storage address object
-        """
-        if chain is None:
-            chain = self.temp_access_chain
-
         if not chain:
-            raise ValueError("Empty access chain")
+            self.out.write("0")  # type: ignore[attr-defined]
+            return
 
-        # Start with base buffer
-        base_expr, base_offset = self._process_buffer_offset(chain[0])
+        for i, access in enumerate(chain):
+            if i != 0:
+                self.out.write("+")  # type: ignore[attr-defined]
+            if access.type == SubAccessType.BUFFER_OFFSET:
+                group = int(access.group or 0)
+                offset = int(access.offset or 0)
+                self.out.write(f"__dynamic_buffer_offsets{group}._{offset}")  # type: ignore[attr-defined]
+            elif access.type == SubAccessType.OFFSET:
+                self.out.write(str(int(access.offset or 0)))  # type: ignore[attr-defined]
+            elif access.type == SubAccessType.INDEX:
+                if access.value is None or access.stride is None:
+                    raise ValueError("Malformed SubAccess::Index")
+                self.write_expr(module, access.value, func_ctx)
+                self.out.write(f"*{int(access.stride)}")  # type: ignore[attr-defined]
+            else:
+                raise ValueError(f"Unknown SubAccess: {access.type}")
 
-        # Process remaining accesses
-        offset_exprs = []
-        if base_offset:
-            offset_exprs.append(str(base_offset))
+    def _write_storage_load_sequence(
+        self,
+        module: "Module",
+        var_handle: "Handle[GlobalVariable]",
+        sequence: Iterable[tuple[object, int]],
+        func_ctx: "FunctionCtx",
+    ) -> None:
+        for i, (ty_resolution, offset) in enumerate(sequence):
+            self.temp_access_chain.append(SubAccess.offset_const(offset))
+            if i != 0:
+                self.out.write(", ")  # type: ignore[attr-defined]
+            self.write_storage_load(module, var_handle, ty_resolution, func_ctx)
+            self.temp_access_chain.pop()
 
-        for access in chain[1:]:
-            offset_exprs.append(self._sub_access_to_string(access))
-
-        # Combine offsets
-        if not offset_exprs:
-            final_offset = "0"
-        elif len(offset_exprs) == 1:
-            final_offset = offset_exprs[0]
-        else:
-            final_offset = " + ".join(offset_exprs)
-
-        return StorageAddress(base_expr, final_offset)
+    # ---------------------------------------------------------------------
+    # Loads
+    # ---------------------------------------------------------------------
 
     def write_storage_load(
         self,
-        access_chain: List[SubAccess],
-        ty_handle: Handle[Type],
-        ctx: Any
-    ) -> str:
-        """
-        Write a load from storage buffer.
+        module: "Module",
+        var_handle: "Handle[GlobalVariable]",
+        result_ty: object,
+        func_ctx: "FunctionCtx",
+    ) -> None:
+        from .conv import hlsl_cast, hlsl_scalar
+        from ...ir.type import ArraySizeType, TypeInnerType
 
-        Args:
-            access_chain: Access chain for the load
-            ty_handle: Type to load
-            ctx: Function context
+        inner = self._type_resolution_inner(module, result_ty)
 
-        Returns:
-            HLSL expression for the loaded value
-        """
-        from ...ir.type import TypeInnerType, ScalarKind
+        if inner.type == TypeInnerType.SCALAR:
+            scalar = inner.scalar
+            if scalar is None:
+                raise ValueError("Scalar TypeInner missing scalar")
 
-        self.temp_access_chain = access_chain
-        address = self.write_storage_address()
+            chain = self.temp_access_chain
+            self.temp_access_chain = []
+            var_name = self.names[NameKey.global_variable(var_handle)]  # type: ignore[attr-defined]
 
-        ty = self.module.types[ty_handle]
-        inner = ty.inner
+            if scalar.width == 4:
+                cast = hlsl_cast(scalar.kind)
+                self.out.write(f"{cast}({var_name}.Load(")  # type: ignore[attr-defined]
+            else:
+                ty = hlsl_scalar(scalar.kind, scalar.width)
+                self.out.write(f"{var_name}.Load<{ty}(")  # type: ignore[attr-defined]
 
-        match inner.type:
-            case TypeInnerType.SCALAR:
-                return self._write_scalar_load(address, inner.scalar.kind)
-            case TypeInnerType.VECTOR:
-                return self._write_vector_load(address, inner.vector.size, inner.vector.scalar.kind)
-            case TypeInnerType.MATRIX:
-                return self._write_matrix_load(address, inner.matrix)
-            case TypeInnerType.ARRAY:
-                return self._write_array_load(address, inner.array.base)
-            case TypeInnerType.STRUCT:
-                return self._write_struct_load(address, ty_handle)
-            case _:
-                raise ValueError(f"Unsupported storage load type: {inner.type}")
+            self.write_storage_address(module, chain, func_ctx)
+            self.out.write(")")  # type: ignore[attr-defined]
+            if scalar.width == 4:
+                self.out.write(")")  # type: ignore[attr-defined]
+
+            self.temp_access_chain = chain
+            return
+
+        if inner.type == TypeInnerType.VECTOR:
+            vector = inner.vector
+            if vector is None:
+                raise ValueError("Vector TypeInner missing vector")
+
+            chain = self.temp_access_chain
+            self.temp_access_chain = []
+            var_name = self.names[NameKey.global_variable(var_handle)]  # type: ignore[attr-defined]
+            size = int(vector.size.value)
+
+            if vector.scalar.width == 4:
+                cast = hlsl_cast(vector.scalar.kind)
+                self.out.write(f"{cast}({var_name}.Load{size}(")  # type: ignore[attr-defined]
+            else:
+                ty = hlsl_scalar(vector.scalar.kind, vector.scalar.width)
+                self.out.write(f"{var_name}.Load<{ty}{size}(")  # type: ignore[attr-defined]
+
+            self.write_storage_address(module, chain, func_ctx)
+            self.out.write(")")  # type: ignore[attr-defined]
+            if vector.scalar.width == 4:
+                self.out.write(")")  # type: ignore[attr-defined]
+
+            self.temp_access_chain = chain
+            return
+
+        if inner.type == TypeInnerType.MATRIX:
+            matrix = inner.matrix
+            if matrix is None:
+                raise ValueError("Matrix TypeInner missing matrix")
+
+            scalar_ty = hlsl_scalar(matrix.scalar.kind, matrix.scalar.width)
+            cols = int(matrix.columns.value)
+            rows = int(matrix.rows.value)
+            self.out.write(f"{scalar_ty}{cols}x{rows}(")  # type: ignore[attr-defined]
+
+            row_stride = self._alignment_from_vector_size(matrix.rows) * matrix.scalar.width
+
+            def _iter() -> Iterator[tuple[object, int]]:
+                from ...ir.type import TypeInner
+
+                for i in range(cols):
+                    ty_inner = TypeInner.new_vector(matrix.rows, matrix.scalar)
+                    yield TypeResolutionValue(ty_inner), i * row_stride
+
+            self._write_storage_load_sequence(module, var_handle, _iter(), func_ctx)
+            self.out.write(")")  # type: ignore[attr-defined]
+            return
+
+        if inner.type == TypeInnerType.ARRAY:
+            array = inner.array
+            if array is None:
+                raise ValueError("Array TypeInner missing array")
+
+            if array.size.type != ArraySizeType.CONSTANT or array.size.constant is None:
+                raise ValueError("Only constant arrays are supported in storage loads")
+
+            constructor = {"ty": self._type_resolution_handle(result_ty)}
+            self.write_wrapped_constructor_function_name(module, constructor)  # type: ignore[arg-type]
+            self.out.write("(")  # type: ignore[attr-defined]
+            size = int(array.size.constant.value)
+            stride = int(array.stride)
+            base = array.base
+
+            def _iter() -> Iterator[tuple[object, int]]:
+                for i in range(size):
+                    yield TypeResolutionHandle(base), stride * i
+
+            self._write_storage_load_sequence(module, var_handle, _iter(), func_ctx)
+            self.out.write(")")  # type: ignore[attr-defined]
+            return
+
+        if inner.type == TypeInnerType.STRUCT:
+            struct = inner.struct
+            if struct is None:
+                raise ValueError("Struct TypeInner missing struct")
+
+            constructor = {"ty": self._type_resolution_handle(result_ty)}
+            self.write_wrapped_constructor_function_name(module, constructor)  # type: ignore[arg-type]
+            self.out.write("(")  # type: ignore[attr-defined]
+
+            def _iter() -> Iterator[tuple[object, int]]:
+                for member in struct.members:
+                    yield TypeResolutionHandle(member.ty), int(member.offset)
+
+            self._write_storage_load_sequence(module, var_handle, _iter(), func_ctx)
+            self.out.write(")")  # type: ignore[attr-defined]
+            return
+
+        raise ValueError(f"Unsupported storage load type: {inner.type}")
+
+    # ---------------------------------------------------------------------
+    # Stores
+    # ---------------------------------------------------------------------
+
+    def _write_store_value(self, module: "Module", value: StoreValue, func_ctx: "FunctionCtx") -> None:
+        if value.type == StoreValueType.EXPRESSION:
+            if value.expression is None:
+                raise ValueError("StoreValue::Expression missing expression")
+            self.write_expr(module, value.expression, func_ctx)
+            return
+
+        if value.type == StoreValueType.TEMP_INDEX:
+            if value.depth is None or value.index is None:
+                raise ValueError("StoreValue::TempIndex missing fields")
+            self.out.write(f"{STORE_TEMP_NAME}{value.depth}[{value.index}]")  # type: ignore[attr-defined]
+            return
+
+        if value.type == StoreValueType.TEMP_ACCESS:
+            if value.depth is None or value.base is None or value.member_index is None:
+                raise ValueError("StoreValue::TempAccess missing fields")
+            name = self.names[NameKey.struct_member(value.base, value.member_index)]  # type: ignore[attr-defined]
+            self.out.write(f"{STORE_TEMP_NAME}{value.depth}.{name}")  # type: ignore[attr-defined]
+            return
+
+        if value.type == StoreValueType.TEMP_COLUMN_ACCESS:
+            if (
+                value.depth is None
+                or value.base is None
+                or value.member_index is None
+                or value.column is None
+            ):
+                raise ValueError("StoreValue::TempColumnAccess missing fields")
+            name = self.names[NameKey.struct_member(value.base, value.member_index)]  # type: ignore[attr-defined]
+            self.out.write(f"{STORE_TEMP_NAME}{value.depth}.{name}_{value.column}")  # type: ignore[attr-defined]
+            return
+
+        raise ValueError(f"Unknown StoreValue type: {value.type}")
 
     def write_storage_store(
         self,
-        access_chain: List[SubAccess],
+        module: "Module",
+        var_handle: "Handle[GlobalVariable]",
         value: StoreValue,
-        ty_handle: Handle[Type],
-        ctx: Any
-    ) -> str:
-        """
-        Write a store to storage buffer.
+        func_ctx: "FunctionCtx",
+        level: Level,
+        within_struct: "Handle[Type] | None" = None,
+    ) -> None:
+        from .conv import hlsl_scalar
+        from ...ir.type import ArraySizeType, TypeInner, TypeInnerType, VectorSize
 
-        Args:
-            access_chain: Access chain for the store
-            value: Value to store
-            ty_handle: Type of value
-            ctx: Function context
+        # Determine the type resolution for the store value.
+        if value.type == StoreValueType.EXPRESSION:
+            if value.expression is None:
+                raise ValueError("StoreValue::Expression missing expression")
+            ty_resolution: object = func_ctx.info[value.expression].ty  # type: ignore[attr-defined]
+        elif value.type == StoreValueType.TEMP_INDEX:
+            if value.ty is None:
+                raise ValueError("StoreValue::TempIndex missing ty")
+            ty_resolution = value.ty
+        elif value.type == StoreValueType.TEMP_ACCESS:
+            if value.base is None or value.member_index is None:
+                raise ValueError("StoreValue::TempAccess missing fields")
+            struct_ty = module.types[value.base].inner
+            if struct_ty.type != TypeInnerType.STRUCT or struct_ty.struct is None:
+                raise ValueError("TempAccess base is not a struct")
+            member_ty = struct_ty.struct.members[int(value.member_index)].ty
+            ty_resolution = TypeResolutionHandle(member_ty)
+        else:
+            raise ValueError("TempColumnAccess should not be passed to write_storage_store")
 
-        Returns:
-            HLSL statement for the store
+        inner = self._type_resolution_inner(module, ty_resolution)
+
+        var_name = self.names[NameKey.global_variable(var_handle)]  # type: ignore[attr-defined]
+
+        if inner.type == TypeInnerType.SCALAR:
+            scalar = inner.scalar
+            if scalar is None:
+                raise ValueError("Scalar TypeInner missing scalar")
+
+            chain = self.temp_access_chain
+            self.temp_access_chain = []
+
+            if scalar.width == 4:
+                self.out.write(f"{level}{var_name}.Store(")  # type: ignore[attr-defined]
+                self.write_storage_address(module, chain, func_ctx)
+                self.out.write(", asuint(")  # type: ignore[attr-defined]
+                self._write_store_value(module, value, func_ctx)
+                self.out.write("));\n")  # type: ignore[attr-defined]
+            else:
+                self.out.write(f"{level}{var_name}.Store(")  # type: ignore[attr-defined]
+                self.write_storage_address(module, chain, func_ctx)
+                self.out.write(", ")  # type: ignore[attr-defined]
+                self._write_store_value(module, value, func_ctx)
+                self.out.write(");\n")  # type: ignore[attr-defined]
+
+            self.temp_access_chain = chain
+            return
+
+        if inner.type == TypeInnerType.VECTOR:
+            vector = inner.vector
+            if vector is None:
+                raise ValueError("Vector TypeInner missing vector")
+
+            chain = self.temp_access_chain
+            self.temp_access_chain = []
+
+            size = int(vector.size.value)
+            if vector.scalar.width == 4:
+                self.out.write(f"{level}{var_name}.Store{size}(")  # type: ignore[attr-defined]
+                self.write_storage_address(module, chain, func_ctx)
+                self.out.write(", asuint(")  # type: ignore[attr-defined]
+                self._write_store_value(module, value, func_ctx)
+                self.out.write("));\n")  # type: ignore[attr-defined]
+            else:
+                self.out.write(f"{level}{var_name}.Store(")  # type: ignore[attr-defined]
+                self.write_storage_address(module, chain, func_ctx)
+                self.out.write(", ")  # type: ignore[attr-defined]
+                self._write_store_value(module, value, func_ctx)
+                self.out.write(");\n")  # type: ignore[attr-defined]
+
+            self.temp_access_chain = chain
+            return
+
+        if inner.type == TypeInnerType.MATRIX:
+            matrix = inner.matrix
+            if matrix is None:
+                raise ValueError("Matrix TypeInner missing matrix")
+
+            row_stride = self._alignment_from_vector_size(matrix.rows) * matrix.scalar.width
+            cols = int(matrix.columns.value)
+
+            self.out.write(f"{level}{{\n")  # type: ignore[attr-defined]
+
+            if within_struct is not None and matrix.rows == VectorSize.BI:
+                chain = list(self.temp_access_chain)
+                for i in range(cols):
+                    chain.append(SubAccess.offset_const(i * row_stride))
+                    if value.type != StoreValueType.TEMP_ACCESS:
+                        raise ValueError("within_struct requires TempAccess store value")
+                    assert value.member_index is not None
+                    column_value = StoreValue.temp_column_access(
+                        depth=level.level,
+                        base=within_struct,
+                        member_index=int(value.member_index),
+                        column=i,
+                    )
+                    if matrix.scalar.width == 4:
+                        self.out.write(f"{level.next()}{var_name}.Store{int(matrix.rows.value)}(")  # type: ignore[attr-defined]
+                        self.write_storage_address(module, chain, func_ctx)
+                        self.out.write(", asuint(")  # type: ignore[attr-defined]
+                        self._write_store_value(module, column_value, func_ctx)
+                        self.out.write("));\n")  # type: ignore[attr-defined]
+                    else:
+                        self.out.write(f"{level.next()}{var_name}.Store(")  # type: ignore[attr-defined]
+                        self.write_storage_address(module, chain, func_ctx)
+                        self.out.write(", ")  # type: ignore[attr-defined]
+                        self._write_store_value(module, column_value, func_ctx)
+                        self.out.write(");\n")  # type: ignore[attr-defined]
+                    chain.pop()
+            else:
+                depth = level.level + 1
+                scalar_ty = hlsl_scalar(matrix.scalar.kind, matrix.scalar.width)
+                self.out.write(
+                    f"{level.next()}{scalar_ty}{int(matrix.columns.value)}x{int(matrix.rows.value)} {STORE_TEMP_NAME}{depth} = "
+                )  # type: ignore[attr-defined]
+                self._write_store_value(module, value, func_ctx)
+                self.out.write(";\n")  # type: ignore[attr-defined]
+
+                for i in range(cols):
+                    self.temp_access_chain.append(SubAccess.offset_const(i * row_stride))
+                    ty_inner = TypeInner.new_vector(matrix.rows, matrix.scalar)
+                    sv = StoreValue.temp_index(depth=depth, index=i, ty=TypeResolutionValue(ty_inner))
+                    self.write_storage_store(module, var_handle, sv, func_ctx, level.next(), None)
+                    self.temp_access_chain.pop()
+
+            self.out.write(f"{level}}}\n")  # type: ignore[attr-defined]
+            return
+
+        if inner.type == TypeInnerType.ARRAY:
+            array = inner.array
+            if array is None:
+                raise ValueError("Array TypeInner missing array")
+            if array.size.type != ArraySizeType.CONSTANT or array.size.constant is None:
+                raise ValueError("Only constant arrays are supported in storage stores")
+
+            self.out.write(f"{level}{{\n")  # type: ignore[attr-defined]
+            self.out.write(f"{level.next()}")  # type: ignore[attr-defined]
+            self.write_type(module, array.base)
+            depth = level.next().level
+            self.out.write(f" {STORE_TEMP_NAME}{depth}")  # type: ignore[attr-defined]
+            self.write_array_size(module, array.base, array.size)
+            self.out.write(" = ")  # type: ignore[attr-defined]
+            self._write_store_value(module, value, func_ctx)
+            self.out.write(";\n")  # type: ignore[attr-defined]
+
+            size = int(array.size.constant.value)
+            for i in range(size):
+                self.temp_access_chain.append(SubAccess.offset_const(i * int(array.stride)))
+                sv = StoreValue.temp_index(depth=depth, index=i, ty=TypeResolutionHandle(array.base))
+                self.write_storage_store(module, var_handle, sv, func_ctx, level.next(), None)
+                self.temp_access_chain.pop()
+
+            self.out.write(f"{level}}}\n")  # type: ignore[attr-defined]
+            return
+
+        if inner.type == TypeInnerType.STRUCT:
+            struct = inner.struct
+            if struct is None:
+                raise ValueError("Struct TypeInner missing struct")
+
+            self.out.write(f"{level}{{\n")  # type: ignore[attr-defined]
+            depth = level.next().level
+            struct_ty_handle = self._type_resolution_handle(ty_resolution)
+            if struct_ty_handle is None:
+                raise ValueError("Struct store requires a type handle")
+            struct_name = self.names[NameKey.type_(struct_ty_handle)]  # type: ignore[attr-defined]
+            self.out.write(f"{level.next()}{struct_name} {STORE_TEMP_NAME}{depth} = ")  # type: ignore[attr-defined]
+            self._write_store_value(module, value, func_ctx)
+            self.out.write(";\n")  # type: ignore[attr-defined]
+
+            for i, member in enumerate(struct.members):
+                self.temp_access_chain.append(SubAccess.offset_const(int(member.offset)))
+                sv = StoreValue.temp_access(depth=depth, base=struct_ty_handle, member_index=i)
+                self.write_storage_store(
+                    module,
+                    var_handle,
+                    sv,
+                    func_ctx,
+                    level.next(),
+                    within_struct=struct_ty_handle,
+                )
+                self.temp_access_chain.pop()
+
+            self.out.write(f"{level}}}\n")  # type: ignore[attr-defined]
+            return
+
+        raise ValueError(f"Unsupported storage store type: {inner.type}")
+
+    # ---------------------------------------------------------------------
+    # Access chain lowering
+    # ---------------------------------------------------------------------
+
+    def fill_access_chain(
+        self,
+        module: "Module",
+        cur_expr: "Handle[Expression]",
+        func_ctx: "FunctionCtx",
+    ) -> "Handle[GlobalVariable]":
+        """Set ``temp_access_chain`` to compute the byte offset of ``cur_expr``.
+
+        Mirrors upstream `fill_access_chain`.
         """
+
+        from ...ir import ExpressionType
         from ...ir.type import TypeInnerType
 
-        self.temp_access_chain = access_chain
-        address = self.write_storage_address()
-
-        ty = self.module.types[ty_handle]
-        inner = ty.inner
-
-        # Get value expression
-        if value.type == StoreValueType.EXPRESSION:
-            value_str = self._get_expression_string(value.expression, ctx)
-        else:
-            value_str = "0"
-
-        match inner.type:
-            case TypeInnerType.SCALAR:
-                return self._write_scalar_store(address, value_str, inner.scalar.kind)
-            case TypeInnerType.VECTOR:
-                return self._write_vector_store(address, value_str, inner.vector)
-            case TypeInnerType.MATRIX:
-                return self._write_matrix_store(address, value_str, inner.matrix)
-            case TypeInnerType.ARRAY:
-                return self._write_array_store(address, value_str, inner.array)
-            case TypeInnerType.STRUCT:
-                return self._write_struct_store(address, value_str, ty_handle)
-            case _:
-                raise ValueError(f"Unsupported storage store type: {inner.type}")
-
-    def _add_buffer_access(self, var_handle: Handle[Expression]) -> None:
-        """Add buffer base access to chain.
-
-        Args:
-            var_handle: Handle to global variable
-        """
-        from ...ir.expression import ExpressionType
-
-        expr = self.module.expressions[var_handle]
-        if expr.type == ExpressionType.GLOBAL_VARIABLE:
-            # Get binding group and offset from global variable
-            var = self.module.global_variables[expr.global_variable]
-            binding = var.binding
-
-            if binding:
-                # Extract group and binding
-                group = binding.group if hasattr(binding, 'group') else 0
-                binding_num = binding.binding if hasattr(binding, 'binding') else 0
-
-                # Add buffer offset access
-                self.temp_access_chain.insert(0, SubAccess.buffer_offset(group, binding_num))
-
-    def _add_access_index(self, index: Union[int, Handle[Expression]], ctx: Any) -> None:
-        """Add index access to chain.
-
-        Args:
-            index: Index (constant or expression)
-            ctx: Function context
-        """
-        # Get the current type being accessed
-        # This is simplified - full implementation would track types through the chain
-        if isinstance(index, int):
-            # Constant index
-            self.temp_access_chain.append(SubAccess.offset(index))
-        else:
-            # Dynamic index - need stride
-            # For now, assume 4-byte stride (simplified)
-            self.temp_access_chain.append(SubAccess.index(index, 4))
-
-    def _process_buffer_offset(self, access: SubAccess) -> tuple[str, Optional[int]]:
-        """Process buffer offset access.
-
-        Args:
-            access: The buffer offset access
-
-        Returns:
-            Tuple of (base expression, static offset)
-        """
-        if access.type == SubAccessType.BUFFER_OFFSET:
-            # Get buffer name
-            group = access.group if access.group is not None else 0
-            offset = access.offset if access.offset is not None else 0
-
-            # Construct buffer variable name
-            buffer_name = f"_group{group}_binding{offset}"
-            return buffer_name, None
-
-        return "", None
-
-    def _sub_access_to_string(self, access: SubAccess) -> str:
-        """Convert sub-access to string.
-
-        Args:
-            access: The sub-access
-
-        Returns:
-            String representation
-        """
-        if access.type == SubAccessType.OFFSET:
-            return str(access.offset) if access.offset else "0"
-        elif access.type == SubAccessType.INDEX:
-            value_str = self._get_expression_string(access.value, None)
-            stride = access.stride if access.stride else 4
-            return f"({value_str} * {stride})"
-        else:
-            return "0"
-
-    def _write_scalar_load(self, address: StorageAddress, kind: Any) -> str:
-        """Write a scalar load.
-
-        Args:
-            address: Storage address
-            kind: Scalar kind
-
-        Returns:
-            HLSL load expression
-        """
-        from ...ir.type import ScalarKind
-
-        method = self._get_load_method(kind, 1)
-        return f"{address.base}.{method}({address.offset})"
-
-    def _write_vector_load(self, address: StorageAddress, size: Any, kind: Any) -> str:
-        """Write a vector load.
-
-        Args:
-            address: Storage address
-            size: Vector size
-            kind: Scalar kind
-
-        Returns:
-            HLSL load expression
-        """
-        from ...ir.type import VectorSize
-
-        components = size.value if hasattr(size, 'value') else size
-        method = self._get_load_method(kind, components)
-        loaded = f"{address.base}.{method}({address.offset})"
-
-        # Bitcast if necessary
-        if kind != ScalarKind.UINT:
-            target_type = self._get_type_string(kind, components)
-            return f"as{target_type}({loaded})"
-
-        return loaded
-
-    def _write_matrix_load(self, address: StorageAddress, matrix: Any) -> str:
-        """Write a matrix load.
-
-        Args:
-            address: Storage address
-            matrix: Matrix type info
-
-        Returns:
-            HLSL load expression
-        """
-        # Simplified - load column by column
-        cols = matrix.columns.value if hasattr(matrix.columns, 'value') else matrix.columns
-        rows = matrix.rows.value if hasattr(matrix.rows, 'value') else matrix.rows
-        kind = matrix.scalar.kind
-
-        # This is simplified - full implementation would construct matrix properly
-        return f"{address.base}.Load({address.offset})"
-
-    def _write_array_load(self, address: StorageAddress, base: Handle[Type]) -> str:
-        """Write an array load.
-
-        Args:
-            address: Storage address
-            base: Base array type
-
-        Returns:
-            HLSL load expression
-        """
-        return f"{address.base}.Load({address.offset})"
-
-    def _write_struct_load(self, address: StorageAddress, ty_handle: Handle[Type]) -> str:
-        """Write a struct load.
-
-        Args:
-            address: Storage address
-            ty_handle: Struct type handle
-
-        Returns:
-            HLSL load expression
-        """
-        # Simplified - full implementation would load member by member
-        ty = self.module.types[ty_handle]
-        struct_name = ty.name if ty.name else f"Struct{ty_handle.index}"
-
-        # Return placeholder - actual implementation would construct struct
-        return f"({struct_name})0"
-
-    def _write_scalar_store(self, address: StorageAddress, value: str, kind: Any) -> str:
-        """Write a scalar store.
-
-        Args:
-            address: Storage address
-            value: Value expression
-            kind: Scalar kind
-
-        Returns:
-            HLSL store statement
-        """
-        method = self._get_store_method(kind, 1)
-        return f"{address.base}.{method}({address.offset}, {value});\n"
-
-    def _write_vector_store(self, address: StorageAddress, value: str, vector: Any) -> str:
-        """Write a vector store.
-
-        Args:
-            address: Storage address
-            value: Value expression
-            vector: Vector type info
-
-        Returns:
-            HLSL store statement
-        """
-        from ...ir.type import VectorSize
-
-        components = vector.size.value if hasattr(vector.size, 'value') else vector.size
-        kind = vector.scalar.kind
-
-        # Bitcast to uint if necessary
-        if kind != ScalarKind.UINT:
-            value = f"asuint({value})"
-
-        method = self._get_store_method(kind, components)
-        return f"{address.base}.{method}({address.offset}, {value});\n"
-
-    def _write_matrix_store(self, address: StorageAddress, value: str, matrix: Any) -> str:
-        """Write a matrix store.
-
-        Args:
-            address: Storage address
-            value: Value expression
-            matrix: Matrix type info
-
-        Returns:
-            HLSL store statement
-        """
-        # Simplified - store column by column
-        return f"{address.base}.Store({address.offset}, asuint({value}));\n"
-
-    def _write_array_store(self, address: StorageAddress, value: str, array: Any) -> str:
-        """Write an array store.
-
-        Args:
-            address: Storage address
-            value: Value expression
-            array: Array type info
-
-        Returns:
-            HLSL store statement
-        """
-        return f"{address.base}.Store({address.offset}, asuint({value}));\n"
-
-    def _write_struct_store(self, address: StorageAddress, value: str, ty_handle: Handle[Type]) -> str:
-        """Write a struct store.
-
-        Args:
-            address: Storage address
-            value: Value expression
-            ty_handle: Struct type handle
-
-        Returns:
-            HLSL store statement
-        """
-        # Simplified - full implementation would store member by member
-        return f"{address.base}.Store({address.offset}, asuint({value}));\n"
-
-    def _get_load_method(self, kind: Any, components: int) -> str:
-        """Get the Load method name for a type.
-
-        Args:
-            kind: Scalar kind
-            components: Number of components
-
-        Returns:
-            Method name
-        """
-        from ...ir.type import ScalarKind
-
-        match kind:
-            case ScalarKind.F16 | ScalarKind.F32 | ScalarKind.F64:
-                # Floating point types use generic Load if available
-                return "Load" if components == 1 else f"Load{components}"
-            case ScalarKind.I32 | ScalarKind.UINT | ScalarKind.BOOL:
-                # Integer types
-                return "Load" if components == 1 else f"Load{components}"
-            case _:
-                return "Load"
-
-    def _get_store_method(self, kind: Any, components: int) -> str:
-        """Get the Store method name for a type.
-
-        Args:
-            kind: Scalar kind
-            components: Number of components
-
-        Returns:
-            Method name
-        """
-        from ...ir.type import ScalarKind
-
-        match kind:
-            case ScalarKind.F16 | ScalarKind.F32 | ScalarKind.F64:
-                return "Store" if components == 1 else f"Store{components}"
-            case ScalarKind.I32 | ScalarKind.UINT | ScalarKind.BOOL:
-                return "Store" if components == 1 else f"Store{components}"
-            case _:
-                return "Store"
-
-    def _get_type_string(self, kind: Any, components: int) -> str:
-        """Get HLSL type string.
-
-        Args:
-            kind: Scalar kind
-            components: Number of components
-
-        Returns:
-            Type string
-        """
-        from ...ir.type import ScalarKind
-
-        type_map = {
-            ScalarKind.F16: "half",
-            ScalarKind.F32: "float",
-            ScalarKind.F64: "double",
-            ScalarKind.I32: "int",
-            ScalarKind.UINT: "uint",
-            ScalarKind.BOOL: "bool",
-        }
-
-        base = type_map.get(kind, "float")
-        if components == 1:
-            return base
-        else:
-            return f"{base}{components}"
-
-    def _get_expression_string(self, expr_handle: Handle[Expression], ctx: Any) -> str:
-        """Get string representation of expression.
-
-        Args:
-            expr_handle: Expression handle
-            ctx: Function context
-
-        Returns:
-            Expression string
-        """
-        # Simplified - full implementation would use expression writer
-        return f"_e{expr_handle.index}"
+        self.temp_access_chain.clear()
+
+        while True:
+            expr = func_ctx.expressions[cur_expr]  # type: ignore[attr-defined]
+            if expr.type == ExpressionType.GLOBAL_VARIABLE:
+                var_handle = expr.global_variable
+                if var_handle is None:
+                    raise ValueError("Malformed GlobalVariable expression")
+
+                # Dynamic storage buffer offsets, if supported by options.
+                gv = module.global_variables[var_handle]
+                binding = getattr(gv, "binding", None)
+                if binding is not None and hasattr(self, "options"):
+                    options = getattr(self, "options")
+                    resolve = getattr(options, "resolve_resource_binding", None)
+                    if resolve is not None:
+                        bt = resolve(binding)
+                        dyn_index = getattr(bt, "dynamic_storage_buffer_offsets_index", None)
+                        if dyn_index is not None:
+                            group = int(getattr(binding, "group", 0))
+                            self.temp_access_chain.append(SubAccess.buffer_offset(group, int(dyn_index)))
+
+                return var_handle
+
+            if expr.type == ExpressionType.ACCESS:
+                if expr.access_base is None or expr.access_index is None:
+                    raise ValueError("Malformed Access expression")
+                next_expr = expr.access_base
+                access_index_expr = expr.access_index
+                access_index: tuple[str, object] = ("expr", access_index_expr)
+
+            elif expr.type == ExpressionType.ACCESS_INDEX:
+                if expr.access_base is None or expr.access_index_value is None:
+                    raise ValueError("Malformed AccessIndex expression")
+                next_expr = expr.access_base
+                access_index = ("const", int(expr.access_index_value))
+
+            else:
+                raise ValueError(f"Pointer access of {expr.type} is not supported")
+
+            # Determine parent type.
+            parent_ptr = func_ctx.resolve_type(next_expr, module)  # type: ignore[arg-type]
+            if parent_ptr.type == TypeInnerType.POINTER:
+                base = parent_ptr.pointer.base if parent_ptr.pointer is not None else None
+                if base is None:
+                    raise ValueError("Pointer missing base")
+                parent = module.types[base].inner
+            elif parent_ptr.type == TypeInnerType.VALUE_POINTER:
+                scalar = parent_ptr.value_pointer.scalar if parent_ptr.value_pointer is not None else None
+                if scalar is None:
+                    raise ValueError("ValuePointer missing scalar")
+                parent = None
+                stride = int(scalar.width)
+                parent_kind: tuple[str, object] = ("array", stride)
+            else:
+                raise ValueError("Unexpected parent pointer kind")
+
+            if parent is not None:
+                if parent.type == TypeInnerType.STRUCT:
+                    parent_kind = ("struct", parent.struct.members if parent.struct is not None else [])
+                elif parent.type == TypeInnerType.ARRAY:
+                    stride = int(parent.array.stride) if parent.array is not None else 0
+                    parent_kind = ("array", stride)
+                elif parent.type == TypeInnerType.VECTOR:
+                    scalar = parent.vector.scalar if parent.vector is not None else None
+                    parent_kind = ("array", int(scalar.width if scalar is not None else 0))
+                elif parent.type == TypeInnerType.MATRIX:
+                    mat = parent.matrix
+                    if mat is None:
+                        raise ValueError("Matrix missing")
+                    stride = self._alignment_from_vector_size(mat.rows) * int(mat.scalar.width)
+                    parent_kind = ("array", stride)
+                else:
+                    raise ValueError("Unexpected pointer base type")
+
+            # Produce SubAccess.
+            if parent_kind[0] == "array":
+                stride = int(parent_kind[1])
+                if access_index[0] == "expr":
+                    self.temp_access_chain.append(SubAccess.index(access_index[1], stride))  # type: ignore[arg-type]
+                else:
+                    self.temp_access_chain.append(SubAccess.offset_const(stride * int(access_index[1])))
+            else:
+                members = parent_kind[1]
+                if access_index[0] != "const":
+                    raise ValueError("Dynamic indexing into struct is unreachable")
+                index = int(access_index[1])
+                offset = int(members[index].offset)
+                self.temp_access_chain.append(SubAccess.offset_const(offset))
+
+            cur_expr = next_expr
+
+    # --- hooks expected from the main writer ---
+
+    def write_expr(self, module: "Module", expr: "Handle[Expression]", func_ctx: "FunctionCtx") -> None:  # pragma: no cover
+        raise NotImplementedError
+
+    def write_type(self, module: "Module", ty: object) -> None:  # pragma: no cover
+        raise NotImplementedError
+
+    def write_value_type(self, module: "Module", inner: object) -> None:  # pragma: no cover
+        raise NotImplementedError
+
+    def write_wrapped_constructor_function_name(self, module: "Module", constructor: object) -> None:  # pragma: no cover
+        raise NotImplementedError
+
+    def write_array_size(self, module: "Module", base: object, size: object) -> None:  # pragma: no cover
+        raise NotImplementedError
 
 
 __all__ = [
-    # Constants
     "STORE_TEMP_NAME",
-    # Classes
     "SubAccessType",
     "SubAccess",
     "StoreValueType",
     "StoreValue",
-    "StorageAddress",
     "StorageWriter",
 ]
