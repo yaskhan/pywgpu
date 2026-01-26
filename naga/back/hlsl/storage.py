@@ -699,6 +699,140 @@ class StorageWriter:
 
             cur_expr = next_expr
 
+    def fill_access_chain(
+        self,
+        module: "Module",
+        cur_expr: "Handle[Expression]",
+        func_ctx: "FunctionCtx",
+    ) -> "Handle[GlobalVariable]":
+        """Set temp_access_chain to compute the byte offset of cur_expr.
+        
+        The cur_expr expression must be a reference to a global variable
+        in the Storage address space, or a chain of Access and AccessIndex
+        expressions referring to some component of such a global.
+        
+        Args:
+            module: The module
+            cur_expr: Current expression to process
+            func_ctx: Function context
+            
+        Returns:
+            Handle to the global variable
+            
+        Raises:
+            Error: If pointer access is unimplemented
+        """
+        from ...arena import Handle
+        from ...ir.expression import Expression
+        from ...error import Error
+        
+        class AccessIndexType(Enum):
+            EXPRESSION = "expression"
+            CONSTANT = "constant"
+        
+        class ParentType(Enum):
+            ARRAY = "array"
+            STRUCT = "struct"
+        
+        self.temp_access_chain.clear()
+        
+        # This variable tracks the current expression we're processing
+        current_expr = cur_expr
+        
+        while True:
+            # Get the next expression and access index from current expression
+            expr_data = func_ctx.expressions[int(current_expr)]
+            
+            if expr_data.type == "global_variable":
+                # Global variable found - check for binding information
+                handle = Handle.from_usize_unchecked(int(expr_data.global_variable))
+                binding = module.global_variables[int(handle)].binding
+                
+                if binding is not None:
+                    # This was already resolved earlier when we started evaluating an entry point.
+                    # For dynamic storage buffer offsets, we need to add buffer offset information
+                    # Note: This would need access to options.resolve_resource_binding
+                    # For now, we'll handle the basic case
+                    pass
+                
+                return handle
+                
+            elif expr_data.type == "access":
+                # Access with dynamic index
+                base = Handle.from_usize_unchecked(int(expr_data.access.base))
+                index = Handle.from_usize_unchecked(int(expr_data.access.index))
+                access_index = (AccessIndexType.EXPRESSION, index)
+                next_expr = base
+                
+            elif expr_data.type == "access_index":
+                # Access with constant index
+                base = Handle.from_usize_unchecked(int(expr_data.access_index.base))
+                index = expr_data.access_index.index
+                access_index = (AccessIndexType.CONSTANT, index)
+                next_expr = base
+                
+            else:
+                raise Error(f"Unimplemented pointer access of {expr_data.type}")
+            
+            # Resolve the parent type to determine stride/offset information
+            parent_res = func_ctx.resolve_type(next_expr, module)
+            parent_kind = None
+            
+            # Handle different pointer types
+            if parent_res.type == TypeInnerType.POINTER:
+                base_handle = parent_res.pointer.base
+                if base_handle is None:
+                    raise ValueError("Pointer missing base")
+                parent_inner = module.types[int(base_handle)].inner
+            elif parent_res.type == TypeInnerType.VALUE_POINTER:
+                # For value pointers, treat as array with scalar width stride
+                scalar = parent_res.value_pointer.scalar
+                if scalar is None:
+                    raise ValueError("ValuePointer missing scalar")
+                stride = int(scalar.width)
+                parent_kind = (ParentType.ARRAY, stride)
+            else:
+                parent_inner = parent_res
+            
+            # Determine parent kind and stride/offset
+            if parent_kind is None:
+                if parent_inner.type == TypeInnerType.STRUCT:
+                    members = parent_inner.struct.members if parent_inner.struct is not None else []
+                    parent_kind = (ParentType.STRUCT, members)
+                elif parent_inner.type == TypeInnerType.ARRAY:
+                    stride = int(parent_inner.array.stride) if parent_inner.array is not None else 0
+                    parent_kind = (ParentType.ARRAY, stride)
+                elif parent_inner.type == TypeInnerType.VECTOR:
+                    scalar = parent_inner.vector.scalar if parent_inner.vector is not None else None
+                    stride = int(scalar.width if scalar is not None else 0)
+                    parent_kind = (ParentType.ARRAY, stride)
+                elif parent_inner.type == TypeInnerType.MATRIX:
+                    mat = parent_inner.matrix
+                    if mat is None:
+                        raise ValueError("Matrix missing")
+                    stride = self._alignment_from_vector_size(mat.rows) * int(mat.scalar.width)
+                    parent_kind = (ParentType.ARRAY, stride)
+                else:
+                    raise ValueError(f"Unexpected pointer base type: {parent_inner.type}")
+            
+            # Create SubAccess based on parent type and access index
+            if parent_kind[0] == ParentType.ARRAY:
+                stride = int(parent_kind[1])
+                if access_index[0] == AccessIndexType.EXPRESSION:
+                    self.temp_access_chain.append(SubAccess.index(access_index[1], stride))
+                else:
+                    self.temp_access_chain.append(SubAccess.offset_const(stride * int(access_index[1])))
+            else:  # STRUCT
+                members = parent_kind[1]
+                if access_index[0] != AccessIndexType.CONSTANT:
+                    raise ValueError("Dynamic indexing into struct is unreachable")
+                index = int(access_index[1])
+                offset = int(members[index].offset)
+                self.temp_access_chain.append(SubAccess.offset_const(offset))
+            
+            # Continue with next expression
+            cur_expr = next_expr
+
     # --- hooks expected from the main writer ---
 
     def write_expr(self, module: "Module", expr: "Handle[Expression]", func_ctx: "FunctionCtx") -> None:  # pragma: no cover
