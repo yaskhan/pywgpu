@@ -257,7 +257,40 @@ class FormatAspects(IntFlag):
     @staticmethod
     def new(format: Any, aspect: Any) -> "FormatAspects":
         """Create FormatAspects from texture format and aspect."""
-        # This would need proper implementation with wgt types
+        if wgt is None:
+            return FormatAspects.COLOR
+        
+        aspect_mask = FormatAspects.NONE
+        if aspect == wgt.TextureAspect.all:
+            aspect_mask = FormatAspects.all_flags()
+        elif aspect == wgt.TextureAspect.depth_only:
+            aspect_mask = FormatAspects.DEPTH
+        elif aspect == wgt.TextureAspect.stencil_only:
+            aspect_mask = FormatAspects.STENCIL
+        elif aspect == wgt.TextureAspect.plane0:
+            aspect_mask = FormatAspects.PLANE_0
+        elif aspect == wgt.TextureAspect.plane1:
+            aspect_mask = FormatAspects.PLANE_1
+        elif aspect == wgt.TextureAspect.plane2:
+            aspect_mask = FormatAspects.PLANE_2
+            
+        return FormatAspects.from_format(format) & aspect_mask
+
+    @staticmethod
+    def all_flags() -> "FormatAspects":
+        return (FormatAspects.COLOR | FormatAspects.DEPTH | FormatAspects.STENCIL | 
+                FormatAspects.PLANE_0 | FormatAspects.PLANE_1 | FormatAspects.PLANE_2)
+
+    @staticmethod
+    def from_format(format: Any) -> "FormatAspects":
+        if format == wgt.TextureFormat.stencil8:
+            return FormatAspects.STENCIL
+        if format in (wgt.TextureFormat.depth16unorm, wgt.TextureFormat.depth32float, wgt.TextureFormat.depth24plus):
+            return FormatAspects.DEPTH
+        if format in (wgt.TextureFormat.depth32float_stencil8, wgt.TextureFormat.depth24plus_stencil8):
+            return FormatAspects.DEPTH_STENCIL
+        if format in (wgt.TextureFormat.nv12, wgt.TextureFormat.p010):
+            return FormatAspects.PLANE_0 | FormatAspects.PLANE_1
         return FormatAspects.COLOR
 
     def is_one(self) -> bool:
@@ -266,8 +299,19 @@ class FormatAspects(IntFlag):
 
     def map(self) -> Any:
         """Map to TextureAspect."""
-        # This would need proper implementation with wgt types
-        pass
+        if self == FormatAspects.COLOR:
+            return wgt.TextureAspect.all
+        if self == FormatAspects.DEPTH:
+            return wgt.TextureAspect.depth_only
+        if self == FormatAspects.STENCIL:
+            return wgt.TextureAspect.stencil_only
+        if self == FormatAspects.PLANE_0:
+            return wgt.TextureAspect.plane0
+        if self == FormatAspects.PLANE_1:
+            return wgt.TextureAspect.plane1
+        if self == FormatAspects.PLANE_2:
+            return wgt.TextureAspect.plane2
+        raise ValueError(f"Cannot map multi-aspect {self} to TextureAspect")
 
 
 class MemoryFlags(IntFlag):
@@ -442,18 +486,20 @@ class TextureDescriptor:
 
     def copy_extent(self) -> "CopyExtent":
         """Get the copy extent for this texture."""
-        # Would need proper implementation
-        pass
+        return CopyExtent.map_extent_to_copy_size(self.size, self.dimension)
 
     def is_cube_compatible(self) -> bool:
         """Check if texture is cube-compatible."""
-        # Would need proper implementation with wgt types
-        pass
+        return (self.dimension == wgt.TextureDimension.d2
+                and self.size[2] % 6 == 0
+                and self.sample_count == 1
+                and self.size[0] == self.size[1])
 
     def array_layer_count(self) -> int:
         """Get the number of array layers."""
-        # Would need proper implementation with wgt types
-        pass
+        if self.dimension in (wgt.TextureDimension.d1, wgt.TextureDimension.d3):
+            return 1
+        return self.size[2]
 
 
 @dataclass
@@ -564,6 +610,27 @@ class CopyExtent:
     height: int
     depth: int
 
+    @staticmethod
+    def map_extent_to_copy_size(extent: Any, dim: Any) -> "CopyExtent":
+        depth = 1
+        if dim == wgt.TextureDimension.d3:
+            depth = extent[2]
+        return CopyExtent(width=extent[0], height=extent[1], depth=depth)
+
+    def min(self, other: "CopyExtent") -> "CopyExtent":
+        return CopyExtent(
+            width=min(self.width, other.width),
+            height=min(self.height, other.height),
+            depth=min(self.depth, other.depth),
+        )
+
+    def at_mip_level(self, level: int) -> "CopyExtent":
+        return CopyExtent(
+            width=max(1, self.width >> level),
+            height=max(1, self.height >> level),
+            depth=max(1, self.depth >> level),
+        )
+
 
 @dataclass
 class TextureCopyBase:
@@ -574,6 +641,14 @@ class TextureCopyBase:
     # Origin within a texture (for 1D and 2D textures, Z must be 0)
     origin: Any  # wgt.Origin3d
     aspect: FormatAspects
+
+    def max_copy_size(self, full_size: "CopyExtent") -> "CopyExtent":
+        mip = full_size.at_mip_level(self.mip_level)
+        return CopyExtent(
+            width=mip.width - self.origin[0],
+            height=mip.height - self.origin[1],
+            depth=mip.depth - self.origin[2],
+        )
 
 
 @dataclass
@@ -593,6 +668,11 @@ class TextureCopy:
     dst_base: TextureCopyBase
     size: CopyExtent
 
+    def clamp_size_to_virtual(self, full_src_size: "CopyExtent", full_dst_size: "CopyExtent") -> None:
+        max_src_size = self.src_base.max_copy_size(full_src_size)
+        max_dst_size = self.dst_base.max_copy_size(full_dst_size)
+        self.size = self.size.min(max_src_size).min(max_dst_size)
+
 
 @dataclass
 class BufferTextureCopy:
@@ -601,6 +681,10 @@ class BufferTextureCopy:
     buffer_layout: Any  # wgt.TexelCopyBufferLayout
     texture_base: TextureCopyBase
     size: CopyExtent
+
+    def clamp_size_to_virtual(self, full_size: "CopyExtent") -> None:
+        max_size = self.texture_base.max_copy_size(full_size)
+        self.size = self.size.min(max_size)
 
 
 @dataclass
