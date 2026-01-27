@@ -24,6 +24,20 @@ class BindingTypeName(Enum):
     AccelerationStructure = auto()
     ExternalTexture = auto()
 
+    @classmethod
+    def from_type(cls, ty: Any) -> "BindingTypeName":
+        if hasattr(ty, 'Buffer'):
+            return cls.Buffer
+        if hasattr(ty, 'Texture'):
+            return cls.Texture
+        if hasattr(ty, 'Sampler'):
+            return cls.Sampler
+        if hasattr(ty, 'AccelerationStructure'):
+            return cls.AccelerationStructure
+        if hasattr(ty, 'ExternalTexture'):
+            return cls.ExternalTexture
+        raise ValueError(f"Unknown binding type: {ty}")
+
 
 class ResourceType:
     """Base class for resource types used in validation."""
@@ -159,6 +173,20 @@ class NumericDimension:
     type: str = "scalar" # scalar, vector, matrix
     size: int = 1 # for vector size or matrix columns
     rows: int = 1 # for matrix rows
+
+    @staticmethod
+    def Scalar() -> "NumericDimension":
+        return NumericDimension(type="scalar", size=1, rows=1)
+
+    @staticmethod
+    def Vector(size: Any) -> "NumericDimension":
+        # size is naga.VectorSize
+        return NumericDimension(type="vector", size=int(size), rows=1)
+
+    @staticmethod
+    def Matrix(columns: Any, rows: Any) -> "NumericDimension":
+        # columns, rows are naga.VectorSize
+        return NumericDimension(type="matrix", size=int(columns), rows=int(rows))
 
     def __str__(self) -> str:
         if self.type == "scalar": return ""

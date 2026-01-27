@@ -38,15 +38,14 @@ class WgpuCoreBackend:
         """
         Creates a surface using core logic.
         """
-        # This will be implemented when surface support is added to core
-        return WgpuCoreSurface(self._global, target)
+        surface_id = self._global.instance_create_surface(target)
+        return WgpuCoreSurface(self._global, surface_id)
 
     def poll_all_devices(self, force_wait: bool = False) -> bool:
         """
         Polls all devices.
         """
-        # Need to implement in Global/Hub
-        return True
+        return self._global.poll_all_devices(force_wait)
 
     def generate_report(self) -> dict:
         """
@@ -185,7 +184,7 @@ class WgpuCoreBuffer:
         self._buffer_id = buffer_id
 
     def destroy(self) -> None:
-        pass
+        self._global.ops.buffer_destroy(self._buffer_id)
 
 
 class WgpuCoreTexture:
@@ -242,8 +241,7 @@ class WgpuCorePipelineCache:
         self._cache_id = cache_id
 
     def get_data(self) -> Optional[bytes]:
-        # Should be implemented in Global/ops
-        return None
+        return self._global.ops.pipeline_cache_get_data(self._cache_id)
 
 
 class WgpuCoreCommandEncoder:
@@ -252,7 +250,12 @@ class WgpuCoreCommandEncoder:
         self._encoder_id = encoder_id
 
     def finish(self, descriptor: Any = None) -> Any:
-        return None
+        command_buffer_id, error = self._global.ops.command_encoder_finish(
+            self._encoder_id, descriptor
+        )
+        if error:
+            raise RuntimeError(f"Failed to finish command encoder: {error}")
+        return WgpuCoreCommandBuffer(self._global, command_buffer_id)
 
 
 class WgpuCoreQueue:
@@ -260,12 +263,31 @@ class WgpuCoreQueue:
         self._global = global_state
         self._queue_id = queue_id
 
-    def submit(self, command_buffers: List[Any]) -> None:
-        # Submit command_buffer_ids
-        pass
+    def submit(self, command_buffers: List["WgpuCoreCommandBuffer"]) -> None:
+        command_buffer_ids = [cb._id for cb in command_buffers]
+        error = self._global.ops.queue_submit(self._queue_id, command_buffer_ids)
+        if error:
+            raise RuntimeError(f"Failed to submit queue: {error}")
 
 
 class WgpuCoreSurface:
-    def __init__(self, global_state: Global, target: Any) -> None:
+    def __init__(self, global_state: Global, surface_id: Any) -> None:
         self._global = global_state
-        self._target = target
+        self._surface_id = surface_id
+
+    def configure(self, device: "WgpuCoreDevice", config: Any) -> None:
+        error = self._global.ops.surface_configure(self._surface_id, device._device_id, config)
+        if error:
+            raise RuntimeError(f"Failed to configure surface: {error}")
+
+    def get_current_texture(self) -> Tuple[Any, bool, Any]:
+        result, error = self._global.ops.surface_get_current_texture(self._surface_id)
+        if error:
+            raise RuntimeError(f"Failed to get current texture: {error}")
+        # Returns (texture_id, suboptimal, status)
+        return result
+
+class WgpuCoreCommandBuffer:
+    def __init__(self, global_state: Global, command_buffer_id: Any) -> None:
+        self._global = global_state
+        self._id = command_buffer_id

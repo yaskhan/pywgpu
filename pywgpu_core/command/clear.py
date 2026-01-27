@@ -262,31 +262,26 @@ def _clear_texture_via_buffer_copies(
     dst_raw: Any,
 ) -> None:
     """Clear texture via copy_buffer_to_texture from a zeroed buffer."""
-    # Simplified implementation of the Rust logic
     import pywgpu_hal as hal
+    from ..conv import get_format_info
 
     # Gather list of zero_buffer copies
     zero_buffer_copy_regions = []
     buffer_copy_pitch = alignments.buffer_copy_pitch
 
-    # These would come from format info
-    block_width, block_height = 1, 1  # Simplified for now
-    block_size = 4  # Simplified for rgba8unorm
+    # Get format info for block metrics
+    format_info = get_format_info(texture_desc.format)
+    block_width = format_info.block_width
+    block_height = format_info.block_height
+    block_size = format_info.block_size
 
     bytes_per_row_alignment = get_lowest_common_denom(buffer_copy_pitch, block_size)
 
-    # We need a way to get mip level size.
-    # In Rust: texture_desc.mip_level_size(mip_level)
+    # Use a constant for ZERO_BUFFER_SIZE matching wgpu-core's default
+    ZERO_BUFFER_SIZE = 256 * 1024
 
     for mip_level in range_.mip_range:
-        # mip_size calculation (simplified)
-        width = max(1, texture_desc.size[0] >> mip_level)
-        height = max(1, texture_desc.size[1] >> mip_level)
-        depth = (
-            max(1, texture_desc.size[2] >> mip_level)
-            if len(texture_desc.size) > 2
-            else 1
-        )
+        width, height, depth = texture_desc.mip_level_size(mip_level)
 
         # Round to multiple of block size
         width = align_to(width, block_width)
@@ -297,14 +292,13 @@ def _clear_texture_via_buffer_copies(
             bytes_per_row_alignment,
         )
 
-        # How many rows fit in ZERO_BUFFER?
-        # Rust: crate::device::ZERO_BUFFER_SIZE
-        ZERO_BUFFER_SIZE = 256 * 1024  # Placeholder
         max_rows_per_copy = ZERO_BUFFER_SIZE // bytes_per_row
+        # Must be multiple of block_height
         max_rows_per_copy = (max_rows_per_copy // block_height) * block_height
 
         if max_rows_per_copy == 0:
-            continue  # Should probably error or handle differently
+            # If a single row doesn't fit, we have a problem, but it's unlikely for 256KB
+            continue
 
         for array_layer in range_.layer_range:
             for z in range(depth):

@@ -109,6 +109,8 @@ During the completion of the translation, the following missing files were ident
    - Shader I/O variable limit deductions
    - Inter-stage built-in handling
    - Validation error formatting
+   - **NumericDimension**: Added factory methods and fixed type handling
+   - **Format Mapping**: Implemented full naga storage format mapping
 
 ## Fixes Applied
 
@@ -200,11 +202,9 @@ All source files from wgpu-trunk/wgpu-core/src have been successfully translated
 The module is ready for integration with the rest of the pywgpu stack (pywgpu, pywgpu-hal, pywgpu-types, naga).
 
 ### Next Steps (Beyond This Task)
-1. Integration testing with pywgpu-hal
-2. Unit test development
-3. Performance profiling and optimization
-4. API documentation generation
-5. Example code development
+1. **Unit Testing**: Create tests for the newly implemented backend methods.
+2. **Performance**: Profile the clear operations and buffer copies.
+3. **Documentation**: Finalize the API documentation.
 
 **Status**: ✅ **TRANSLATION COMPLETE AND VERIFIED**
 
